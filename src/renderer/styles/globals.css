@@ -1,0 +1,88 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-deep: #C43E0C;
+    --color-primary: #E8571F;
+    --color-warm: #F7A94B;
+    --color-light: #FFF8F0;
+    --color-bg: #0a0a0a;
+    --color-surface: #111111;
+    --color-surface-raised: #1a1a1a;
+    --color-text: #f0e6da;
+    --color-text-secondary: #999999;
+    --color-text-muted: #555555;
+    --color-border: #1a1a1a;
+    --color-pending: #F2C94C;
+    --color-followup: #F28C38;
+    --color-done: #4CAF50;
+    --gradient-brand: linear-gradient(135deg, var(--color-deep), var(--color-warm));
+  }
+
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    user-select: none;
+  }
+
+  .selectable {
+    user-select: text;
+  }
+}
+
+@layer components {
+  .email-item {
+    @apply flex flex-col px-4 py-3 border-b border-border-subtle cursor-pointer transition-colors duration-100;
+  }
+
+  .email-item:hover {
+    @apply bg-bg-hover;
+  }
+
+  .email-item.active {
+    @apply bg-bg-tertiary;
+    border-left: 2px solid var(--color-primary);
+  }
+
+  .email-item.unread {
+    @apply font-semibold;
+  }
+
+  .label-badge {
+    @apply text-xs px-1.5 py-0.5 rounded font-medium;
+  }
+
+  .label-pending {
+    background: rgba(242, 201, 76, 0.15);
+    color: var(--color-pending);
+  }
+
+  .label-followup {
+    background: rgba(242, 140, 56, 0.15);
+    color: var(--color-followup);
+  }
+
+  .sidebar-section {
+    @apply mb-4 p-3 rounded-lg bg-bg-secondary;
+  }
+
+  .shortcut-key {
+    @apply inline-flex items-center justify-center w-6 h-6 text-xs font-mono rounded bg-bg-tertiary text-text-secondary border border-border-subtle;
+  }
+
+  /* Kenaz brand gradient */
+  .brand-gradient {
+    background: var(--gradient-brand);
+  }
+}

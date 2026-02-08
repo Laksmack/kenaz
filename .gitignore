@@ -1,0 +1,20 @@
+node_modules/
+dist/
+release/
+.env
+*.env
+credentials.json
+token.json
+
+# Electron
+out/
+
+# Build artifacts
+build/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
