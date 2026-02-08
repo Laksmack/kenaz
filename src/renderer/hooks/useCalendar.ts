@@ -5,28 +5,47 @@ export function useCalendar(enabled: boolean) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dayOffset, setDayOffset] = useState(0);
 
-  const fetchToday = useCallback(async () => {
+  const targetDate = new Date();
+  targetDate.setDate(targetDate.getDate() + dayOffset);
+
+  const fetchDay = useCallback(async () => {
     if (!enabled) return;
     setLoading(true);
     setError(null);
     try {
-      const result = await window.kenaz.calendarToday();
-      setEvents(result);
+      if (dayOffset === 0) {
+        // Use the optimized "today" endpoint
+        const result = await window.kenaz.calendarToday();
+        setEvents(result);
+      } else {
+        // Use range endpoint for other days
+        const start = new Date(targetDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(targetDate);
+        end.setHours(23, 59, 59, 999);
+        const result = await window.kenaz.calendarRange(start.toISOString(), end.toISOString());
+        setEvents(result);
+      }
     } catch (e: any) {
       console.error('Failed to fetch calendar:', e);
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, [enabled, dayOffset]);
 
-  // Fetch on mount and every 5 minutes
+  // Fetch on mount, on day change, and every 5 minutes
   useEffect(() => {
-    fetchToday();
-    const interval = setInterval(fetchToday, 5 * 60 * 1000);
+    fetchDay();
+    const interval = setInterval(fetchDay, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [fetchToday]);
+  }, [fetchDay]);
 
-  return { events, loading, error, refresh: fetchToday };
+  const goNext = useCallback(() => setDayOffset((d) => d + 1), []);
+  const goPrev = useCallback(() => setDayOffset((d) => d - 1), []);
+  const goToday = useCallback(() => setDayOffset(0), []);
+
+  return { events, loading, error, refresh: fetchDay, dayOffset, targetDate, goNext, goPrev, goToday };
 }

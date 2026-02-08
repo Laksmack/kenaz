@@ -44,7 +44,7 @@ export interface EmailThread {
 
 // ── Views ────────────────────────────────────────────────────
 
-export type ViewType = 'inbox' | 'pending' | 'followup' | 'sent' | 'all' | 'search';
+export type ViewType = 'inbox' | 'pending' | 'followup' | 'starred' | 'sent' | 'drafts' | 'all' | 'search';
 
 export interface ViewConfig {
   type: ViewType;
@@ -56,8 +56,10 @@ export interface ViewConfig {
 export const VIEWS: ViewConfig[] = [
   { type: 'inbox', label: 'Inbox', query: 'in:inbox', shortcut: 'gi' },
   { type: 'pending', label: 'Pending', query: 'label:PENDING', shortcut: 'gp' },
-  { type: 'followup', label: 'Follow Up', query: 'label:FOLLOWUP', shortcut: 'gf' },
-  { type: 'sent', label: 'Sent', query: 'in:sent', shortcut: 'gs' },
+  { type: 'followup', label: 'Todo', query: 'label:FOLLOWUP', shortcut: 'gt' },
+  { type: 'starred', label: 'Starred', query: 'is:starred', shortcut: 'gs' },
+  { type: 'sent', label: 'Sent', query: 'in:sent' },
+  { type: 'drafts', label: 'Drafts', query: 'in:drafts', shortcut: 'gd' },
   { type: 'all', label: 'All Mail', query: '', shortcut: 'ga' },
 ];
 
@@ -72,6 +74,7 @@ export interface ComposeData {
   replyToThreadId?: string;
   replyToMessageId?: string;
   hubspotDealId?: string;
+  draftId?: string; // Gmail draft ID if resuming a draft
   signature: boolean;
 }
 
@@ -142,6 +145,7 @@ export interface SendEmailPayload {
   reply_to_message_id?: string;
   hubspot_deal_id?: string;
   signature?: boolean;
+  skip_auto_bcc?: boolean;
 }
 
 // ── IPC Channels ─────────────────────────────────────────────
@@ -157,6 +161,7 @@ export const IPC = {
   GMAIL_ARCHIVE: 'gmail:archive',
   GMAIL_LABEL: 'gmail:label',
   GMAIL_MARK_READ: 'gmail:mark-read',
+  GMAIL_DOWNLOAD_ATTACHMENT: 'gmail:download-attachment',
 
   // Calendar
   CALENDAR_TODAY: 'calendar:today',
@@ -165,10 +170,20 @@ export const IPC = {
   // HubSpot
   HUBSPOT_LOOKUP: 'hubspot:lookup',
   HUBSPOT_LOG: 'hubspot:log',
+  HUBSPOT_LOG_THREAD: 'hubspot:log-thread',
+  HUBSPOT_SEARCH_DEALS: 'hubspot:search-deals',
+  HUBSPOT_ASSOCIATE_DEAL: 'hubspot:associate-deal',
+
+  // Drafts
+  GMAIL_CREATE_DRAFT: 'gmail:create-draft',
+  GMAIL_LIST_DRAFTS: 'gmail:list-drafts',
+  GMAIL_GET_DRAFT: 'gmail:get-draft',
+  GMAIL_DELETE_DRAFT: 'gmail:delete-draft',
 
   // App
   APP_GET_CONFIG: 'app:get-config',
   APP_SET_CONFIG: 'app:set-config',
+  APP_USER_EMAIL: 'app:user-email',
 } as const;
 
 // ── Config ───────────────────────────────────────────────────
@@ -176,13 +191,27 @@ export const IPC = {
 export interface AppConfig {
   signature: string;
   hubspotToken: string;
+  hubspotEnabled: boolean;
+  hubspotPortalId: string;
   apiPort: number;
+  apiEnabled: boolean;
   defaultView: ViewType;
+  inboxLabels: string[]; // additional labels to include in inbox view
+  autoBccEnabled: boolean;
+  autoBccAddress: string; // e.g. "crm@hubspot.com"
+  autoBccExcludedDomains: string[]; // e.g. ["compscience.com"] — skip BCC for these domains
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
   signature: `<p style="color:#666;font-size:13px;">Martin Stenkilde<br/>Director of Product & Business Development<br/>CompScience</p>`,
   hubspotToken: '',
+  hubspotEnabled: false,
+  hubspotPortalId: '',
   apiPort: 3141,
+  apiEnabled: true,
   defaultView: 'inbox',
+  inboxLabels: [], // extra labels shown in inbox (e.g. 'CATEGORY_UPDATES')
+  autoBccEnabled: false,
+  autoBccAddress: '',
+  autoBccExcludedDomains: [],
 };

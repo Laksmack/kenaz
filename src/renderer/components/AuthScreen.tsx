@@ -46,12 +46,9 @@ export function AuthScreen({ onAuthenticated }: Props) {
           {loading ? 'Authenticating...' : 'Connect Gmail Account'}
         </button>
 
-        <div className="mt-8 text-xs text-text-muted space-y-1">
-          <p>Place your Google OAuth credentials at:</p>
-          <code className="block text-text-secondary bg-bg-secondary px-3 py-2 rounded text-xs">
-            ~/Library/Application Support/kenaz/credentials.json
-          </code>
-        </div>
+        <p className="mt-8 text-xs text-text-muted">
+          Sign in with your Google account to get started.
+        </p>
       </div>
     </div>
   );

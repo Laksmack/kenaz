@@ -7,9 +7,10 @@ import { ViewNav } from './components/ViewNav';
 import { SearchBar } from './components/SearchBar';
 import { AuthScreen } from './components/AuthScreen';
 import { SettingsModal } from './components/SettingsModal';
+import { AdvancedSearch } from './components/AdvancedSearch';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useEmails } from './hooks/useEmails';
-import type { ViewType, ComposeData, EmailThread } from '@shared/types';
+import type { ViewType, ComposeData, EmailThread, AppConfig } from '@shared/types';
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -18,14 +19,22 @@ export default function App() {
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeData, setComposeData] = useState<Partial<ComposeData> | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchActive, setSearchActive] = useState(false);
+  const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
+  const [userEmail, setUserEmail] = useState('');
 
-  // Check auth on mount
+  // Check auth on mount, load config and user email
   useEffect(() => {
     window.kenaz.gmailAuthStatus()
-      .then((status: boolean) => setAuthenticated(status))
+      .then((status: boolean) => {
+        setAuthenticated(status);
+        if (status) {
+          window.kenaz.getUserEmail().then(setUserEmail);
+        }
+      })
       .catch(() => setAuthenticated(false));
+    window.kenaz.getConfig().then(setAppConfig);
   }, []);
 
   const {
@@ -35,7 +44,7 @@ export default function App() {
     archiveThread,
     labelThread,
     markRead,
-  } = useEmails(currentView, searchQuery, authenticated === true);
+  } = useEmails(currentView, searchQuery, authenticated === true, appConfig?.inboxLabels);
 
   // Select first thread when list changes
   useEffect(() => {
@@ -44,12 +53,37 @@ export default function App() {
     }
   }, [threads]);
 
-  const handleSelectThread = useCallback((thread: EmailThread) => {
+  const handleSelectThread = useCallback(async (thread: EmailThread) => {
+    // In drafts view, open the draft in compose instead of viewing it
+    if (currentView === 'drafts') {
+      try {
+        // List drafts to find the one matching this thread
+        const drafts = await window.kenaz.listDrafts();
+        const draft = drafts.find((d: any) => d.threadId === thread.id);
+        if (draft) {
+          const draftDetail = await window.kenaz.getDraft(draft.id);
+          setComposeData({
+            to: draftDetail.to,
+            cc: draftDetail.cc,
+            bcc: draftDetail.bcc,
+            subject: draftDetail.subject,
+            bodyMarkdown: draftDetail.body,
+            replyToThreadId: draftDetail.threadId || undefined,
+            draftId: draftDetail.id,
+          });
+          setComposeOpen(true);
+          return;
+        }
+      } catch (e) {
+        console.error('Failed to load draft:', e);
+      }
+    }
+
     setSelectedThread(thread);
     if (thread.isUnread) {
       markRead(thread.id);
     }
-  }, [markRead]);
+  }, [markRead, currentView]);
 
   const handleArchive = useCallback(async () => {
     if (!selectedThread) return;
@@ -63,9 +97,27 @@ export default function App() {
     if (!selectedThread) return;
     const hasLabel = selectedThread.labels.some((l) => l === label);
     if (hasLabel) {
+      // Toggle off: remove the label
       await labelThread(selectedThread.id, null, label);
     } else {
+      // Toggle on: add the label and archive out of inbox
       await labelThread(selectedThread.id, label, null);
+      await archiveThread(selectedThread.id);
+      // Move to next thread
+      const idx = threads.findIndex((t) => t.id === selectedThread.id);
+      const next = threads[idx + 1] || threads[idx - 1] || null;
+      setSelectedThread(next);
+    }
+    refresh();
+  }, [selectedThread, threads, labelThread, archiveThread, refresh]);
+
+  const handleStar = useCallback(async () => {
+    if (!selectedThread) return;
+    const isStarred = selectedThread.labels.includes('STARRED');
+    if (isStarred) {
+      await labelThread(selectedThread.id, null, 'STARRED');
+    } else {
+      await labelThread(selectedThread.id, 'STARRED', null);
     }
     refresh();
   }, [selectedThread, labelThread, refresh]);
@@ -78,6 +130,16 @@ export default function App() {
   const handleReply = useCallback(() => {
     if (!selectedThread) return;
     const lastMsg = selectedThread.messages[selectedThread.messages.length - 1];
+    const dateStr = new Date(lastMsg.date).toLocaleString();
+    const senderStr = lastMsg.from.name
+      ? `${lastMsg.from.name} <${lastMsg.from.email}>`
+      : lastMsg.from.email;
+    // Quote the original plain text, prefixing each line with >
+    const quotedBody = (lastMsg.bodyText || '')
+      .split('\n')
+      .map((line) => `> ${line}`)
+      .join('\n');
+
     handleCompose({
       to: lastMsg.from.email,
       subject: selectedThread.subject.startsWith('Re:')
@@ -85,21 +147,38 @@ export default function App() {
         : `Re: ${selectedThread.subject}`,
       replyToThreadId: selectedThread.id,
       replyToMessageId: lastMsg.id,
+      bodyMarkdown: `\n\nOn ${dateStr}, ${senderStr} wrote:\n${quotedBody}`,
+    });
+  }, [selectedThread, handleCompose]);
+
+  const handleForward = useCallback(() => {
+    if (!selectedThread) return;
+    const lastMsg = selectedThread.messages[selectedThread.messages.length - 1];
+    handleCompose({
+      to: '',
+      subject: selectedThread.subject.startsWith('Fwd:')
+        ? selectedThread.subject
+        : `Fwd: ${selectedThread.subject}`,
+      bodyMarkdown: `\n\n---------- Forwarded message ----------\nFrom: ${lastMsg.from.name || lastMsg.from.email} <${lastMsg.from.email}>\nDate: ${new Date(lastMsg.date).toLocaleString()}\nSubject: ${selectedThread.subject}\nTo: ${lastMsg.to.map(t => t.email).join(', ')}\n\n${lastMsg.bodyText || ''}`,
     });
   }, [selectedThread, handleCompose]);
 
   const handleSearch = useCallback((query: string) => {
     setSearchQuery(query);
-    setSearchActive(!!query);
     if (query) {
       setCurrentView('search');
     }
   }, []);
 
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+    setCurrentView('inbox');
+    setSelectedThread(null);
+  }, []);
+
   const handleViewChange = useCallback((view: ViewType) => {
     setCurrentView(view);
     setSelectedThread(null);
-    setSearchActive(false);
     setSearchQuery('');
   }, []);
 
@@ -115,20 +194,22 @@ export default function App() {
     onArchive: handleArchive,
     onPending: () => handleLabel('PENDING'),
     onFollowUp: () => handleLabel('FOLLOWUP'),
+    onStar: handleStar,
     onCompose: () => handleCompose(),
     onReply: handleReply,
+    onForward: handleForward,
     onNavigateUp: () => navigateList('up'),
     onNavigateDown: () => navigateList('down'),
-    onSearch: () => setSearchActive(true),
+    onSearch: () => setAdvancedSearchOpen(true),
     onEscape: () => {
       if (settingsOpen) setSettingsOpen(false);
+      else if (advancedSearchOpen) setAdvancedSearchOpen(false);
       else if (composeOpen) setComposeOpen(false);
-      else if (searchActive) { setSearchActive(false); setSearchQuery(''); }
       else setSelectedThread(null);
     },
     onRefresh: refresh,
     onSettings: () => setSettingsOpen(!settingsOpen),
-    enabled: !composeOpen || settingsOpen,
+    enabled: !composeOpen && !advancedSearchOpen || settingsOpen,
   });
 
   // Auth screen
@@ -147,18 +228,17 @@ export default function App() {
   return (
     <div className="h-screen flex flex-col bg-bg-primary">
       {/* Title bar drag region */}
-      <div className="titlebar-drag h-12 flex items-center px-20 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
+      <div className="titlebar-drag h-12 flex items-center pl-20 pr-3 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
         <div className="titlebar-no-drag">
           <ViewNav currentView={currentView} onViewChange={handleViewChange} />
         </div>
         <div className="flex-1" /> {/* This space IS draggable */}
         <div className="titlebar-no-drag flex items-center gap-2">
           <SearchBar
-            active={searchActive}
             query={searchQuery}
             onSearch={handleSearch}
-            onActivate={() => setSearchActive(true)}
-            onClose={() => { setSearchActive(false); setSearchQuery(''); }}
+            onAdvancedSearch={() => setAdvancedSearchOpen(true)}
+            onClear={handleClearSearch}
           />
           <button
             onClick={refresh}
@@ -180,6 +260,19 @@ export default function App() {
             </svg>
           </button>
         </div>
+        {/* Kenaz rune — far right */}
+        <div className="ml-3 flex items-center" title="Kenaz ᚲ">
+          <svg className="w-5 h-5" viewBox="0 0 512 512" fill="none">
+            <defs>
+              <linearGradient id="kenaz-rune" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stopColor="#C43E0C"/>
+                <stop offset="1" stopColor="#F7A94B"/>
+              </linearGradient>
+            </defs>
+            <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#kenaz-rune)"/>
+            <path d="M332.8 112.6L189.4 256L332.8 399.4" stroke="#FFF8F0" strokeWidth="44" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+          </svg>
+        </div>
       </div>
 
       {/* Main content */}
@@ -192,6 +285,7 @@ export default function App() {
             loading={loading}
             onSelect={handleSelectThread}
             currentView={currentView}
+            userEmail={userEmail}
           />
         </div>
 
@@ -202,6 +296,7 @@ export default function App() {
             onReply={handleReply}
             onArchive={handleArchive}
             onLabel={handleLabel}
+            onStar={handleStar}
           />
         </div>
 
@@ -209,6 +304,8 @@ export default function App() {
         <div className="w-1/4 min-w-[260px] max-w-[360px] border-l border-border-subtle overflow-hidden">
           <Sidebar
             thread={selectedThread}
+            hubspotEnabled={appConfig?.hubspotEnabled}
+            hubspotPortalId={appConfig?.hubspotPortalId}
           />
         </div>
       </div>
@@ -219,6 +316,15 @@ export default function App() {
           initialData={composeData}
           onClose={() => setComposeOpen(false)}
           onSent={() => { setComposeOpen(false); refresh(); }}
+          autoBccEnabled={appConfig?.autoBccEnabled}
+        />
+      )}
+
+      {/* Advanced Search Modal */}
+      {advancedSearchOpen && (
+        <AdvancedSearch
+          onSearch={(query) => { handleSearch(query); setAdvancedSearchOpen(false); }}
+          onClose={() => setAdvancedSearchOpen(false)}
         />
       )}
 

@@ -4,6 +4,8 @@ interface ShortcutHandlers {
   onArchive: () => void;
   onPending: () => void;
   onFollowUp: () => void;
+  onStar: () => void;
+  onForward: () => void;
   onCompose: () => void;
   onReply: () => void;
   onNavigateUp: () => void;
@@ -62,7 +64,15 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
           break;
         case 'f':
           e.preventDefault();
+          handlers.onForward();
+          break;
+        case 't':
+          e.preventDefault();
           handlers.onFollowUp();
+          break;
+        case 's':
+          e.preventDefault();
+          handlers.onStar();
           break;
         case 'c':
           e.preventDefault();

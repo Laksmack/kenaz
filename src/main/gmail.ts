@@ -7,7 +7,16 @@ import fs from 'fs';
 import path from 'path';
 import { app } from 'electron';
 import { ConfigStore } from './config';
+import { OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI } from './oauth-config';
 import type { Email, EmailThread, EmailAddress, Attachment, SendEmailPayload } from '../shared/types';
+
+// RFC 2047 encode a header value if it contains non-ASCII characters
+function mimeEncodeHeader(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  if (/^[\x00-\x7F]*$/.test(value)) return value; // pure ASCII, no encoding needed
+  const encoded = Buffer.from(value, 'utf-8').toString('base64');
+  return `=?UTF-8?B?${encoded}?=`;
+}
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.modify',
@@ -16,8 +25,7 @@ const SCOPES = [
   'https://www.googleapis.com/auth/calendar.readonly',
 ];
 
-// You must place your OAuth credentials in the app's userData directory
-// Download from Google Cloud Console → APIs & Services → Credentials
+// Optional: users can override bundled credentials with a local file
 function getCredentialsPath(): string {
   return path.join(app.getPath('userData'), 'credentials.json');
 }
@@ -26,14 +34,46 @@ function getTokenPath(): string {
   return path.join(app.getPath('userData'), 'token.json');
 }
 
+/**
+ * Returns OAuth client_id and client_secret.
+ * Uses bundled credentials by default; falls back to credentials.json if bundled ones are empty.
+ */
+function getOAuthCredentials(): { client_id: string; client_secret: string } | null {
+  // 1. Use bundled credentials if configured
+  if (OAUTH_CLIENT_ID && OAUTH_CLIENT_SECRET) {
+    return { client_id: OAUTH_CLIENT_ID, client_secret: OAUTH_CLIENT_SECRET };
+  }
+
+  // 2. Fall back to local credentials.json
+  const credPath = getCredentialsPath();
+  if (fs.existsSync(credPath)) {
+    try {
+      const creds = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
+      const { client_id, client_secret } = creds.installed || creds.web || {};
+      if (client_id && client_secret) {
+        return { client_id, client_secret };
+      }
+    } catch (e) {
+      console.error('Failed to parse credentials.json:', e);
+    }
+  }
+
+  return null;
+}
+
 export class GmailService {
   private oauth2Client: OAuth2Client | null = null;
   private gmail: gmail_v1.Gmail | null = null;
   private config: ConfigStore;
   private labelCache: Map<string, string> = new Map(); // name → id
+  private userEmail: string = '';
 
   getOAuth2Client(): OAuth2Client | null {
     return this.oauth2Client;
+  }
+
+  getUserEmail(): string {
+    return this.userEmail;
   }
 
   constructor(config: ConfigStore) {
@@ -43,12 +83,10 @@ export class GmailService {
 
   private tryLoadExistingToken() {
     try {
-      const credPath = getCredentialsPath();
-      if (!fs.existsSync(credPath)) return;
+      const oauthCreds = getOAuthCredentials();
+      if (!oauthCreds) return;
 
-      const creds = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
-      const { client_id, client_secret, redirect_uris } = creds.installed || creds.web || {};
-      this.oauth2Client = new OAuth2Client(client_id, client_secret, 'http://localhost:8234');
+      this.oauth2Client = new OAuth2Client(oauthCreds.client_id, oauthCreds.client_secret, OAUTH_REDIRECT_URI);
 
       const tokenPath = getTokenPath();
       if (fs.existsSync(tokenPath)) {
@@ -69,7 +107,8 @@ export class GmailService {
     }
     try {
       const profile = await this.gmail.users.getProfile({ userId: 'me' });
-      console.log('[Gmail] Authenticated as:', profile.data.emailAddress);
+      this.userEmail = profile.data.emailAddress || '';
+      console.log('[Gmail] Authenticated as:', this.userEmail);
       return true;
     } catch (e: any) {
       console.error('[Gmail] Auth check failed:', e.message);
@@ -79,17 +118,15 @@ export class GmailService {
 
   async authenticate(): Promise<{ success: boolean; error?: string }> {
     try {
-      const credPath = getCredentialsPath();
-      if (!fs.existsSync(credPath)) {
+      const oauthCreds = getOAuthCredentials();
+      if (!oauthCreds) {
         return {
           success: false,
-          error: `Place your Google OAuth credentials at: ${credPath}`,
+          error: 'OAuth credentials are not configured. Please contact the app developer.',
         };
       }
 
-      const creds = JSON.parse(fs.readFileSync(credPath, 'utf-8'));
-      const { client_id, client_secret } = creds.installed || creds.web || {};
-      this.oauth2Client = new OAuth2Client(client_id, client_secret, 'http://localhost:8234');
+      this.oauth2Client = new OAuth2Client(oauthCreds.client_id, oauthCreds.client_secret, OAUTH_REDIRECT_URI);
 
       const authUrl = this.oauth2Client.generateAuthUrl({
         access_type: 'offline',
@@ -397,6 +434,41 @@ export class GmailService {
     });
   }
 
+  // ── Attachments ─────────────────────────────────────────────
+
+  async downloadAttachment(messageId: string, attachmentId: string, filename: string): Promise<string> {
+    if (!this.gmail) throw new Error('Not authenticated');
+
+    const res = await this.gmail.users.messages.attachments.get({
+      userId: 'me',
+      messageId,
+      id: attachmentId,
+    });
+
+    const data = res.data.data;
+    if (!data) throw new Error('No attachment data');
+
+    // Decode base64url to buffer
+    const buffer = Buffer.from(data, 'base64url');
+
+    // Save to Downloads folder
+    const downloadsPath = app.getPath('downloads');
+    const filePath = path.join(downloadsPath, filename);
+
+    // Avoid overwriting — append number if exists
+    let finalPath = filePath;
+    let counter = 1;
+    const ext = path.extname(filename);
+    const base = path.basename(filename, ext);
+    while (fs.existsSync(finalPath)) {
+      finalPath = path.join(downloadsPath, `${base} (${counter})${ext}`);
+      counter++;
+    }
+
+    fs.writeFileSync(finalPath, buffer);
+    return finalPath;
+  }
+
   // ── Send ───────────────────────────────────────────────────
 
   async sendEmail(payload: SendEmailPayload): Promise<{ id: string; threadId: string }> {
@@ -412,19 +484,44 @@ export class GmailService {
       htmlBody += `<br/><br/>${appConfig.signature}`;
     }
 
+    // Auto-BCC: append if enabled, not skipped, and recipients aren't all excluded domains
+    let bcc = payload.bcc || '';
+    if (appConfig.autoBccEnabled && appConfig.autoBccAddress && !payload.skip_auto_bcc) {
+      const allRecipients = [payload.to, payload.cc || '']
+        .join(',')
+        .split(',')
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean);
+
+      const excludedDomains = appConfig.autoBccExcludedDomains.map((d) => d.toLowerCase().trim());
+
+      // Check if ALL recipients are on excluded domains
+      const allExcluded = allRecipients.length > 0 && allRecipients.every((email) => {
+        const domain = email.split('@')[1];
+        return domain && excludedDomains.includes(domain);
+      });
+
+      if (!allExcluded) {
+        // Append auto-BCC address (avoiding duplicates)
+        const existingBcc = bcc.toLowerCase();
+        if (!existingBcc.includes(appConfig.autoBccAddress.toLowerCase())) {
+          bcc = bcc ? `${bcc}, ${appConfig.autoBccAddress}` : appConfig.autoBccAddress;
+        }
+      }
+    }
+
     // Build RFC 2822 message
-    const messageParts = [
+    const headers = [
       `To: ${payload.to}`,
-      payload.cc ? `Cc: ${payload.cc}` : '',
-      payload.bcc ? `Bcc: ${payload.bcc}` : '',
-      `Subject: ${payload.subject}`,
+      payload.cc ? `Cc: ${payload.cc}` : null,
+      bcc ? `Bcc: ${bcc}` : null,
+      `Subject: ${mimeEncodeHeader(payload.subject)}`,
       'Content-Type: text/html; charset=utf-8',
       'MIME-Version: 1.0',
-      '',
-      htmlBody,
-    ]
-      .filter(Boolean)
-      .join('\r\n');
+    ].filter(Boolean);
+
+    // Empty line between headers and body is mandatory in RFC 2822
+    const messageParts = [...headers, '', htmlBody].join('\r\n');
 
     const encodedMessage = Buffer.from(messageParts)
       .toString('base64')
@@ -446,6 +543,238 @@ export class GmailService {
       id: res.data.id || '',
       threadId: res.data.threadId || '',
     };
+  }
+
+  // ── Drafts ──────────────────────────────────────────────────
+
+  async createDraft(payload: Partial<SendEmailPayload>): Promise<string> {
+    if (!this.gmail) throw new Error('Not authenticated');
+
+    const messageParts = [
+      payload.to ? `To: ${payload.to}` : '',
+      payload.cc ? `Cc: ${payload.cc}` : '',
+      payload.bcc ? `Bcc: ${payload.bcc}` : '',
+      payload.subject ? `Subject: ${mimeEncodeHeader(payload.subject)}` : 'Subject: ',
+      'Content-Type: text/plain; charset=utf-8',
+      'MIME-Version: 1.0',
+      '',
+      payload.body_markdown || '',
+    ]
+      .filter((line, i) => i >= 4 || line) // keep content headers, filter empty address lines
+      .join('\r\n');
+
+    const encodedMessage = Buffer.from(messageParts)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+
+    const res = await this.gmail.users.drafts.create({
+      userId: 'me',
+      requestBody: {
+        message: {
+          raw: encodedMessage,
+          threadId: payload.reply_to_thread_id || undefined,
+        },
+      },
+    });
+
+    return res.data.id || '';
+  }
+
+  async listDrafts(): Promise<Array<{ id: string; threadId: string; subject: string; to: string; snippet: string; date: string }>> {
+    if (!this.gmail) throw new Error('Not authenticated');
+
+    const res = await this.gmail.users.drafts.list({
+      userId: 'me',
+      maxResults: 20,
+    });
+
+    if (!res.data.drafts || res.data.drafts.length === 0) return [];
+
+    const drafts = await Promise.all(
+      res.data.drafts.map(async (d) => {
+        try {
+          const detail = await this.gmail!.users.drafts.get({
+            userId: 'me',
+            id: d.id!,
+            format: 'metadata',
+          });
+          const msg = detail.data.message;
+          const headers: Array<{name?: string | null; value?: string | null}> = msg?.payload?.headers || [];
+          const getHeader = (name: string) =>
+            headers.find((h: {name?: string | null; value?: string | null}) => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
+
+          return {
+            id: d.id!,
+            threadId: msg?.threadId || '',
+            subject: getHeader('Subject') || '(no subject)',
+            to: getHeader('To'),
+            snippet: msg?.snippet || '',
+            date: getHeader('Date'),
+          };
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    return drafts.filter(Boolean) as any[];
+  }
+
+  async getDraft(draftId: string): Promise<{
+    id: string;
+    to: string;
+    cc: string;
+    bcc: string;
+    subject: string;
+    body: string;
+    threadId: string;
+    messageId: string;
+  }> {
+    if (!this.gmail) throw new Error('Not authenticated');
+
+    const res = await this.gmail.users.drafts.get({
+      userId: 'me',
+      id: draftId,
+      format: 'full',
+    });
+
+    const msg = res.data.message;
+    const headers: Array<{name?: string | null; value?: string | null}> = msg?.payload?.headers || [];
+    const getHeader = (name: string) =>
+      headers.find((h: {name?: string | null; value?: string | null}) => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
+
+    // Extract plain text body
+    let bodyText = '';
+    const payload = msg?.payload;
+    if (payload?.body?.data) {
+      bodyText = Buffer.from(payload.body.data, 'base64').toString('utf-8');
+    } else if (payload?.parts) {
+      const textPart = payload.parts.find((p) => p.mimeType === 'text/plain');
+      if (textPart?.body?.data) {
+        bodyText = Buffer.from(textPart.body.data, 'base64').toString('utf-8');
+      }
+    }
+
+    return {
+      id: res.data.id || '',
+      to: getHeader('To'),
+      cc: getHeader('Cc'),
+      bcc: getHeader('Bcc'),
+      subject: getHeader('Subject'),
+      body: bodyText,
+      threadId: msg?.threadId || '',
+      messageId: msg?.id || '',
+    };
+  }
+
+  async deleteDraft(draftId: string): Promise<void> {
+    if (!this.gmail) throw new Error('Not authenticated');
+    await this.gmail.users.drafts.delete({
+      userId: 'me',
+      id: draftId,
+    });
+  }
+
+  // ── Labels ─────────────────────────────────────────────────
+
+  async listLabels(): Promise<Array<{ id: string; name: string; type: string }>> {
+    if (!this.gmail) throw new Error('Not authenticated');
+    const res = await this.gmail.users.labels.list({ userId: 'me' });
+    return (res.data.labels || []).map((l) => ({
+      id: l.id || '',
+      name: l.name || '',
+      type: l.type || 'user',
+    }));
+  }
+
+  // ── Thread Summary (AI-ready) ──────────────────────────────
+
+  async getThreadSummary(threadId: string): Promise<any> {
+    const thread = await this.fetchThread(threadId);
+    if (!thread) throw new Error('Thread not found');
+
+    const selfEmail = this.userEmail.toLowerCase();
+
+    const participants = thread.participants.map((p) => ({
+      name: p.name,
+      email: p.email,
+      role: p.email.toLowerCase() === selfEmail ? 'self' : 'external',
+    }));
+
+    const timeline = thread.messages.map((m) => ({
+      from: m.from.name || m.from.email,
+      date: m.date,
+      snippet: (m.bodyText || m.snippet || '').substring(0, 200),
+    }));
+
+    const latest = thread.messages[thread.messages.length - 1];
+
+    return {
+      threadId,
+      subject: thread.subject,
+      participants,
+      messageCount: thread.messages.length,
+      timeline,
+      latestMessage: {
+        from: latest.from.name || latest.from.email,
+        date: latest.date,
+        bodyText: latest.bodyText || latest.snippet || '',
+      },
+      hasAttachments: thread.messages.some((m) => m.hasAttachments),
+      labels: thread.labels,
+    };
+  }
+
+  // ── Attachment Buffer (for API download) ───────────────────
+
+  async getAttachmentBuffer(messageId: string, attachmentId: string): Promise<Buffer> {
+    if (!this.gmail) throw new Error('Not authenticated');
+    const res = await this.gmail.users.messages.attachments.get({
+      userId: 'me',
+      messageId,
+      id: attachmentId,
+    });
+    if (!res.data.data) throw new Error('No attachment data');
+    return Buffer.from(res.data.data, 'base64url');
+  }
+
+  // ── Stats ──────────────────────────────────────────────────
+
+  async getStats(): Promise<Record<string, number>> {
+    if (!this.gmail) throw new Error('Not authenticated');
+
+    const queries: Record<string, string> = {
+      inbox: 'in:inbox',
+      unread: 'is:unread in:inbox',
+      starred: 'is:starred',
+      drafts: 'is:draft',
+    };
+
+    // Add custom label counts
+    const pendingId = this.getLabelId('PENDING');
+    if (pendingId) queries.pending = `label:PENDING`;
+    const followupId = this.getLabelId('FOLLOWUP');
+    if (followupId) queries.followup = `label:FOLLOWUP`;
+
+    const counts: Record<string, number> = {};
+    await Promise.all(
+      Object.entries(queries).map(async ([key, q]) => {
+        try {
+          const res = await this.gmail!.users.threads.list({
+            userId: 'me',
+            q,
+            maxResults: 1,
+          });
+          counts[key] = res.data.resultSizeEstimate || 0;
+        } catch {
+          counts[key] = 0;
+        }
+      })
+    );
+
+    return counts;
   }
 
   private markdownToHtml(md: string): string {

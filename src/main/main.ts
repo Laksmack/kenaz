@@ -79,9 +79,11 @@ async function initServices() {
     calendar.setAuth(oauthClient);
   }
 
-  // Start the local API server for Claude integration
+  // Start the local API server if enabled
   const appConfig = config.get();
-  startApiServer(gmail, hubspot, appConfig.apiPort);
+  if (appConfig.apiEnabled) {
+    startApiServer(gmail, hubspot, appConfig.apiPort);
+  }
 }
 
 function registerIpcHandlers() {
@@ -138,6 +140,29 @@ function registerIpcHandlers() {
     return gmail.markAsRead(threadId);
   });
 
+  ipcMain.handle(IPC.GMAIL_DOWNLOAD_ATTACHMENT, async (_event, messageId: string, attachmentId: string, filename: string) => {
+    const filePath = await gmail.downloadAttachment(messageId, attachmentId, filename);
+    shell.openPath(filePath);
+    return filePath;
+  });
+
+  // ── Drafts ──
+  ipcMain.handle(IPC.GMAIL_CREATE_DRAFT, async (_event, payload: any) => {
+    return gmail.createDraft(payload);
+  });
+
+  ipcMain.handle(IPC.GMAIL_LIST_DRAFTS, async () => {
+    return gmail.listDrafts();
+  });
+
+  ipcMain.handle(IPC.GMAIL_GET_DRAFT, async (_event, draftId: string) => {
+    return gmail.getDraft(draftId);
+  });
+
+  ipcMain.handle(IPC.GMAIL_DELETE_DRAFT, async (_event, draftId: string) => {
+    return gmail.deleteDraft(draftId);
+  });
+
   // ── Calendar ──
   ipcMain.handle(IPC.CALENDAR_TODAY, async () => {
     return calendar.getTodayEvents();
@@ -156,6 +181,18 @@ function registerIpcHandlers() {
     return hubspot.logEmail(payload, '');
   });
 
+  ipcMain.handle(IPC.HUBSPOT_LOG_THREAD, async (_event, dealId: string, subject: string, body: string, senderEmail: string, recipientEmail: string) => {
+    return hubspot.logThreadToDeal(dealId, subject, body, senderEmail, recipientEmail);
+  });
+
+  ipcMain.handle(IPC.HUBSPOT_SEARCH_DEALS, async (_event, query: string) => {
+    return hubspot.searchDeals(query);
+  });
+
+  ipcMain.handle(IPC.HUBSPOT_ASSOCIATE_DEAL, async (_event, contactId: string, dealId: string) => {
+    return hubspot.associateContactWithDeal(contactId, dealId);
+  });
+
   // ── Config ──
   ipcMain.handle(IPC.APP_GET_CONFIG, async () => {
     return config.get();
@@ -163,6 +200,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle(IPC.APP_SET_CONFIG, async (_event, updates: any) => {
     return config.update(updates);
+  });
+
+  ipcMain.handle(IPC.APP_USER_EMAIL, async () => {
+    return gmail.getUserEmail();
   });
 }
 

@@ -6,16 +6,25 @@ import { formatRelativeDate } from '../lib/utils';
 
 interface Props {
   thread: EmailThread | null;
+  hubspotEnabled?: boolean;
+  hubspotPortalId?: string;
 }
 
-export function Sidebar({ thread }: Props) {
-  const senderEmail = thread?.from?.email || null;
+function hubspotContactUrl(portalId: string, contactId: string) {
+  return `https://app.hubspot.com/contacts/${portalId}/contact/${contactId}`;
+}
+
+function hubspotDealUrl(portalId: string, dealId: string) {
+  return `https://app.hubspot.com/contacts/${portalId}/record/0-3/${dealId}`;
+}
+
+export function Sidebar({ thread, hubspotEnabled = false, hubspotPortalId = '' }: Props) {
+  const senderEmail = hubspotEnabled ? (thread?.from?.email || null) : null;
   const hubspot = useHubSpot(senderEmail);
 
   if (!thread) {
     return (
       <div className="h-full flex flex-col overflow-y-auto scrollbar-hide">
-        {/* Calendar always visible */}
         <div className="border-b border-border-subtle">
           <CalendarWidget enabled={true} />
         </div>
@@ -45,7 +54,7 @@ export function Sidebar({ thread }: Props) {
           </div>
         )}
 
-        {!hubspot.loading && !hubspot.contact && !hubspot.error && (
+        {!hubspot.loading && !hubspot.contact && !hubspot.error && hubspotEnabled && (
           <div className="sidebar-section">
             <div className="text-xs text-text-muted text-center">
               <div className="mb-1">No HubSpot contact found</div>
@@ -57,17 +66,30 @@ export function Sidebar({ thread }: Props) {
         {/* Contact Card */}
         {hubspot.contact && (
           <div className="sidebar-section">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-full bg-bg-tertiary flex items-center justify-center text-sm font-semibold text-text-secondary">
+            <a
+              href={hubspotPortalId ? hubspotContactUrl(hubspotPortalId, hubspot.contact.id) : '#'}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex items-center gap-3 mb-3 group ${hubspotPortalId ? 'cursor-pointer' : ''}`}
+              onClick={(e) => { if (!hubspotPortalId) e.preventDefault(); }}
+            >
+              <div className="w-10 h-10 rounded-full bg-bg-tertiary flex items-center justify-center text-sm font-semibold text-text-secondary flex-shrink-0">
                 {hubspot.contact.firstName?.[0] || hubspot.contact.email[0]?.toUpperCase()}
               </div>
-              <div>
-                <div className="text-sm font-medium text-text-primary">
-                  {hubspot.contact.firstName} {hubspot.contact.lastName}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <span className={`text-sm font-medium truncate ${hubspotPortalId ? 'text-text-primary group-hover:text-[#ff7a59]' : 'text-text-primary'} transition-colors`}>
+                    {hubspot.contact.firstName} {hubspot.contact.lastName}
+                  </span>
+                  {hubspotPortalId && (
+                    <svg className="w-3 h-3 flex-shrink-0 text-text-muted group-hover:text-[#ff7a59] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  )}
                 </div>
                 <div className="text-xs text-text-muted">{hubspot.contact.title}</div>
               </div>
-            </div>
+            </a>
             <div className="space-y-1.5 text-xs">
               {hubspot.contact.company && (
                 <DetailRow label="Company" value={hubspot.contact.company} />
@@ -90,27 +112,65 @@ export function Sidebar({ thread }: Props) {
           <div className="sidebar-section">
             <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Deals</h4>
             <div className="space-y-2">
-              {hubspot.deals.map((deal) => (
-                <div key={deal.id} className="p-2 rounded bg-bg-primary">
-                  <div className="text-xs font-medium text-text-primary mb-1">{deal.name}</div>
-                  <div className="flex items-center justify-between text-xs text-text-muted">
-                    <span className="px-1.5 py-0.5 rounded bg-accent-primary/10 text-accent-primary text-[10px]">
-                      {deal.stage}
-                    </span>
-                    {deal.amount > 0 && (
-                      <span className="font-mono text-accent-success">
-                        ${deal.amount.toLocaleString()}
-                      </span>
-                    )}
-                  </div>
-                  {deal.closeDate && (
-                    <div className="text-[10px] text-text-muted mt-1">
-                      Close: {new Date(deal.closeDate).toLocaleDateString()}
+              {hubspot.deals.map((deal) => {
+                const DealWrapper = hubspotPortalId ? 'a' : 'div';
+                const wrapperProps = hubspotPortalId ? {
+                  href: hubspotDealUrl(hubspotPortalId, deal.id),
+                  target: '_blank' as const,
+                  rel: 'noopener noreferrer',
+                } : {};
+                return (
+                  <DealWrapper
+                    key={deal.id}
+                    {...wrapperProps}
+                    className={`block p-2 rounded bg-bg-primary group no-underline ${hubspotPortalId ? 'hover:bg-bg-hover cursor-pointer' : ''} transition-colors`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className={`text-xs font-medium truncate flex-1 ${hubspotPortalId ? 'text-text-primary group-hover:text-[#ff7a59]' : 'text-text-primary'} transition-colors`}>
+                        {deal.name}
+                      </div>
+                      {hubspotPortalId && (
+                        <svg className="w-3 h-3 flex-shrink-0 ml-2 text-text-muted group-hover:text-[#ff7a59] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      )}
                     </div>
-                  )}
-                </div>
-              ))}
+                    <div className="flex items-center justify-between text-xs text-text-muted">
+                      <span className="px-1.5 py-0.5 rounded bg-accent-primary/10 text-accent-primary text-[10px]">
+                        {deal.stage}
+                      </span>
+                      {deal.amount > 0 && (
+                        <span className="font-mono text-accent-success">
+                          ${deal.amount.toLocaleString()}
+                        </span>
+                      )}
+                    </div>
+                    {deal.closeDate && (
+                      <div className="text-[10px] text-text-muted mt-1">
+                        Close: {new Date(deal.closeDate).toLocaleDateString()}
+                      </div>
+                    )}
+                  </DealWrapper>
+                );
+              })}
             </div>
+          </div>
+        )}
+
+        {/* Open in HubSpot — when contact exists but no deals, nudge user to link in HubSpot */}
+        {hubspot.contact && hubspot.deals.length === 0 && hubspotPortalId && (
+          <div className="sidebar-section">
+            <a
+              href={hubspotContactUrl(hubspotPortalId, hubspot.contact.id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 text-xs text-[#ff7a59] hover:text-[#ff5c35] transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+              </svg>
+              Open in HubSpot to link deals
+            </a>
           </div>
         )}
 
@@ -158,13 +218,15 @@ function ShortcutsHelp() {
     <div className="p-3 border-t border-border-subtle">
       <h4 className="text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-2">Shortcuts</h4>
       <div className="grid grid-cols-2 gap-1 text-[10px]">
-        <ShortcutRow keys="E/D" label="Archive" />
+        <ShortcutRow keys="E/D" label="Done" />
         <ShortcutRow keys="P" label="Pending" />
-        <ShortcutRow keys="F" label="Follow Up" />
+        <ShortcutRow keys="T" label="Todo" />
+        <ShortcutRow keys="S" label="Star" />
+        <ShortcutRow keys="F" label="Forward" />
         <ShortcutRow keys="C" label="Compose" />
         <ShortcutRow keys="R" label="Reply" />
         <ShortcutRow keys="J/K" label="Navigate" />
-        <ShortcutRow keys="/" label="Search" />
+        <ShortcutRow keys="/" label="Adv. Search" />
         <ShortcutRow keys="Esc" label="Back" />
       </div>
     </div>

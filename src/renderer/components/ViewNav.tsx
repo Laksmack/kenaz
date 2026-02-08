@@ -10,7 +10,8 @@ interface Props {
 const VIEW_ICONS: Record<ViewType, string> = {
   inbox: '📥',
   pending: '⏳',
-  followup: '🔔',
+  followup: '✓',
+  starred: '⭐',
   sent: '📤',
   all: '📬',
   search: '🔍',

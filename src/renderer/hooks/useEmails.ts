@@ -1,36 +1,55 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { EmailThread, ViewType } from '@shared/types';
 import { VIEWS } from '@shared/types';
 
-export function useEmails(currentView: ViewType, searchQuery: string, enabled: boolean = true) {
+function buildQuery(currentView: ViewType, searchQuery: string, inboxLabels: string[]): string {
+  if (currentView === 'search' && searchQuery) {
+    return searchQuery;
+  }
+  const view = VIEWS.find((v) => v.type === currentView);
+  let query = view?.query || 'in:inbox';
+  if (currentView === 'inbox' && inboxLabels.length > 0) {
+    const labelQueries = inboxLabels.map((l) => `label:${l}`);
+    query = `{${query} ${labelQueries.join(' ')}}`;
+  }
+  return query;
+}
+
+export function useEmails(currentView: ViewType, searchQuery: string, enabled: boolean = true, inboxLabels: string[] = []) {
   const [threads, setThreads] = useState<EmailThread[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const getQuery = useCallback(() => {
-    if (currentView === 'search' && searchQuery) {
-      return searchQuery;
-    }
-    const view = VIEWS.find((v) => v.type === currentView);
-    return view?.query || 'in:inbox';
-  }, [currentView, searchQuery]);
+  // Per-view cache for instant switching
+  const cacheRef = useRef<Record<string, EmailThread[]>>({});
+
+  // Derive query string directly (no useCallback indirection)
+  const query = buildQuery(currentView, searchQuery, inboxLabels);
 
   const fetchThreads = useCallback(async () => {
     if (!enabled) return;
     setLoading(true);
     try {
-      const query = getQuery();
       const result = await window.kenaz.fetchThreads(query, 50);
+      cacheRef.current[query] = result;
       setThreads(result);
     } catch (e) {
       console.error('Failed to fetch threads:', e);
     } finally {
       setLoading(false);
     }
-  }, [getQuery, enabled]);
+  }, [query, enabled]);
 
+  // Fetch whenever query or enabled changes
   useEffect(() => {
+    if (!enabled) return;
+    // Show cached version instantly if available
+    const cached = cacheRef.current[query];
+    if (cached) {
+      setThreads(cached);
+    }
+    // Always fetch fresh data in the background
     fetchThreads();
-  }, [fetchThreads]);
+  }, [query, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const archiveThread = useCallback(async (threadId: string) => {
     try {

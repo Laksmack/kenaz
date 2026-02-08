@@ -10,12 +10,21 @@ declare global {
       archiveThread: (threadId: string) => Promise<void>;
       modifyLabels: (threadId: string, add: string | null, remove: string | null) => Promise<void>;
       markAsRead: (threadId: string) => Promise<void>;
+      createDraft: (payload: any) => Promise<string>;
+      listDrafts: () => Promise<any[]>;
+      getDraft: (draftId: string) => Promise<any>;
+      deleteDraft: (draftId: string) => Promise<void>;
       calendarToday: () => Promise<any>;
       calendarRange: (timeMin: string, timeMax: string) => Promise<any>;
       hubspotLookup: (email: string) => Promise<any>;
       hubspotLog: (payload: any) => Promise<any>;
+      hubspotLogThread: (dealId: string, subject: string, body: string, senderEmail: string, recipientEmail: string) => Promise<{ success: boolean; error?: string }>;
+      hubspotSearchDeals: (query: string) => Promise<any[]>;
+      hubspotAssociateDeal: (contactId: string, dealId: string) => Promise<{ success: boolean; error?: string }>;
       getConfig: () => Promise<any>;
       setConfig: (updates: any) => Promise<any>;
+      getUserEmail: () => Promise<string>;
+      downloadAttachment: (messageId: string, attachmentId: string, filename: string) => Promise<string>;
     };
   }
 }
