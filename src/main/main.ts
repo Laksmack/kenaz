@@ -168,6 +168,10 @@ function registerIpcHandlers() {
     return gmail.deleteDraft(draftId);
   });
 
+  ipcMain.handle(IPC.GMAIL_LIST_LABELS, async () => {
+    return gmail.listLabels();
+  });
+
   // ── Calendar ──
   ipcMain.handle(IPC.CALENDAR_TODAY, async () => {
     return calendar.getTodayEvents();

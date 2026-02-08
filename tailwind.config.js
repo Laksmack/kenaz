@@ -16,7 +16,7 @@ export default {
           warm: '#F7A94B',
           light: '#FFF8F0',
           pending: '#F2C94C',
-          followup: '#F28C38',
+          todo: '#F28C38',
           success: '#4CAF50',
           danger: '#ef4444',
         },

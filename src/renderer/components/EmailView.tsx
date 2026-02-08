@@ -60,6 +60,24 @@ interface Props {
 }
 
 export function EmailView({ thread, onReply, onArchive, onLabel, onStar }: Props) {
+  const [showDetails, setShowDetails] = useState(false);
+  const [labelMap, setLabelMap] = useState<Record<string, string>>({});
+
+  // Load label name map when details panel is opened
+  useEffect(() => {
+    if (!showDetails) return;
+    window.kenaz.listLabels().then((labels) => {
+      const map: Record<string, string> = {};
+      for (const l of labels) {
+        if (l.id !== l.name) map[l.id] = l.name;
+      }
+      setLabelMap(map);
+    }).catch(() => {});
+  }, [showDetails]);
+
+  // Resolve a label ID to its human-readable name
+  const labelName = (id: string) => labelMap[id] ? `${labelMap[id]}` : id;
+
   // Global focus guardian: whenever an iframe steals focus, reclaim it for the main document.
   // This ensures keyboard shortcuts always work regardless of where the user clicks.
   useEffect(() => {
@@ -131,8 +149,8 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar }: Props
             <ActionButton
               label="Todo"
               shortcut="T"
-              onClick={() => onLabel('FOLLOWUP')}
-              color="text-accent-followup"
+              onClick={() => onLabel('TODO')}
+              color="text-accent-todo"
               icon={
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
@@ -160,12 +178,105 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar }: Props
                 </svg>
               }
             />
+            <div className="w-px h-4 bg-border-subtle mx-1" />
+            <ActionButton
+              label="Details"
+              shortcut="I"
+              onClick={() => setShowDetails((p) => !p)}
+              color={showDetails ? 'text-accent-primary' : undefined}
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+                </svg>
+              }
+            />
           </div>
         </div>
         <div className="text-xs text-text-muted mt-1">
           {thread.messages.length} message{thread.messages.length !== 1 ? 's' : ''} · {thread.participants.length} participant{thread.participants.length !== 1 ? 's' : ''}
         </div>
       </div>
+
+      {/* Details panel */}
+      {showDetails && (
+        <div className="flex-shrink-0 px-6 py-3 border-b border-border-subtle bg-bg-primary/60 text-xs font-mono space-y-2 max-h-[300px] overflow-y-auto scrollbar-hide">
+          <div>
+            <span className="text-text-muted">Thread ID: </span>
+            <span className="text-text-secondary select-all">{thread.id}</span>
+          </div>
+          <div>
+            <span className="text-text-muted">Labels: </span>
+            <span className="text-text-primary">
+              {thread.labels.length > 0
+                ? thread.labels.map((l, i) => {
+                    const name = labelName(l);
+                    return (
+                      <span key={l}>
+                        {i > 0 && <span className="text-text-muted">, </span>}
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] ${
+                          l === 'INBOX' ? 'bg-blue-500/20 text-blue-300' :
+                          l === 'STARRED' ? 'bg-yellow-500/20 text-yellow-300' :
+                          l === 'UNREAD' ? 'bg-green-500/20 text-green-300' :
+                          l.startsWith('CATEGORY_') ? 'bg-purple-500/20 text-purple-300' :
+                          'bg-bg-tertiary text-text-secondary'
+                        }`}>{name}{name !== l ? <span className="text-text-muted ml-1 opacity-60">({l})</span> : null}</span>
+                      </span>
+                    );
+                  })
+                : <span className="text-text-muted italic">none</span>
+              }
+            </span>
+          </div>
+          <div>
+            <span className="text-text-muted">Snippet: </span>
+            <span className="text-text-secondary">{thread.snippet}</span>
+          </div>
+          {thread.messages.map((msg, idx) => (
+            <details key={msg.id} className="border border-border-subtle rounded p-2" open={idx === thread.messages.length - 1}>
+              <summary className="cursor-pointer text-text-secondary hover:text-text-primary">
+                Message {idx + 1}: <span className="text-text-muted">{msg.from.email}</span> → <span className="text-text-muted">{msg.to.map(t => t.email).join(', ')}</span>
+                <span className="ml-2 text-text-muted">{msg.date}</span>
+              </summary>
+              <div className="mt-2 space-y-1 pl-2 border-l border-border-subtle">
+                <div>
+                  <span className="text-text-muted">Message ID: </span>
+                  <span className="text-text-secondary select-all">{msg.id}</span>
+                </div>
+                <div>
+                  <span className="text-text-muted">Labels: </span>
+                  {msg.labels.length > 0
+                    ? msg.labels.map((l) => {
+                        const name = labelName(l);
+                        return (
+                          <span key={l} className={`inline-block mr-1 px-1.5 py-0.5 rounded text-[10px] ${
+                            l === 'INBOX' ? 'bg-blue-500/20 text-blue-300' :
+                            l === 'STARRED' ? 'bg-yellow-500/20 text-yellow-300' :
+                            l === 'UNREAD' ? 'bg-green-500/20 text-green-300' :
+                            l.startsWith('CATEGORY_') ? 'bg-purple-500/20 text-purple-300' :
+                            'bg-bg-tertiary text-text-secondary'
+                          }`}>{name}{name !== l ? <span className="text-text-muted ml-1 opacity-60">({l})</span> : null}</span>
+                        );
+                      })
+                    : <span className="text-text-muted italic">none</span>
+                  }
+                </div>
+                {msg.cc.length > 0 && (
+                  <div>
+                    <span className="text-text-muted">CC: </span>
+                    <span className="text-text-secondary">{msg.cc.map(c => c.email).join(', ')}</span>
+                  </div>
+                )}
+                {msg.attachments.length > 0 && (
+                  <div>
+                    <span className="text-text-muted">Attachments: </span>
+                    <span className="text-text-secondary">{msg.attachments.map(a => `${a.filename} (${formatBytes(a.size)})`).join(', ')}</span>
+                  </div>
+                )}
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto scrollbar-hide px-6 py-4 space-y-4">

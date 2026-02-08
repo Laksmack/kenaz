@@ -48,7 +48,7 @@ export default function App() {
     archiveThread,
     labelThread,
     markRead,
-  } = useEmails(currentView, searchQuery, authenticated === true, appConfig?.inboxLabels, views);
+  } = useEmails(currentView, searchQuery, authenticated === true, views);
 
   // ── View counts (background fetch) ──────────────────────
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
@@ -162,31 +162,79 @@ export default function App() {
     }
   }, [markRead, currentView]);
 
+  // Collect all label names that back a view (e.g. PENDING, TODO, custom)
+  const getManagedLabels = useCallback(() => {
+    return views
+      .map((v) => v.query.match(/^label:(\S+)$/))
+      .filter(Boolean)
+      .map((m) => m![1]);
+  }, [views]);
+
   const handleArchive = useCallback(async () => {
     if (!selectedThread) return;
+
+    // In drafts view, delete the draft instead of archiving
+    if (currentView === 'drafts') {
+      try {
+        const drafts = await window.kenaz.listDrafts();
+        const draft = drafts.find((d: any) => d.threadId === selectedThread.id);
+        if (draft) {
+          await window.kenaz.deleteDraft(draft.id);
+        }
+      } catch (e) {
+        console.error('Failed to delete draft:', e);
+      }
+      const idx = threads.findIndex((t) => t.id === selectedThread.id);
+      const next = threads[idx + 1] || threads[idx - 1] || null;
+      setSelectedThread(next);
+      setTimeout(() => refresh(), 500);
+      return;
+    }
+
+    // Remove ALL Kenaz-managed labels (labels backing any view) so the thread
+    // cleanly disappears from Inbox, Pending, Todo, and any custom views.
+    // We don't filter by thread labels because thread.labels uses internal IDs
+    // (e.g. "Label_34") while view queries use display names (e.g. "TODO").
+    // The server-side modifyLabels resolves names→IDs and is safe to call even
+    // if the label isn't on the thread.
+    const managedLabels = views
+      .map((v) => v.query.match(/^label:(\S+)$/))
+      .filter(Boolean)
+      .map((m) => m![1]);
+
+    for (const label of managedLabels) {
+      labelThread(selectedThread.id, null, label);
+    }
+
     await archiveThread(selectedThread.id);
     const idx = threads.findIndex((t) => t.id === selectedThread.id);
     const next = threads[idx + 1] || threads[idx - 1] || null;
     setSelectedThread(next);
-  }, [selectedThread, threads, archiveThread]);
+  }, [selectedThread, threads, archiveThread, labelThread, currentView, views, refresh]);
 
   const handleLabel = useCallback(async (label: string) => {
     if (!selectedThread) return;
     const hasLabel = selectedThread.labels.some((l) => l === label);
     if (hasLabel) {
-      // Toggle off: remove the label
-      await labelThread(selectedThread.id, null, label);
+      // Toggle off: remove the label (optimistic update happens inside labelThread)
+      labelThread(selectedThread.id, null, label);
     } else {
-      // Toggle on: add the label and archive out of inbox
-      await labelThread(selectedThread.id, label, null);
-      await archiveThread(selectedThread.id);
-      // Move to next thread
+      // Toggle on: add the label, remove other managed labels, and archive
       const idx = threads.findIndex((t) => t.id === selectedThread.id);
       const next = threads[idx + 1] || threads[idx - 1] || null;
       setSelectedThread(next);
+      // Remove other managed labels (e.g. pressing T while in Pending removes PENDING)
+      for (const managed of getManagedLabels()) {
+        if (managed !== label) {
+          labelThread(selectedThread.id, null, managed);
+        }
+      }
+      labelThread(selectedThread.id, label, null);
+      archiveThread(selectedThread.id);
     }
-    refresh();
-  }, [selectedThread, threads, labelThread, archiveThread, refresh]);
+    // Delayed refresh to sync with server after API calls have time to land
+    setTimeout(() => refresh(), 2000);
+  }, [selectedThread, threads, labelThread, archiveThread, getManagedLabels, refresh]);
 
   const handleStar = useCallback(async () => {
     if (!selectedThread) return;
@@ -217,8 +265,27 @@ export default function App() {
       .map((line) => `> ${line}`)
       .join('\n');
 
+    // Reply All: collect all recipients, excluding self
+    const me = userEmail.toLowerCase();
+    const allTo = new Set<string>();
+    const allCc = new Set<string>();
+
+    // The original sender goes in To (unless it's us)
+    if (lastMsg.from.email.toLowerCase() !== me) {
+      allTo.add(lastMsg.from.email);
+    }
+    // Other To recipients (excluding self) go in To
+    for (const t of lastMsg.to) {
+      if (t.email.toLowerCase() !== me) allTo.add(t.email);
+    }
+    // CC recipients (excluding self) stay in CC
+    for (const c of lastMsg.cc) {
+      if (c.email.toLowerCase() !== me) allCc.add(c.email);
+    }
+
     handleCompose({
-      to: lastMsg.from.email,
+      to: Array.from(allTo).join(', '),
+      cc: Array.from(allCc).join(', '),
       subject: selectedThread.subject.startsWith('Re:')
         ? selectedThread.subject
         : `Re: ${selectedThread.subject}`,
@@ -226,7 +293,7 @@ export default function App() {
       replyToMessageId: lastMsg.id,
       bodyMarkdown: `\n\nOn ${dateStr}, ${senderStr} wrote:\n${quotedBody}`,
     });
-  }, [selectedThread, handleCompose]);
+  }, [selectedThread, handleCompose, userEmail]);
 
   const handleForward = useCallback(() => {
     if (!selectedThread) return;
@@ -260,17 +327,31 @@ export default function App() {
   }, []);
 
   // ── Context menu handlers ───────────────────────────────
+
   const handleContextArchive = useCallback(async (threadId: string) => {
+    // Remove all managed labels, same as keyboard Done
+    for (const label of getManagedLabels()) {
+      labelThread(threadId, null, label);
+    }
     await archiveThread(threadId);
     if (selectedThread?.id === threadId) {
       const idx = threads.findIndex((t) => t.id === threadId);
       const next = threads[idx + 1] || threads[idx - 1] || null;
       setSelectedThread(next);
     }
-  }, [archiveThread, selectedThread, threads]);
+  }, [archiveThread, labelThread, getManagedLabels, selectedThread, threads]);
 
   const handleContextLabel = useCallback(async (threadId: string, label: string) => {
+    // Remove all OTHER managed labels first (e.g. moving from Pending to Todo
+    // should remove PENDING before adding TODO)
+    for (const managed of getManagedLabels()) {
+      if (managed !== label) {
+        labelThread(threadId, null, managed);
+      }
+    }
+    // Add the target label
     await labelThread(threadId, label, null);
+    // Archive (remove from inbox) since we're moving to a specific view
     await archiveThread(threadId);
     if (selectedThread?.id === threadId) {
       const idx = threads.findIndex((t) => t.id === threadId);
@@ -278,7 +359,7 @@ export default function App() {
       setSelectedThread(next);
     }
     refresh();
-  }, [labelThread, archiveThread, selectedThread, threads, refresh]);
+  }, [labelThread, archiveThread, getManagedLabels, selectedThread, threads, refresh]);
 
   const handleContextStar = useCallback(async (threadId: string) => {
     const thread = threads.find((t) => t.id === threadId);
@@ -315,7 +396,7 @@ export default function App() {
   useKeyboardShortcuts({
     onArchive: handleArchive,
     onPending: () => handleLabel('PENDING'),
-    onFollowUp: () => handleLabel('FOLLOWUP'),
+    onTodo: () => handleLabel('TODO'),
     onStar: handleStar,
     onCompose: () => handleCompose(),
     onReply: handleReply,

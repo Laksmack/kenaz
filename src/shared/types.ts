@@ -59,7 +59,7 @@ export interface View {
 export const DEFAULT_VIEWS: View[] = [
   { id: 'inbox', name: 'Inbox', icon: '📥', query: 'in:inbox', shortcut: 'gi' },
   { id: 'pending', name: 'Pending', icon: '⏳', query: 'label:PENDING', shortcut: 'gp' },
-  { id: 'followup', name: 'Todo', icon: '✓', query: 'label:FOLLOWUP', shortcut: 'gt' },
+  { id: 'todo', name: 'Todo', icon: '✓', query: 'label:TODO', shortcut: 'gt' },
   { id: 'starred', name: 'Starred', icon: '⭐', query: 'is:starred', shortcut: 'gs' },
   { id: 'sent', name: 'Sent', icon: '📤', query: 'in:sent' },
   { id: 'drafts', name: 'Drafts', icon: '📝', query: 'in:drafts', shortcut: 'gd' },
@@ -221,6 +221,7 @@ export const IPC = {
   GMAIL_LIST_DRAFTS: 'gmail:list-drafts',
   GMAIL_GET_DRAFT: 'gmail:get-draft',
   GMAIL_DELETE_DRAFT: 'gmail:delete-draft',
+  GMAIL_LIST_LABELS: 'gmail:list-labels',
 
   // Badge & Notifications
   APP_SET_BADGE: 'app:set-badge',
@@ -248,7 +249,6 @@ export interface AppConfig {
   apiPort: number;
   apiEnabled: boolean;
   defaultView: ViewType;
-  inboxLabels: string[]; // additional labels to include in inbox view
   autoBccEnabled: boolean;
   autoBccAddress: string; // e.g. "crm@hubspot.com"
   autoBccExcludedDomains: string[]; // e.g. ["compscience.com"] — skip BCC for these domains
@@ -262,7 +262,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   apiPort: 3141,
   apiEnabled: true,
   defaultView: 'inbox',
-  inboxLabels: [], // extra labels shown in inbox (e.g. 'CATEGORY_UPDATES')
   autoBccEnabled: false,
   autoBccAddress: '',
   autoBccExcludedDomains: [],

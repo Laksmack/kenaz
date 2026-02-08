@@ -1,6 +1,107 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { ComposeData, SendEmailPayload } from '@shared/types';
 
+// ── Email Chip Input ────────────────────────────────────────
+// Renders emails as removable chips. Type and press Enter/Tab/comma to add.
+
+function parseEmails(raw: string): string[] {
+  return raw
+    .split(/[,;\s]+/)
+    .map((s) => s.trim().replace(/^<|>$/g, ''))
+    .filter((s) => s.includes('@'));
+}
+
+function EmailChipInput({
+  emails,
+  onChange,
+  placeholder,
+  inputRef,
+}: {
+  emails: string[];
+  onChange: (emails: string[]) => void;
+  placeholder?: string;
+  inputRef?: React.RefObject<HTMLInputElement>;
+}) {
+  const [input, setInput] = useState('');
+  const internalRef = useRef<HTMLInputElement>(null);
+  const ref = inputRef || internalRef;
+
+  const addEmails = useCallback((raw: string) => {
+    const newEmails = parseEmails(raw);
+    if (newEmails.length > 0) {
+      const merged = [...emails];
+      for (const e of newEmails) {
+        if (!merged.some((m) => m.toLowerCase() === e.toLowerCase())) {
+          merged.push(e);
+        }
+      }
+      onChange(merged);
+    }
+    setInput('');
+  }, [emails, onChange]);
+
+  const removeEmail = useCallback((idx: number) => {
+    onChange(emails.filter((_, i) => i !== idx));
+  }, [emails, onChange]);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
+      if (input.trim()) {
+        e.preventDefault();
+        addEmails(input);
+      }
+    } else if (e.key === 'Backspace' && !input && emails.length > 0) {
+      removeEmail(emails.length - 1);
+    }
+  }, [input, emails, addEmails, removeEmail]);
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text');
+    addEmails(pasted);
+  }, [addEmails]);
+
+  const handleBlur = useCallback(() => {
+    if (input.trim()) addEmails(input);
+  }, [input, addEmails]);
+
+  return (
+    <div
+      className="flex-1 flex flex-wrap items-center gap-1 bg-bg-primary border border-border-subtle rounded px-2 py-1 min-h-[28px] cursor-text focus-within:border-accent-primary"
+      onClick={() => (ref as React.RefObject<HTMLInputElement>).current?.focus()}
+    >
+      {emails.map((email, i) => (
+        <span
+          key={`${email}-${i}`}
+          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent-primary/15 text-accent-primary text-[11px] font-medium max-w-[200px]"
+        >
+          <span className="truncate">{email}</span>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); removeEmail(i); }}
+            className="flex-shrink-0 hover:text-accent-danger transition-colors"
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        ref={ref as React.RefObject<HTMLInputElement>}
+        type="text"
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
+        onBlur={handleBlur}
+        className="flex-1 min-w-[120px] bg-transparent text-xs text-text-primary outline-none"
+        placeholder={emails.length === 0 ? placeholder : ''}
+      />
+    </div>
+  );
+}
+
+// ── Compose Bar ─────────────────────────────────────────────
+
 interface Props {
   initialData: Partial<ComposeData> | null;
   onClose: () => void;
@@ -9,32 +110,53 @@ interface Props {
 }
 
 export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = false }: Props) {
-  const [to, setTo] = useState(initialData?.to || '');
-  const [cc, setCc] = useState(initialData?.cc || '');
-  const [bcc, setBcc] = useState(initialData?.bcc || '');
+  const [to, setTo] = useState<string[]>(() => initialData?.to ? parseEmails(initialData.to) : []);
+  const [cc, setCc] = useState<string[]>(() => initialData?.cc ? parseEmails(initialData.cc) : []);
+  const [bcc, setBcc] = useState<string[]>(() => initialData?.bcc ? parseEmails(initialData.bcc) : []);
   const [subject, setSubject] = useState(initialData?.subject || '');
   const [body, setBody] = useState(initialData?.bodyMarkdown || '');
-  const [showCcBcc, setShowCcBcc] = useState(false);
+  const [showCcBcc, setShowCcBcc] = useState(() => (initialData?.cc || initialData?.bcc) ? true : false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [useAutoBcc, setUseAutoBcc] = useState(true);
   const [savingDraft, setSavingDraft] = useState(false);
   const sentRef = useRef(false); // track if we sent successfully
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const toRef = useRef<HTMLInputElement>(null);
 
-  // Place cursor at the top of the body (before quoted text)
+  // Snapshot the initial state so we can detect real changes
+  const initialSnapshot = useRef({
+    to: initialData?.to ? parseEmails(initialData.to).sort().join(',') : '',
+    cc: initialData?.cc ? parseEmails(initialData.cc).sort().join(',') : '',
+    bcc: initialData?.bcc ? parseEmails(initialData.bcc).sort().join(',') : '',
+    subject: initialData?.subject || '',
+    body: initialData?.bodyMarkdown || '',
+  });
+
+  // Auto-focus: TO field for new compose, body for replies
   useEffect(() => {
-    if (bodyRef.current && initialData?.replyToThreadId) {
+    if (initialData?.replyToThreadId && bodyRef.current) {
       bodyRef.current.focus();
       bodyRef.current.setSelectionRange(0, 0);
       bodyRef.current.scrollTop = 0;
+    } else if (toRef.current) {
+      toRef.current.focus();
     }
   }, []);
 
-  const hasContent = Boolean(to || subject || body.trim());
+  const hasChanges = (() => {
+    const snap = initialSnapshot.current;
+    return (
+      [...to].sort().join(',') !== snap.to ||
+      [...cc].sort().join(',') !== snap.cc ||
+      [...bcc].sort().join(',') !== snap.bcc ||
+      subject !== snap.subject ||
+      body !== snap.body
+    );
+  })();
 
   const handleSend = useCallback(async () => {
-    if (!to || !subject) {
+    if (to.length === 0 || !subject) {
       setError('To and Subject are required');
       return;
     }
@@ -44,9 +166,9 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
 
     try {
       const payload: SendEmailPayload = {
-        to,
-        cc: cc || undefined,
-        bcc: bcc || undefined,
+        to: to.join(', '),
+        cc: cc.length > 0 ? cc.join(', ') : undefined,
+        bcc: bcc.length > 0 ? bcc.join(', ') : undefined,
         subject,
         body_markdown: body,
         reply_to_thread_id: initialData?.replyToThreadId,
@@ -72,7 +194,7 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
   }, [to, cc, bcc, subject, body, initialData, onSent, autoBccEnabled, useAutoBcc]);
 
   const handleClose = useCallback(async () => {
-    if (sentRef.current || !hasContent) {
+    if (sentRef.current || !hasChanges) {
       onClose();
       return;
     }
@@ -81,9 +203,9 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
     setSavingDraft(true);
     try {
       await window.kenaz.createDraft({
-        to: to || undefined,
-        cc: cc || undefined,
-        bcc: bcc || undefined,
+        to: to.length > 0 ? to.join(', ') : undefined,
+        cc: cc.length > 0 ? cc.join(', ') : undefined,
+        bcc: bcc.length > 0 ? bcc.join(', ') : undefined,
         subject: subject || undefined,
         body_markdown: body || undefined,
         reply_to_thread_id: initialData?.replyToThreadId,
@@ -99,7 +221,7 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
       setSavingDraft(false);
       onClose();
     }
-  }, [to, cc, bcc, subject, body, initialData, hasContent, onClose]);
+  }, [to, cc, bcc, subject, body, initialData, hasChanges, onClose]);
 
   return (
     <div className="border-t border-border-subtle bg-bg-secondary">
@@ -120,7 +242,7 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
             onClick={handleClose}
             disabled={savingDraft}
             className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors"
-            title={hasContent ? 'Close & save as draft' : 'Close'}
+            title={hasChanges ? 'Close & save as draft' : 'Close'}
           >
             {savingDraft ? (
               <span className="text-[10px] text-text-muted px-1">Saving...</span>
@@ -141,16 +263,15 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
       <div className="px-4 py-2 space-y-1.5">
         <div className="flex items-center gap-2">
           <label className="text-xs text-text-muted w-12">To</label>
-          <input
-            type="text"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-            className="flex-1 bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary"
+          <EmailChipInput
+            emails={to}
+            onChange={setTo}
             placeholder="recipient@example.com"
+            inputRef={toRef as React.RefObject<HTMLInputElement>}
           />
           <button
             onClick={() => setShowCcBcc(!showCcBcc)}
-            className="text-[10px] text-text-muted hover:text-text-secondary"
+            className="text-[10px] text-text-muted hover:text-text-secondary flex-shrink-0"
           >
             Cc/Bcc
           </button>
@@ -160,21 +281,11 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
           <>
             <div className="flex items-center gap-2">
               <label className="text-xs text-text-muted w-12">Cc</label>
-              <input
-                type="text"
-                value={cc}
-                onChange={(e) => setCc(e.target.value)}
-                className="flex-1 bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary"
-              />
+              <EmailChipInput emails={cc} onChange={setCc} placeholder="cc@example.com" />
             </div>
             <div className="flex items-center gap-2">
               <label className="text-xs text-text-muted w-12">Bcc</label>
-              <input
-                type="text"
-                value={bcc}
-                onChange={(e) => setBcc(e.target.value)}
-                className="flex-1 bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary"
-              />
+              <EmailChipInput emails={bcc} onChange={setBcc} placeholder="bcc@example.com" />
             </div>
           </>
         )}

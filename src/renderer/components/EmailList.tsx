@@ -47,6 +47,28 @@ export function EmailList({ threads, selectedId, loading, onSelect, currentView,
     };
   }, [contextMenu]);
 
+  // Reposition menu if it overflows the viewport
+  useEffect(() => {
+    if (!contextMenu || !menuRef.current) return;
+    const menu = menuRef.current;
+    const rect = menu.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    let { x, y } = contextMenu;
+    // Flip up if it would overflow the bottom
+    if (rect.bottom > vh) {
+      y = Math.max(4, y - rect.height);
+    }
+    // Flip left if it would overflow the right
+    if (rect.right > vw) {
+      x = Math.max(4, x - rect.width);
+    }
+    if (x !== contextMenu.x || y !== contextMenu.y) {
+      menu.style.left = `${x}px`;
+      menu.style.top = `${y}px`;
+    }
+  });
+
   const handleContextMenu = (e: React.MouseEvent, thread: EmailThread) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, thread });
@@ -248,7 +270,7 @@ function EmailListItem({
   userEmail?: string;
 }) {
   const isPending = thread.labels.includes('PENDING');
-  const isFollowUp = thread.labels.includes('FOLLOWUP');
+  const isTodo = thread.labels.includes('TODO');
   const isStarred = thread.labels.includes('STARRED');
   const hasAttachments = thread.messages.some((m) => m.hasAttachments);
   const role = getUserRole(thread, userEmail);
@@ -297,7 +319,7 @@ function EmailListItem({
       {/* Labels */}
       <div className="flex items-center gap-1 mt-1.5">
         {isPending && <span className="label-badge label-pending">Pending</span>}
-        {isFollowUp && <span className="label-badge label-followup">Todo</span>}
+        {isTodo && <span className="label-badge label-todo">Todo</span>}
         {isStarred && <span className="text-yellow-400 text-xs">★</span>}
       </div>
     </div>

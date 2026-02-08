@@ -14,6 +14,7 @@ declare global {
       listDrafts: () => Promise<any[]>;
       getDraft: (draftId: string) => Promise<any>;
       deleteDraft: (draftId: string) => Promise<void>;
+      listLabels: () => Promise<Array<{ id: string; name: string; type: string }>>;
       calendarToday: () => Promise<any>;
       calendarRange: (timeMin: string, timeMax: string) => Promise<any>;
       calendarRsvp: (eventId: string, response: 'accepted' | 'tentative' | 'declined', calendarId?: string) => Promise<{ success: boolean; status: string }>;

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { EmailThread, ViewType, View } from '@shared/types';
 import { VIEWS } from '@shared/types';
 
-function buildQuery(currentView: ViewType, searchQuery: string, inboxLabels: string[], views: View[]): string {
+function buildQuery(currentView: ViewType, searchQuery: string, views: View[]): string {
   if (currentView === 'search' && searchQuery) {
     return searchQuery;
   }
@@ -10,25 +10,15 @@ function buildQuery(currentView: ViewType, searchQuery: string, inboxLabels: str
   // Try dynamic views first, fall back to hardcoded VIEWS
   const dynamicView = views.find((v) => v.id === currentView);
   if (dynamicView) {
-    let query = dynamicView.query;
-    if (dynamicView.id === 'inbox' && inboxLabels.length > 0) {
-      const labelQueries = inboxLabels.map((l) => `label:${l}`);
-      query = `{${query} ${labelQueries.join(' ')}}`;
-    }
-    return query;
+    return dynamicView.query;
   }
 
   // Backward compat fallback
   const view = VIEWS.find((v) => v.type === currentView);
-  let query = view?.query || 'in:inbox';
-  if (currentView === 'inbox' && inboxLabels.length > 0) {
-    const labelQueries = inboxLabels.map((l) => `label:${l}`);
-    query = `{${query} ${labelQueries.join(' ')}}`;
-  }
-  return query;
+  return view?.query || 'in:inbox';
 }
 
-export function useEmails(currentView: ViewType, searchQuery: string, enabled: boolean = true, inboxLabels: string[] = [], views: View[] = []) {
+export function useEmails(currentView: ViewType, searchQuery: string, enabled: boolean = true, views: View[] = []) {
   const [threads, setThreads] = useState<EmailThread[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -36,7 +26,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
   const cacheRef = useRef<Record<string, EmailThread[]>>({});
 
   // Derive query string directly (no useCallback indirection)
-  const query = buildQuery(currentView, searchQuery, inboxLabels, views);
+  const query = buildQuery(currentView, searchQuery, views);
 
   const fetchThreads = useCallback(async () => {
     if (!enabled) return;
@@ -65,30 +55,35 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
   }, [query, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const archiveThread = useCallback(async (threadId: string) => {
+    // Optimistic: remove from list immediately, then fire API call
+    setThreads((prev) => prev.filter((t) => t.id !== threadId));
     try {
       await window.kenaz.archiveThread(threadId);
-      setThreads((prev) => prev.filter((t) => t.id !== threadId));
     } catch (e) {
       console.error('Failed to archive:', e);
+      // On failure, re-fetch to restore correct state
+      fetchThreads();
     }
-  }, []);
+  }, [fetchThreads]);
 
   const labelThread = useCallback(async (threadId: string, add: string | null, remove: string | null) => {
+    // Optimistic: update labels in list immediately
+    setThreads((prev) =>
+      prev.map((t) => {
+        if (t.id !== threadId) return t;
+        let labels = [...t.labels];
+        if (remove) labels = labels.filter((l) => l !== remove);
+        if (add && !labels.includes(add)) labels.push(add);
+        return { ...t, labels };
+      })
+    );
     try {
       await window.kenaz.modifyLabels(threadId, add, remove);
-      setThreads((prev) =>
-        prev.map((t) => {
-          if (t.id !== threadId) return t;
-          let labels = [...t.labels];
-          if (remove) labels = labels.filter((l) => l !== remove);
-          if (add && !labels.includes(add)) labels.push(add);
-          return { ...t, labels };
-        })
-      );
     } catch (e) {
       console.error('Failed to modify labels:', e);
+      fetchThreads();
     }
-  }, []);
+  }, [fetchThreads]);
 
   const markRead = useCallback(async (threadId: string) => {
     try {

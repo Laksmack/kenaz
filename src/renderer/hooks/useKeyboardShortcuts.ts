@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 interface ShortcutHandlers {
   onArchive: () => void;
   onPending: () => void;
-  onFollowUp: () => void;
+  onTodo: () => void;
   onStar: () => void;
   onForward: () => void;
   onCompose: () => void;
@@ -68,7 +68,7 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
           break;
         case 't':
           e.preventDefault();
-          handlers.onFollowUp();
+          handlers.onTodo();
           break;
         case 's':
           e.preventDefault();

@@ -18,7 +18,7 @@
     --color-text-muted: #555555;
     --color-border: #1a1a1a;
     --color-pending: #F2C94C;
-    --color-followup: #F28C38;
+    --color-todo: #F28C38;
     --color-done: #4CAF50;
     --gradient-brand: linear-gradient(135deg, var(--color-deep), var(--color-warm));
   }
@@ -68,9 +68,9 @@
     color: var(--color-pending);
   }
 
-  .label-followup {
+  .label-todo {
     background: rgba(242, 140, 56, 0.15);
-    color: var(--color-followup);
+    color: var(--color-todo);
   }
 
   .sidebar-section {

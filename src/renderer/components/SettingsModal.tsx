@@ -144,7 +144,6 @@ function GeneralSettings({ config, onSave, saving }: TabProps) {
   const [defaultView, setDefaultView] = useState(config.defaultView);
   const [viewOptions, setViewOptions] = useState<View[]>([]);
   useEffect(() => { window.kenaz.listViews().then(setViewOptions); }, []);
-  const [inboxLabels, setInboxLabels] = useState(config.inboxLabels.join(', '));
   const [autoBccEnabled, setAutoBccEnabled] = useState(config.autoBccEnabled);
   const [autoBccAddress, setAutoBccAddress] = useState(config.autoBccAddress);
   const [autoBccExcludedDomains, setAutoBccExcludedDomains] = useState(
@@ -165,19 +164,6 @@ function GeneralSettings({ config, onSave, saving }: TabProps) {
               <option key={v.id} value={v.id}>{v.name}</option>
             ))}
           </select>
-        </SettingsField>
-
-        <SettingsField
-          label="Inbox Labels"
-          description="Additional Gmail labels to include in the Inbox view (comma-separated). E.g. CATEGORY_UPDATES, IMPORTANT"
-        >
-          <input
-            type="text"
-            value={inboxLabels}
-            onChange={(e) => setInboxLabels(e.target.value)}
-            className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary font-mono"
-            placeholder="CATEGORY_UPDATES, IMPORTANT"
-          />
         </SettingsField>
 
         <div className="border-t border-border-subtle pt-4">
@@ -219,7 +205,6 @@ function GeneralSettings({ config, onSave, saving }: TabProps) {
 
         <SaveButton onClick={() => onSave({
           defaultView,
-          inboxLabels: inboxLabels.split(',').map(s => s.trim()).filter(Boolean),
           autoBccEnabled,
           autoBccAddress: autoBccAddress.trim(),
           autoBccExcludedDomains: autoBccExcludedDomains.split(',').map(s => s.trim()).filter(Boolean),
@@ -339,7 +324,7 @@ GET ${base}/api/health
 
 GET ${base}/api/stats
 # Returns inbox counts for quick dashboard.
-# Response: { "inbox": 23, "unread": 5, "starred": 2, "pending": 3, "followup": 7, "drafts": 2 }
+# Response: { "inbox": 23, "unread": 5, "starred": 2, "pending": 3, "todo": 7, "drafts": 2 }
 
 
 # ═══════════════════════════════════════════════════════

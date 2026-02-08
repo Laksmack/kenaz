@@ -187,9 +187,9 @@ export class GmailService {
           this.labelCache.set(label.name, label.id);
         }
       }
-      // Ensure PENDING and FOLLOWUP labels exist
+      // Ensure PENDING and TODO labels exist
       await this.ensureLabel('PENDING');
-      await this.ensureLabel('FOLLOWUP');
+      await this.ensureLabel('TODO');
     } catch (e) {
       console.error('Failed to cache labels:', e);
     }
@@ -764,8 +764,8 @@ export class GmailService {
     // Add custom label counts
     const pendingId = this.getLabelId('PENDING');
     if (pendingId) queries.pending = `label:PENDING`;
-    const followupId = this.getLabelId('FOLLOWUP');
-    if (followupId) queries.followup = `label:FOLLOWUP`;
+    const todoId = this.getLabelId('TODO');
+    if (todoId) queries.todo = `label:TODO`;
 
     const counts: Record<string, number> = {};
     await Promise.all(
