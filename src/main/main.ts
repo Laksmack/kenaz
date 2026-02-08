@@ -1,18 +1,21 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Notification } from 'electron';
 import path from 'path';
 import { GmailService } from './gmail';
 import { HubSpotService } from './hubspot';
 import { CalendarService } from './calendar';
 import { startApiServer } from './api-server';
 import { ConfigStore } from './config';
+import { ViewStore, RuleStore } from './stores';
 import { IPC } from '../shared/types';
-import type { SendEmailPayload } from '../shared/types';
+import type { SendEmailPayload, View, Rule } from '../shared/types';
 
 let mainWindow: BrowserWindow | null = null;
 let gmail: GmailService;
 let hubspot: HubSpotService;
 let calendar: CalendarService;
 let config: ConfigStore;
+let viewStore: ViewStore;
+let ruleStore: RuleStore;
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -69,6 +72,8 @@ function createWindow() {
 
 async function initServices() {
   config = new ConfigStore();
+  viewStore = new ViewStore();
+  ruleStore = new RuleStore();
   gmail = new GmailService(config);
   hubspot = new HubSpotService(config);
   calendar = new CalendarService();
@@ -82,7 +87,7 @@ async function initServices() {
   // Start the local API server if enabled
   const appConfig = config.get();
   if (appConfig.apiEnabled) {
-    startApiServer(gmail, hubspot, appConfig.apiPort);
+    startApiServer(gmail, hubspot, appConfig.apiPort, viewStore, ruleStore);
   }
 }
 
@@ -191,6 +196,43 @@ function registerIpcHandlers() {
 
   ipcMain.handle(IPC.HUBSPOT_ASSOCIATE_DEAL, async (_event, contactId: string, dealId: string) => {
     return hubspot.associateContactWithDeal(contactId, dealId);
+  });
+
+  // ── Badge & Notifications ──
+  ipcMain.handle(IPC.APP_SET_BADGE, async (_event, count: number) => {
+    if (process.platform === 'darwin' && app.dock) {
+      app.dock.setBadge(count > 0 ? String(count) : '');
+    }
+  });
+
+  ipcMain.handle(IPC.APP_NOTIFY, async (_event, title: string, body: string) => {
+    if (Notification.isSupported()) {
+      const notif = new Notification({ title, body, silent: false });
+      notif.on('click', () => {
+        if (mainWindow) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      });
+      notif.show();
+    }
+  });
+
+  // ── Views & Rules ──
+  ipcMain.handle(IPC.VIEWS_LIST, async () => {
+    return viewStore.list();
+  });
+
+  ipcMain.handle(IPC.VIEWS_SAVE, async (_event, views: View[]) => {
+    return viewStore.replace(views);
+  });
+
+  ipcMain.handle(IPC.RULES_LIST, async () => {
+    return ruleStore.list();
+  });
+
+  ipcMain.handle(IPC.RULES_SAVE, async (_event, rules: Rule[]) => {
+    return ruleStore.replace(rules);
   });
 
   // ── Config ──

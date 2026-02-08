@@ -44,24 +44,64 @@ export interface EmailThread {
 
 // ── Views ────────────────────────────────────────────────────
 
-export type ViewType = 'inbox' | 'pending' | 'followup' | 'starred' | 'sent' | 'drafts' | 'all' | 'search';
+export type ViewType = string; // dynamic now — any view id or 'search'
 
-export interface ViewConfig {
-  type: ViewType;
-  label: string;
+export interface View {
+  id: string;
+  name: string;
+  icon?: string; // emoji
   query: string; // Gmail search query
+  sort?: 'date' | 'sender';
+  color?: string;
   shortcut?: string;
 }
 
-export const VIEWS: ViewConfig[] = [
-  { type: 'inbox', label: 'Inbox', query: 'in:inbox', shortcut: 'gi' },
-  { type: 'pending', label: 'Pending', query: 'label:PENDING', shortcut: 'gp' },
-  { type: 'followup', label: 'Todo', query: 'label:FOLLOWUP', shortcut: 'gt' },
-  { type: 'starred', label: 'Starred', query: 'is:starred', shortcut: 'gs' },
-  { type: 'sent', label: 'Sent', query: 'in:sent' },
-  { type: 'drafts', label: 'Drafts', query: 'in:drafts', shortcut: 'gd' },
-  { type: 'all', label: 'All Mail', query: '', shortcut: 'ga' },
+export const DEFAULT_VIEWS: View[] = [
+  { id: 'inbox', name: 'Inbox', icon: '📥', query: 'in:inbox', shortcut: 'gi' },
+  { id: 'pending', name: 'Pending', icon: '⏳', query: 'label:PENDING', shortcut: 'gp' },
+  { id: 'followup', name: 'Todo', icon: '✓', query: 'label:FOLLOWUP', shortcut: 'gt' },
+  { id: 'starred', name: 'Starred', icon: '⭐', query: 'is:starred', shortcut: 'gs' },
+  { id: 'sent', name: 'Sent', icon: '📤', query: 'in:sent' },
+  { id: 'drafts', name: 'Drafts', icon: '📝', query: 'in:drafts', shortcut: 'gd' },
+  { id: 'all', name: 'All Mail', icon: '📬', query: '', shortcut: 'ga' },
 ];
+
+// Backward compat alias
+export interface ViewConfig {
+  type: ViewType;
+  label: string;
+  query: string;
+  shortcut?: string;
+}
+
+// Build VIEWS from DEFAULT_VIEWS for backward compat
+export const VIEWS: ViewConfig[] = DEFAULT_VIEWS.map((v) => ({
+  type: v.id,
+  label: v.name,
+  query: v.query,
+  shortcut: v.shortcut,
+}));
+
+// ── Rules ────────────────────────────────────────────────────
+
+export interface RuleCondition {
+  field: 'sender' | 'to' | 'cc' | 'subject' | 'body' | 'has_attachment';
+  operator: 'contains' | 'equals' | 'matches' | 'not_contains';
+  value: string;
+}
+
+export interface RuleAction {
+  type: 'add_label' | 'remove_label' | 'archive' | 'mark_read';
+  label?: string;
+}
+
+export interface Rule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  conditions: RuleCondition[];
+  actions: RuleAction[];
+}
 
 // ── Compose ──────────────────────────────────────────────────
 
@@ -179,6 +219,16 @@ export const IPC = {
   GMAIL_LIST_DRAFTS: 'gmail:list-drafts',
   GMAIL_GET_DRAFT: 'gmail:get-draft',
   GMAIL_DELETE_DRAFT: 'gmail:delete-draft',
+
+  // Badge & Notifications
+  APP_SET_BADGE: 'app:set-badge',
+  APP_NOTIFY: 'app:notify',
+
+  // Views & Rules
+  VIEWS_LIST: 'views:list',
+  VIEWS_SAVE: 'views:save',
+  RULES_LIST: 'rules:list',
+  RULES_SAVE: 'rules:save',
 
   // App
   APP_GET_CONFIG: 'app:get-config',

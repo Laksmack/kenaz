@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { EmailList } from './components/EmailList';
 import { EmailView } from './components/EmailView';
 import { Sidebar } from './components/Sidebar';
@@ -10,7 +10,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { AdvancedSearch } from './components/AdvancedSearch';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useEmails } from './hooks/useEmails';
-import type { ViewType, ComposeData, EmailThread, AppConfig } from '@shared/types';
+import type { ViewType, ComposeData, EmailThread, AppConfig, View, Rule } from '@shared/types';
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -21,10 +21,13 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<string | undefined>(undefined);
+  const [prefillRule, setPrefillRule] = useState<Partial<Rule> | undefined>(undefined);
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [userEmail, setUserEmail] = useState('');
+  const [views, setViews] = useState<View[]>([]);
 
-  // Check auth on mount, load config and user email
+  // Check auth on mount, load config, user email, and views
   useEffect(() => {
     window.kenaz.gmailAuthStatus()
       .then((status: boolean) => {
@@ -35,6 +38,7 @@ export default function App() {
       })
       .catch(() => setAuthenticated(false));
     window.kenaz.getConfig().then(setAppConfig);
+    window.kenaz.listViews().then(setViews);
   }, []);
 
   const {
@@ -44,7 +48,75 @@ export default function App() {
     archiveThread,
     labelThread,
     markRead,
-  } = useEmails(currentView, searchQuery, authenticated === true, appConfig?.inboxLabels);
+  } = useEmails(currentView, searchQuery, authenticated === true, appConfig?.inboxLabels, views);
+
+  // ── View counts (background fetch) ──────────────────────
+  const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
+  const prevUnreadIds = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (authenticated !== true || views.length === 0) return;
+
+    const fetchCounts = async () => {
+      const counts: Record<string, number> = {};
+      // Fetch counts for each view in parallel (skip 'all', 'sent', 'search')
+      await Promise.all(
+        views
+          .filter((v) => v.id !== 'all' && v.id !== 'sent')
+          .map(async (v) => {
+            try {
+              const result = await window.kenaz.fetchThreads(v.query || 'in:inbox', 50);
+              counts[v.id] = result.length;
+            } catch {
+              counts[v.id] = 0;
+            }
+          })
+      );
+      setViewCounts(counts);
+
+      // Dock badge: unread inbox count
+      const inboxCount = counts['inbox'] || 0;
+      window.kenaz.setBadge(inboxCount);
+    };
+
+    fetchCounts();
+    // Refresh counts every 60 seconds
+    const interval = setInterval(fetchCounts, 60000);
+    return () => clearInterval(interval);
+  }, [authenticated, views]);
+
+  // ── Notifications for new unread mail ──────────────────
+  useEffect(() => {
+    if (currentView !== 'inbox') return;
+    const unreadThreads = threads.filter((t) => t.isUnread);
+    const currentIds = new Set(unreadThreads.map((t) => t.id));
+
+    // Find genuinely new unread threads
+    const newThreads = unreadThreads.filter((t) => !prevUnreadIds.current.has(t.id));
+
+    // Only notify if we had a previous baseline (skip first load)
+    if (prevUnreadIds.current.size > 0 && newThreads.length > 0) {
+      for (const t of newThreads.slice(0, 3)) { // cap at 3 notifications
+        window.kenaz.notify(
+          t.from.name || t.from.email,
+          t.subject || t.snippet || 'New email'
+        );
+      }
+    }
+
+    prevUnreadIds.current = currentIds;
+  }, [threads, currentView]);
+
+  // Also update counts when threads change (user actions)
+  useEffect(() => {
+    if (currentView && currentView !== 'search' && currentView !== 'all') {
+      setViewCounts((prev) => ({ ...prev, [currentView]: threads.length }));
+    }
+    // Update dock badge for inbox
+    if (currentView === 'inbox') {
+      window.kenaz.setBadge(threads.length);
+    }
+  }, [threads, currentView]);
 
   // Select first thread when list changes
   useEffect(() => {
@@ -182,6 +254,51 @@ export default function App() {
     setSearchQuery('');
   }, []);
 
+  // ── Context menu handlers ───────────────────────────────
+  const handleContextArchive = useCallback(async (threadId: string) => {
+    await archiveThread(threadId);
+    if (selectedThread?.id === threadId) {
+      const idx = threads.findIndex((t) => t.id === threadId);
+      const next = threads[idx + 1] || threads[idx - 1] || null;
+      setSelectedThread(next);
+    }
+  }, [archiveThread, selectedThread, threads]);
+
+  const handleContextLabel = useCallback(async (threadId: string, label: string) => {
+    await labelThread(threadId, label, null);
+    await archiveThread(threadId);
+    if (selectedThread?.id === threadId) {
+      const idx = threads.findIndex((t) => t.id === threadId);
+      const next = threads[idx + 1] || threads[idx - 1] || null;
+      setSelectedThread(next);
+    }
+    refresh();
+  }, [labelThread, archiveThread, selectedThread, threads, refresh]);
+
+  const handleContextStar = useCallback(async (threadId: string) => {
+    const thread = threads.find((t) => t.id === threadId);
+    if (!thread) return;
+    const isStarred = thread.labels.includes('STARRED');
+    if (isStarred) {
+      await labelThread(threadId, null, 'STARRED');
+    } else {
+      await labelThread(threadId, 'STARRED', null);
+    }
+    refresh();
+  }, [threads, labelThread, refresh]);
+
+  const handleCreateRule = useCallback((senderEmail: string, senderName: string) => {
+    setPrefillRule({
+      id: `rule_${Date.now()}`,
+      name: `Filter: ${senderName}`,
+      enabled: true,
+      conditions: [{ field: 'sender', operator: 'contains', value: senderEmail }],
+      actions: [{ type: 'archive' }],
+    });
+    setSettingsTab('rules');
+    setSettingsOpen(true);
+  }, []);
+
   // Navigate thread list
   const navigateList = useCallback((direction: 'up' | 'down') => {
     if (!selectedThread || threads.length === 0) return;
@@ -230,7 +347,7 @@ export default function App() {
       {/* Title bar drag region */}
       <div className="titlebar-drag h-12 flex items-center pl-20 pr-3 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
         <div className="titlebar-no-drag">
-          <ViewNav currentView={currentView} onViewChange={handleViewChange} />
+          <ViewNav currentView={currentView} onViewChange={handleViewChange} views={views} counts={viewCounts} />
         </div>
         <div className="flex-1" /> {/* This space IS draggable */}
         <div className="titlebar-no-drag flex items-center gap-2">
@@ -286,6 +403,11 @@ export default function App() {
             onSelect={handleSelectThread}
             currentView={currentView}
             userEmail={userEmail}
+            views={views}
+            onArchive={handleContextArchive}
+            onLabel={handleContextLabel}
+            onStar={handleContextStar}
+            onCreateRule={handleCreateRule}
           />
         </div>
 
@@ -330,7 +452,12 @@ export default function App() {
 
       {/* Settings Modal */}
       {settingsOpen && (
-        <SettingsModal onClose={() => setSettingsOpen(false)} />
+        <SettingsModal
+          onClose={() => { setSettingsOpen(false); setSettingsTab(undefined); setPrefillRule(undefined); }}
+          onViewsChanged={(v) => setViews(v)}
+          initialTab={settingsTab as any}
+          prefillRule={prefillRule}
+        />
       )}
     </div>
   );

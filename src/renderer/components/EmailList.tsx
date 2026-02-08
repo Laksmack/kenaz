@@ -1,6 +1,14 @@
-import React from 'react';
-import type { EmailThread, ViewType } from '@shared/types';
+import React, { useState, useRef, useEffect } from 'react';
+import type { EmailThread, ViewType, View } from '@shared/types';
 import { formatRelativeDate } from '../lib/utils';
+
+interface ContextMenuAction {
+  label: string;
+  icon?: string;
+  onClick: () => void;
+  danger?: boolean;
+  separator?: boolean;
+}
 
 interface Props {
   threads: EmailThread[];
@@ -9,9 +17,96 @@ interface Props {
   onSelect: (thread: EmailThread) => void;
   currentView: ViewType;
   userEmail?: string;
+  views?: View[];
+  onArchive?: (threadId: string) => void;
+  onLabel?: (threadId: string, label: string) => void;
+  onStar?: (threadId: string) => void;
+  onCreateRule?: (senderEmail: string, senderName: string) => void;
 }
 
-export function EmailList({ threads, selectedId, loading, onSelect, currentView, userEmail }: Props) {
+export function EmailList({ threads, selectedId, loading, onSelect, currentView, userEmail, views = [], onArchive, onLabel, onStar, onCreateRule }: Props) {
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; thread: EmailThread } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close context menu on click outside or Escape
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setContextMenu(null);
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [contextMenu]);
+
+  const handleContextMenu = (e: React.MouseEvent, thread: EmailThread) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, thread });
+  };
+
+  // Build context menu actions for a thread
+  const getMenuActions = (thread: EmailThread): ContextMenuAction[] => {
+    const actions: ContextMenuAction[] = [];
+
+    // Move to view actions (label-based views, skip current view, sent, all, drafts)
+    const moveableViews = views.filter((v) =>
+      v.id !== currentView && v.id !== 'all' && v.id !== 'sent' && v.id !== 'drafts' && v.id !== 'inbox'
+    );
+    if (moveableViews.length > 0) {
+      for (const v of moveableViews) {
+        actions.push({
+          label: `Move to ${v.name}`,
+          icon: v.icon || '📁',
+          onClick: () => {
+            // Extract label from query (e.g. "label:PENDING" -> "PENDING")
+            const match = v.query.match(/label:(\S+)/i);
+            if (match && onLabel) {
+              onLabel(thread.id, match[1]);
+            }
+          },
+        });
+      }
+      actions.push({ label: '', onClick: () => {}, separator: true });
+    }
+
+    // Archive
+    actions.push({
+      label: 'Done (Archive)',
+      icon: '✓',
+      onClick: () => onArchive?.(thread.id),
+    });
+
+    // Star/Unstar
+    const isStarred = thread.labels.includes('STARRED');
+    actions.push({
+      label: isStarred ? 'Unstar' : 'Star',
+      icon: isStarred ? '☆' : '⭐',
+      onClick: () => onStar?.(thread.id),
+    });
+
+    actions.push({ label: '', onClick: () => {}, separator: true });
+
+    // Create rule
+    actions.push({
+      label: 'Create Rule for Sender...',
+      icon: '⚡',
+      onClick: () => {
+        const sender = thread.from.email;
+        const name = thread.from.name || sender;
+        onCreateRule?.(sender, name);
+      },
+    });
+
+    return actions;
+  };
   if (loading && threads.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -34,16 +129,45 @@ export function EmailList({ threads, selectedId, loading, onSelect, currentView,
   }
 
   return (
-    <div className="flex-1 overflow-y-auto scrollbar-hide">
+    <div className="flex-1 overflow-y-auto scrollbar-hide relative">
       {threads.map((thread) => (
         <EmailListItem
           key={thread.id}
           thread={thread}
           selected={thread.id === selectedId}
-          onClick={() => onSelect(thread)}
+          onClick={() => { setContextMenu(null); onSelect(thread); }}
+          onContextMenu={(e) => handleContextMenu(e, thread)}
           userEmail={userEmail}
         />
       ))}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          ref={menuRef}
+          className="fixed z-50 py-1 min-w-[200px] bg-bg-secondary border border-border-subtle rounded-lg shadow-2xl"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          {getMenuActions(contextMenu.thread).map((action, i) =>
+            action.separator ? (
+              <div key={i} className="border-t border-border-subtle my-1" />
+            ) : (
+              <button
+                key={i}
+                onClick={() => { action.onClick(); setContextMenu(null); }}
+                className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 transition-colors ${
+                  action.danger
+                    ? 'text-accent-danger hover:bg-accent-danger/10'
+                    : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'
+                }`}
+              >
+                {action.icon && <span className="w-4 text-center">{action.icon}</span>}
+                {action.label}
+              </button>
+            )
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -114,11 +238,13 @@ function EmailListItem({
   thread,
   selected,
   onClick,
+  onContextMenu,
   userEmail,
 }: {
   thread: EmailThread;
   selected: boolean;
   onClick: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   userEmail?: string;
 }) {
   const isPending = thread.labels.includes('PENDING');
@@ -130,6 +256,7 @@ function EmailListItem({
   return (
     <div
       onClick={onClick}
+      onContextMenu={onContextMenu}
       className={`email-item ${selected ? 'active' : ''} ${thread.isUnread ? 'unread' : ''}`}
     >
       <div className="flex items-center gap-2 mb-1">

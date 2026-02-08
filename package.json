@@ -28,7 +28,8 @@
       "dist/**/*",
       "node_modules/**/*",
       "!node_modules/**/*.map",
-      "!node_modules/**/*.md"
+      "!node_modules/**/*.md",
+      ".env"
     ],
     "mac": {
       "category": "public.app-category.productivity",
@@ -36,7 +37,9 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64"]
+          "arch": [
+            "arm64"
+          ]
         }
       ],
       "darkModeSupport": true
@@ -44,8 +47,16 @@
     "dmg": {
       "title": "Kenaz",
       "contents": [
-        { "x": 130, "y": 220 },
-        { "x": 410, "y": 220, "type": "link", "path": "/Applications" }
+        {
+          "x": 130,
+          "y": 220
+        },
+        {
+          "x": 410,
+          "y": 220,
+          "type": "link",
+          "path": "/Applications"
+        }
       ]
     }
   },
@@ -72,6 +83,7 @@
     "@tiptap/pm": "^2.1.16",
     "@tiptap/react": "^2.1.16",
     "@tiptap/starter-kit": "^2.1.16",
+    "dotenv": "^17.2.4",
     "express": "^4.18.2",
     "googleapis": "^130.0.0",
     "react": "^18.2.0",

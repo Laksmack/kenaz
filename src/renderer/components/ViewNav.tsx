@@ -1,42 +1,53 @@
 import React from 'react';
-import type { ViewType } from '@shared/types';
-import { VIEWS } from '@shared/types';
+import type { ViewType, View } from '@shared/types';
 
 interface Props {
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
+  views: View[];
+  counts?: Record<string, number>;
 }
 
-const VIEW_ICONS: Record<ViewType, string> = {
-  inbox: '📥',
-  pending: '⏳',
-  followup: '✓',
-  starred: '⭐',
-  sent: '📤',
-  all: '📬',
-  search: '🔍',
-};
+const NO_COUNT_IDS = new Set(['all', 'sent']);
 
-export function ViewNav({ currentView, onViewChange }: Props) {
+export function ViewNav({ currentView, onViewChange, views, counts = {} }: Props) {
+  // Pin 'all' to the end, everything else in original order
+  const sorted = [
+    ...views.filter((v) => v.id !== 'all'),
+    ...views.filter((v) => v.id === 'all'),
+  ];
+
   return (
     <nav className="flex items-center gap-1">
-      {VIEWS.map((view) => (
-        <button
-          key={view.type}
-          onClick={() => onViewChange(view.type)}
-          className={`
-            titlebar-no-drag px-3 py-1.5 rounded-md text-xs font-medium transition-colors
-            ${currentView === view.type
-              ? 'bg-accent-primary/20 text-accent-primary'
-              : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'
-            }
-          `}
-          title={view.shortcut ? `${view.label} (${view.shortcut})` : view.label}
-        >
-          <span className="mr-1">{VIEW_ICONS[view.type]}</span>
-          {view.label}
-        </button>
-      ))}
+      {sorted.map((view) => {
+        const count = counts[view.id];
+        const showCount = count !== undefined && count > 0 && !NO_COUNT_IDS.has(view.id);
+
+        return (
+          <button
+            key={view.id}
+            onClick={() => onViewChange(view.id)}
+            className={`
+              titlebar-no-drag px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors
+              ${currentView === view.id
+                ? 'bg-accent-primary/20 text-accent-primary'
+                : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'
+              }
+            `}
+            title={view.shortcut ? `${view.name} (${view.shortcut})` : view.name}
+          >
+            {view.icon && <span className="mr-1">{view.icon}</span>}
+            {view.name}
+            {showCount && (
+              <span className={`ml-1 text-[10px] font-semibold ${
+                currentView === view.id ? 'text-accent-primary/70' : 'text-text-muted'
+              }`}>
+                {count}
+              </span>
+            )}
+          </button>
+        );
+      })}
     </nav>
   );
 }

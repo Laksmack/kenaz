@@ -1,11 +1,24 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { EmailThread, ViewType } from '@shared/types';
+import type { EmailThread, ViewType, View } from '@shared/types';
 import { VIEWS } from '@shared/types';
 
-function buildQuery(currentView: ViewType, searchQuery: string, inboxLabels: string[]): string {
+function buildQuery(currentView: ViewType, searchQuery: string, inboxLabels: string[], views: View[]): string {
   if (currentView === 'search' && searchQuery) {
     return searchQuery;
   }
+
+  // Try dynamic views first, fall back to hardcoded VIEWS
+  const dynamicView = views.find((v) => v.id === currentView);
+  if (dynamicView) {
+    let query = dynamicView.query;
+    if (dynamicView.id === 'inbox' && inboxLabels.length > 0) {
+      const labelQueries = inboxLabels.map((l) => `label:${l}`);
+      query = `{${query} ${labelQueries.join(' ')}}`;
+    }
+    return query;
+  }
+
+  // Backward compat fallback
   const view = VIEWS.find((v) => v.type === currentView);
   let query = view?.query || 'in:inbox';
   if (currentView === 'inbox' && inboxLabels.length > 0) {
@@ -15,7 +28,7 @@ function buildQuery(currentView: ViewType, searchQuery: string, inboxLabels: str
   return query;
 }
 
-export function useEmails(currentView: ViewType, searchQuery: string, enabled: boolean = true, inboxLabels: string[] = []) {
+export function useEmails(currentView: ViewType, searchQuery: string, enabled: boolean = true, inboxLabels: string[] = [], views: View[] = []) {
   const [threads, setThreads] = useState<EmailThread[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -23,7 +36,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
   const cacheRef = useRef<Record<string, EmailThread[]>>({});
 
   // Derive query string directly (no useCallback indirection)
-  const query = buildQuery(currentView, searchQuery, inboxLabels);
+  const query = buildQuery(currentView, searchQuery, inboxLabels, views);
 
   const fetchThreads = useCallback(async () => {
     if (!enabled) return;

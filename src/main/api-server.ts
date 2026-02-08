@@ -1,8 +1,10 @@
 import express from 'express';
 import type { GmailService } from './gmail';
 import type { HubSpotService } from './hubspot';
+import type { ViewStore, RuleStore } from './stores';
+import type { View, Rule } from '../shared/types';
 
-export function startApiServer(gmail: GmailService, hubspot: HubSpotService, port: number) {
+export function startApiServer(gmail: GmailService, hubspot: HubSpotService, port: number, viewStore?: ViewStore, ruleStore?: RuleStore) {
   const app = express();
   app.use(express.json());
 
@@ -271,6 +273,60 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
       res.status(500).json({ error: e.message });
     }
   });
+
+  // ── Views CRUD ──────────────────────────────────────────────
+
+  if (viewStore) {
+    app.get('/api/views', (_req, res) => {
+      res.json({ views: viewStore.list() });
+    });
+
+    app.post('/api/views', (req, res) => {
+      const view: View = req.body;
+      if (!view.id || !view.name) {
+        return res.status(400).json({ error: 'id and name are required' });
+      }
+      const views = viewStore.create(view);
+      res.json({ views });
+    });
+
+    app.put('/api/views/:id', (req, res) => {
+      const views = viewStore.update(req.params.id, req.body);
+      res.json({ views });
+    });
+
+    app.delete('/api/views/:id', (req, res) => {
+      const views = viewStore.remove(req.params.id);
+      res.json({ views });
+    });
+  }
+
+  // ── Rules CRUD ─────────────────────────────────────────────
+
+  if (ruleStore) {
+    app.get('/api/rules', (_req, res) => {
+      res.json({ rules: ruleStore.list() });
+    });
+
+    app.post('/api/rules', (req, res) => {
+      const rule: Rule = req.body;
+      if (!rule.id || !rule.name) {
+        return res.status(400).json({ error: 'id and name are required' });
+      }
+      const rules = ruleStore.create(rule);
+      res.json({ rules });
+    });
+
+    app.put('/api/rules/:id', (req, res) => {
+      const rules = ruleStore.update(req.params.id, req.body);
+      res.json({ rules });
+    });
+
+    app.delete('/api/rules/:id', (req, res) => {
+      const rules = ruleStore.remove(req.params.id);
+      res.json({ rules });
+    });
+  }
 
   // ── Health ─────────────────────────────────────────────────
 

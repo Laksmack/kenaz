@@ -23,6 +23,12 @@ const IPC = {
   GMAIL_LIST_DRAFTS: 'gmail:list-drafts',
   GMAIL_GET_DRAFT: 'gmail:get-draft',
   GMAIL_DELETE_DRAFT: 'gmail:delete-draft',
+  APP_SET_BADGE: 'app:set-badge',
+  APP_NOTIFY: 'app:notify',
+  VIEWS_LIST: 'views:list',
+  VIEWS_SAVE: 'views:save',
+  RULES_LIST: 'rules:list',
+  RULES_SAVE: 'rules:save',
   APP_GET_CONFIG: 'app:get-config',
   APP_SET_CONFIG: 'app:set-config',
   APP_USER_EMAIL: 'app:user-email',
@@ -77,6 +83,16 @@ const api = {
     ipcRenderer.invoke(IPC.HUBSPOT_SEARCH_DEALS, query),
   hubspotAssociateDeal: (contactId: string, dealId: string) =>
     ipcRenderer.invoke(IPC.HUBSPOT_ASSOCIATE_DEAL, contactId, dealId),
+
+  // Badge & Notifications
+  setBadge: (count: number) => ipcRenderer.invoke(IPC.APP_SET_BADGE, count),
+  notify: (title: string, body: string) => ipcRenderer.invoke(IPC.APP_NOTIFY, title, body),
+
+  // Views & Rules
+  listViews: () => ipcRenderer.invoke(IPC.VIEWS_LIST),
+  saveViews: (views: any[]) => ipcRenderer.invoke(IPC.VIEWS_SAVE, views),
+  listRules: () => ipcRenderer.invoke(IPC.RULES_LIST),
+  saveRules: (rules: any[]) => ipcRenderer.invoke(IPC.RULES_SAVE, rules),
 
   // Config
   getConfig: () => ipcRenderer.invoke(IPC.APP_GET_CONFIG),

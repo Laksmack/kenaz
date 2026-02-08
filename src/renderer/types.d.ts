@@ -21,6 +21,12 @@ declare global {
       hubspotLogThread: (dealId: string, subject: string, body: string, senderEmail: string, recipientEmail: string) => Promise<{ success: boolean; error?: string }>;
       hubspotSearchDeals: (query: string) => Promise<any[]>;
       hubspotAssociateDeal: (contactId: string, dealId: string) => Promise<{ success: boolean; error?: string }>;
+      setBadge: (count: number) => Promise<void>;
+      notify: (title: string, body: string) => Promise<void>;
+      listViews: () => Promise<any[]>;
+      saveViews: (views: any[]) => Promise<any[]>;
+      listRules: () => Promise<any[]>;
+      saveRules: (rules: any[]) => Promise<any[]>;
       getConfig: () => Promise<any>;
       setConfig: (updates: any) => Promise<any>;
       getUserEmail: () => Promise<string>;
