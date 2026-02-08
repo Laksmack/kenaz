@@ -16,6 +16,8 @@ declare global {
       deleteDraft: (draftId: string) => Promise<void>;
       calendarToday: () => Promise<any>;
       calendarRange: (timeMin: string, timeMax: string) => Promise<any>;
+      calendarRsvp: (eventId: string, response: 'accepted' | 'tentative' | 'declined', calendarId?: string) => Promise<{ success: boolean; status: string }>;
+      calendarFindEvent: (iCalUID: string) => Promise<string | null>;
       hubspotLookup: (email: string) => Promise<any>;
       hubspotLog: (payload: any) => Promise<any>;
       hubspotLogThread: (dealId: string, subject: string, body: string, senderEmail: string, recipientEmail: string) => Promise<{ success: boolean; error?: string }>;

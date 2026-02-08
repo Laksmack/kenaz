@@ -3,11 +3,31 @@ import type { GmailService } from './gmail';
 import type { RuleStore } from './stores';
 
 /**
- * Evaluates a single condition against a message.
+ * Evaluates a single condition against a message (and thread labels for 'label' field).
  */
-function evaluateCondition(condition: RuleCondition, msg: Email): boolean {
+function evaluateCondition(condition: RuleCondition, msg: Email, threadLabels: string[] = []): boolean {
   const { field, operator, value } = condition;
   const lowerValue = value.toLowerCase();
+
+  // ── Label condition: checked against thread-level labels ──
+  if (field === 'label') {
+    const labels = threadLabels.map((l) => l.toLowerCase());
+    switch (operator) {
+      case 'equals':
+        return labels.includes(lowerValue);
+      case 'contains':
+        return labels.some((l) => l.includes(lowerValue));
+      case 'not_contains':
+        return !labels.some((l) => l.includes(lowerValue));
+      case 'matches':
+        try {
+          const re = new RegExp(value, 'i');
+          return labels.some((l) => re.test(l));
+        } catch {
+          return false;
+        }
+    }
+  }
 
   let target = '';
   switch (field) {
@@ -58,8 +78,11 @@ function evaluateRules(rules: Rule[], thread: EmailThread): { addLabels: string[
     if (!rule.enabled) continue;
 
     // Check if ALL conditions match (against any message in the thread)
+    // Thread labels are passed so 'label' conditions can be evaluated at thread level
     const matches = rule.conditions.every((condition) =>
-      thread.messages.some((msg) => evaluateCondition(condition, msg))
+      condition.field === 'label'
+        ? evaluateCondition(condition, thread.messages[0], thread.labels)
+        : thread.messages.some((msg) => evaluateCondition(condition, msg, thread.labels))
     );
 
     if (matches) {

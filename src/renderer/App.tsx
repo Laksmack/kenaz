@@ -96,7 +96,12 @@ export default function App() {
 
     // Only notify if we had a previous baseline (skip first load)
     if (prevUnreadIds.current.size > 0 && newThreads.length > 0) {
+      const myEmail = userEmail.toLowerCase();
       for (const t of newThreads.slice(0, 3)) { // cap at 3 notifications
+        // Skip notifications for threads where the latest message is from ourselves
+        const lastMsg = t.messages[t.messages.length - 1];
+        if (lastMsg && lastMsg.from.email.toLowerCase() === myEmail) continue;
+
         window.kenaz.notify(
           t.from.name || t.from.email,
           t.subject || t.snippet || 'New email'
@@ -105,7 +110,7 @@ export default function App() {
     }
 
     prevUnreadIds.current = currentIds;
-  }, [threads, currentView]);
+  }, [threads, currentView, userEmail]);
 
   // Also update counts when threads change (user actions)
   useEffect(() => {

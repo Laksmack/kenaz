@@ -79,6 +79,7 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
           handlers.onCompose();
           break;
         case 'r':
+        case 'enter':
           e.preventDefault();
           handlers.onReply();
           break;

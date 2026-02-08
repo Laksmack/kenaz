@@ -87,7 +87,7 @@ async function initServices() {
   // Start the local API server if enabled
   const appConfig = config.get();
   if (appConfig.apiEnabled) {
-    startApiServer(gmail, hubspot, appConfig.apiPort, viewStore, ruleStore);
+    startApiServer(gmail, hubspot, appConfig.apiPort, viewStore, ruleStore, calendar);
   }
 }
 
@@ -175,6 +175,14 @@ function registerIpcHandlers() {
 
   ipcMain.handle(IPC.CALENDAR_RANGE, async (_event, timeMin: string, timeMax: string) => {
     return calendar.getEventsInRange(timeMin, timeMax);
+  });
+
+  ipcMain.handle(IPC.CALENDAR_RSVP, async (_event, eventId: string, response: 'accepted' | 'tentative' | 'declined', calendarId?: string) => {
+    return calendar.rsvpEvent(eventId, response, calendarId || 'primary');
+  });
+
+  ipcMain.handle(IPC.CALENDAR_FIND_EVENT, async (_event, iCalUID: string) => {
+    return calendar.findEventByICalUID(iCalUID);
   });
 
   // ── HubSpot ──

@@ -85,7 +85,7 @@ export const VIEWS: ViewConfig[] = DEFAULT_VIEWS.map((v) => ({
 // ── Rules ────────────────────────────────────────────────────
 
 export interface RuleCondition {
-  field: 'sender' | 'to' | 'cc' | 'subject' | 'body' | 'has_attachment';
+  field: 'sender' | 'to' | 'cc' | 'subject' | 'body' | 'has_attachment' | 'label';
   operator: 'contains' | 'equals' | 'matches' | 'not_contains';
   value: string;
 }
@@ -206,6 +206,8 @@ export const IPC = {
   // Calendar
   CALENDAR_TODAY: 'calendar:today',
   CALENDAR_RANGE: 'calendar:range',
+  CALENDAR_RSVP: 'calendar:rsvp',
+  CALENDAR_FIND_EVENT: 'calendar:find-event',
 
   // HubSpot
   HUBSPOT_LOOKUP: 'hubspot:lookup',

@@ -4,7 +4,9 @@ import type { HubSpotService } from './hubspot';
 import type { ViewStore, RuleStore } from './stores';
 import type { View, Rule } from '../shared/types';
 
-export function startApiServer(gmail: GmailService, hubspot: HubSpotService, port: number, viewStore?: ViewStore, ruleStore?: RuleStore) {
+import type { CalendarService } from './calendar';
+
+export function startApiServer(gmail: GmailService, hubspot: HubSpotService, port: number, viewStore?: ViewStore, ruleStore?: RuleStore, calendar?: CalendarService) {
   const app = express();
   app.use(express.json());
 
@@ -128,6 +130,15 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
   app.post('/api/archive/:id', async (req, res) => {
     try {
       await gmail.archiveThread(req.params.id);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete('/api/thread/:id', async (req, res) => {
+    try {
+      await gmail.trashThread(req.params.id);
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -325,6 +336,35 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
     app.delete('/api/rules/:id', (req, res) => {
       const rules = ruleStore.remove(req.params.id);
       res.json({ rules });
+    });
+  }
+
+  // ── Calendar ───────────────────────────────────────────────
+
+  if (calendar) {
+    app.post('/api/calendar/rsvp/:eventId', async (req, res) => {
+      try {
+        const { eventId } = req.params;
+        const { response, calendarId } = req.body as { response: 'accepted' | 'tentative' | 'declined'; calendarId?: string };
+        if (!response || !['accepted', 'tentative', 'declined'].includes(response)) {
+          return res.status(400).json({ error: 'response must be accepted, tentative, or declined' });
+        }
+        const result = await calendar.rsvpEvent(eventId, response, calendarId || 'primary');
+        res.json(result);
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+
+    app.get('/api/calendar/events', async (req, res) => {
+      try {
+        const timeMin = (req.query.timeMin as string) || new Date().toISOString();
+        const timeMax = (req.query.timeMax as string) || new Date(Date.now() + 86400000).toISOString();
+        const events = await calendar.getEventsInRange(timeMin, timeMax);
+        res.json({ events });
+      } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
     });
   }
 

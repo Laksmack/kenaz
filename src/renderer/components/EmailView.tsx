@@ -1,6 +1,55 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import type { EmailThread, Email } from '@shared/types';
 import { formatFullDate } from '../lib/utils';
+
+/**
+ * Detect if an email is a calendar invite.
+ * Gmail calendar invites typically:
+ * - Have an .ics attachment
+ * - Come from calendar-notification@google.com
+ * - Contain "VCALENDAR" or "invitation" references
+ * Returns the iCalUID if detectable, or true for generic invite detection.
+ */
+function detectCalendarInvite(message: Email): { isInvite: boolean; iCalUID: string | null } {
+  // Check for .ics attachments
+  const hasIcs = message.attachments.some((a) =>
+    a.filename.endsWith('.ics') || a.mimeType === 'text/calendar' || a.mimeType === 'application/ics'
+  );
+
+  // Check if it's from Google Calendar
+  const isCalendarNotification = message.from.email.includes('calendar-notification@google.com') ||
+    message.from.email.includes('calendar@google.com');
+
+  // Try to extract iCalUID from body text or HTML
+  // Google Calendar invites embed the event info in the email body
+  let iCalUID: string | null = null;
+  const bodyContent = message.body + ' ' + message.bodyText;
+
+  // Look for Google Calendar event patterns in links
+  // e.g., https://calendar.google.com/calendar/event?eid=XXXXX
+  const eidMatch = bodyContent.match(/calendar\.google\.com\/calendar\/event\?.*?eid=([A-Za-z0-9_-]+)/);
+  if (eidMatch) {
+    // The eid is a base64-encoded string containing the event ID
+    try {
+      const decoded = atob(eidMatch[1].replace(/-/g, '+').replace(/_/g, '/'));
+      // Format: "eventId calendarEmail" — we want just the eventId
+      const eventId = decoded.split(' ')[0];
+      if (eventId) iCalUID = eventId;
+    } catch {
+      // ignore decode errors
+    }
+  }
+
+  // Check for invite keywords in subject/body
+  const hasInviteKeywords = message.subject.toLowerCase().includes('invitation:') ||
+    message.subject.toLowerCase().includes('updated invitation:') ||
+    bodyContent.includes('VCALENDAR') ||
+    bodyContent.includes('BEGIN:VEVENT');
+
+  const isInvite = hasIcs || isCalendarNotification || hasInviteKeywords;
+
+  return { isInvite, iCalUID };
+}
 
 interface Props {
   thread: EmailThread | null;
@@ -11,6 +60,28 @@ interface Props {
 }
 
 export function EmailView({ thread, onReply, onArchive, onLabel, onStar }: Props) {
+  // Global focus guardian: whenever an iframe steals focus, reclaim it for the main document.
+  // This ensures keyboard shortcuts always work regardless of where the user clicks.
+  useEffect(() => {
+    const reclaimFocus = () => {
+      // If active element is an iframe, blur it so keyboard events go to the main window
+      if (document.activeElement?.tagName === 'IFRAME') {
+        (document.activeElement as HTMLElement).blur();
+      }
+    };
+
+    // Check focus periodically (catches iframe focus grabs after content loads)
+    const interval = setInterval(reclaimFocus, 300);
+
+    // Also catch direct focus shifts
+    window.addEventListener('blur', () => {
+      // When the main window loses focus to an iframe, reclaim it after a tick
+      setTimeout(reclaimFocus, 50);
+    });
+
+    return () => clearInterval(interval);
+  }, []);
+
   if (!thread) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -106,6 +177,119 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar }: Props
   );
 }
 
+function RsvpBar({ message }: { message: Email }) {
+  const [rsvpStatus, setRsvpStatus] = useState<'none' | 'accepted' | 'tentative' | 'declined' | 'loading'>('none');
+  const [eventId, setEventId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const invite = detectCalendarInvite(message);
+
+  useEffect(() => {
+    if (!invite.isInvite) return;
+
+    // If we extracted an event ID from the email, use it directly
+    if (invite.iCalUID) {
+      setEventId(invite.iCalUID);
+      return;
+    }
+
+    // Otherwise try to find the event by searching the calendar for the subject
+    // This is a fallback — the eid extraction usually works for Google invites
+  }, [invite.isInvite, invite.iCalUID]);
+
+  const handleRsvp = useCallback(async (response: 'accepted' | 'tentative' | 'declined') => {
+    if (!eventId) {
+      setError('Could not find calendar event ID');
+      return;
+    }
+    setRsvpStatus('loading');
+    setError(null);
+    try {
+      await window.kenaz.calendarRsvp(eventId, response);
+      setRsvpStatus(response);
+    } catch (e: any) {
+      setError(e.message || 'RSVP failed');
+      setRsvpStatus('none');
+    }
+  }, [eventId]);
+
+  if (!invite.isInvite) return null;
+
+  const statusLabels: Record<string, string> = {
+    accepted: 'Accepted',
+    tentative: 'Maybe',
+    declined: 'Declined',
+    loading: 'Sending...',
+  };
+
+  const statusColors: Record<string, string> = {
+    accepted: 'text-green-400',
+    tentative: 'text-yellow-400',
+    declined: 'text-red-400',
+  };
+
+  return (
+    <div className="px-4 py-2.5 border-b border-border-subtle bg-bg-primary/50 flex items-center gap-3">
+      <div className="flex items-center gap-1.5 text-xs text-text-muted">
+        <svg className="w-4 h-4 text-accent-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+        </svg>
+        <span className="font-medium text-text-secondary">Calendar Invite</span>
+      </div>
+
+      {rsvpStatus === 'none' && (
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => handleRsvp('accepted')}
+            disabled={!eventId}
+            className="px-2.5 py-1 rounded text-[11px] font-medium bg-green-500/15 text-green-400 hover:bg-green-500/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            ✓ Yes
+          </button>
+          <button
+            onClick={() => handleRsvp('tentative')}
+            disabled={!eventId}
+            className="px-2.5 py-1 rounded text-[11px] font-medium bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            ? Maybe
+          </button>
+          <button
+            onClick={() => handleRsvp('declined')}
+            disabled={!eventId}
+            className="px-2.5 py-1 rounded text-[11px] font-medium bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            ✕ No
+          </button>
+        </div>
+      )}
+
+      {rsvpStatus === 'loading' && (
+        <span className="text-[11px] text-text-muted animate-pulse">Sending RSVP...</span>
+      )}
+
+      {(rsvpStatus === 'accepted' || rsvpStatus === 'tentative' || rsvpStatus === 'declined') && (
+        <div className="flex items-center gap-2">
+          <span className={`text-[11px] font-medium ${statusColors[rsvpStatus]}`}>
+            {statusLabels[rsvpStatus]}
+          </span>
+          <button
+            onClick={() => setRsvpStatus('none')}
+            className="text-[10px] text-text-muted hover:text-text-secondary underline"
+          >
+            change
+          </button>
+        </div>
+      )}
+
+      {error && <span className="text-[11px] text-red-400">{error}</span>}
+
+      {!eventId && invite.isInvite && (
+        <span className="text-[10px] text-text-muted italic">Could not extract event ID — open in Google Calendar to respond</span>
+      )}
+    </div>
+  );
+}
+
 function MessageBubble({ message, isLast }: { message: Email; isLast: boolean }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -183,6 +367,11 @@ function MessageBubble({ message, isLast }: { message: Email; isLast: boolean })
     `);
     doc.close();
 
+    // Prevent iframe from stealing focus after content write
+    if (iframeRef.current) {
+      iframeRef.current.blur();
+    }
+
     // Open links in default browser instead of inside the iframe
     doc.addEventListener('click', (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -191,6 +380,29 @@ function MessageBubble({ message, isLast }: { message: Email; isLast: boolean })
         e.preventDefault();
         window.open(anchor.href, '_blank');
       }
+    });
+
+    // When user clicks inside iframe, reclaim focus for parent (keeps shortcuts working)
+    doc.addEventListener('mouseup', () => {
+      // Small delay to allow text selection to complete, then reclaim focus
+      setTimeout(() => {
+        if (iframeRef.current) iframeRef.current.blur();
+      }, 100);
+    });
+
+    // Forward keyboard events from iframe to parent so shortcuts still work
+    // This is a safety net in case the iframe somehow has focus
+    doc.addEventListener('keydown', (e: KeyboardEvent) => {
+      const parentEvent = new KeyboardEvent('keydown', {
+        key: e.key,
+        code: e.code,
+        altKey: e.altKey,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        shiftKey: e.shiftKey,
+        bubbles: true,
+      });
+      window.dispatchEvent(parentEvent);
     });
 
     // Auto-resize iframe to content
@@ -259,6 +471,9 @@ function MessageBubble({ message, isLast }: { message: Email; isLast: boolean })
           {formatFullDate(message.date)}
         </div>
       </div>
+
+      {/* Calendar invite RSVP bar */}
+      <RsvpBar message={message} />
 
       {/* Message body - sandboxed iframe */}
       <div className="px-4 py-3 selectable">

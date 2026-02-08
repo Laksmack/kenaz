@@ -76,6 +76,69 @@ export class CalendarService {
     }
   }
 
+  /**
+   * RSVP to a calendar event.
+   * @param eventId - The Google Calendar event ID
+   * @param response - 'accepted' | 'tentative' | 'declined'
+   * @param calendarId - Calendar ID (defaults to 'primary')
+   */
+  async rsvpEvent(eventId: string, response: 'accepted' | 'tentative' | 'declined', calendarId: string = 'primary'): Promise<{ success: boolean; status: string }> {
+    if (!this.calendar) throw new Error('Calendar not authenticated');
+
+    // Get the current event
+    const event = await this.calendar.events.get({
+      calendarId,
+      eventId,
+    });
+
+    const attendees = event.data.attendees || [];
+    // Find 'self' attendee and update their response
+    let found = false;
+    for (const attendee of attendees) {
+      if (attendee.self) {
+        attendee.responseStatus = response;
+        found = true;
+        break;
+      }
+    }
+
+    if (!found) {
+      throw new Error('Could not find yourself in the attendee list');
+    }
+
+    // Patch only the attendees field, send notification to organizer
+    await this.calendar.events.patch({
+      calendarId,
+      eventId,
+      sendUpdates: 'all', // Sends RSVP notification to organizer
+      requestBody: {
+        attendees,
+      },
+    });
+
+    return { success: true, status: response };
+  }
+
+  /**
+   * Find a calendar event by iCalUID (from email invite headers).
+   * Returns the event ID if found.
+   */
+  async findEventByICalUID(iCalUID: string, calendarId: string = 'primary'): Promise<string | null> {
+    if (!this.calendar) throw new Error('Calendar not authenticated');
+
+    try {
+      const res = await this.calendar.events.list({
+        calendarId,
+        iCalUID,
+        maxResults: 1,
+      });
+      const items = res.data.items || [];
+      return items.length > 0 ? items[0].id || null : null;
+    } catch {
+      return null;
+    }
+  }
+
   private parseEvent(event: calendar_v3.Schema$Event, calendarColor: string): CalendarEvent {
     const isAllDay = !event.start?.dateTime;
     const start = event.start?.dateTime || event.start?.date || '';

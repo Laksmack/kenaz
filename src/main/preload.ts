@@ -14,6 +14,8 @@ const IPC = {
   GMAIL_DOWNLOAD_ATTACHMENT: 'gmail:download-attachment',
   CALENDAR_TODAY: 'calendar:today',
   CALENDAR_RANGE: 'calendar:range',
+  CALENDAR_RSVP: 'calendar:rsvp',
+  CALENDAR_FIND_EVENT: 'calendar:find-event',
   HUBSPOT_LOOKUP: 'hubspot:lookup',
   HUBSPOT_LOG: 'hubspot:log',
   HUBSPOT_LOG_THREAD: 'hubspot:log-thread',
@@ -71,6 +73,10 @@ const api = {
   calendarToday: () => ipcRenderer.invoke(IPC.CALENDAR_TODAY),
   calendarRange: (timeMin: string, timeMax: string) =>
     ipcRenderer.invoke(IPC.CALENDAR_RANGE, timeMin, timeMax),
+  calendarRsvp: (eventId: string, response: 'accepted' | 'tentative' | 'declined', calendarId?: string) =>
+    ipcRenderer.invoke(IPC.CALENDAR_RSVP, eventId, response, calendarId),
+  calendarFindEvent: (iCalUID: string) =>
+    ipcRenderer.invoke(IPC.CALENDAR_FIND_EVENT, iCalUID),
 
   // HubSpot
   hubspotLookup: (email: string) =>

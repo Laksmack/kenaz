@@ -568,7 +568,7 @@ POST ${base}/api/rules
 #   "conditions": [{ "field": "sender", "operator": "contains", "value": "helpdesk@company.com" }],
 #   "actions": [{ "type": "remove_label", "label": "INBOX" }, { "type": "add_label", "label": "NOISE" }]
 # }
-# Condition fields: sender, to, cc, subject, body, has_attachment
+# Condition fields: sender, to, cc, subject, body, label, has_attachment
 # Condition operators: contains, equals, matches (regex), not_contains
 # Action types: add_label, remove_label, archive, mark_read
 # Response: { "rules": [...] }
@@ -929,7 +929,7 @@ function RulesSettings({ prefillRule }: { prefillRule?: Partial<Rule> }) {
     handleSave(rules);
   };
 
-  const conditionFields: RuleCondition['field'][] = ['sender', 'to', 'cc', 'subject', 'body', 'has_attachment'];
+  const conditionFields: RuleCondition['field'][] = ['sender', 'to', 'cc', 'subject', 'body', 'label', 'has_attachment'];
   const conditionOps: RuleCondition['operator'][] = ['contains', 'equals', 'matches', 'not_contains'];
   const actionTypes: RuleAction['type'][] = ['add_label', 'remove_label', 'archive', 'mark_read'];
 

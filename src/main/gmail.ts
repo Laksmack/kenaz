@@ -23,6 +23,7 @@ const SCOPES = [
   'https://www.googleapis.com/auth/gmail.compose',
   'https://www.googleapis.com/auth/gmail.labels',
   'https://www.googleapis.com/auth/calendar.readonly',
+  'https://www.googleapis.com/auth/calendar.events',
 ];
 
 // Optional: users can override bundled credentials with a local file
@@ -159,8 +160,8 @@ export class GmailService {
           if (parsed.pathname === '/') {
             const code = parsed.query.code as string;
             if (code) {
-              res.writeHead(200, { 'Content-Type': 'text/html' });
-              res.end('<html><body style="background:#0a0a0a;color:#f0e6da;font-family:Outfit,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h2 style="font-size:24px">Kenaz <span style="color:#F7A94B">ᚲ</span> authenticated!</h2><p style="color:#999;margin-top:8px">You can close this tab.</p></div></body></html>');
+              res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+              res.end('<html><head><meta charset="utf-8"></head><body style="background:#0a0a0a;color:#f0e6da;font-family:Outfit,system-ui,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h2 style="font-size:24px">Kenaz <span style="color:#F7A94B">ᚲ</span> authenticated!</h2><p style="color:#999;margin-top:8px">You can close this tab.</p></div></body></html>');
               server.close();
               resolve(code);
             }
@@ -396,6 +397,14 @@ export class GmailService {
       requestBody: {
         removeLabelIds: ['INBOX'],
       },
+    });
+  }
+
+  async trashThread(threadId: string): Promise<void> {
+    if (!this.gmail) throw new Error('Not authenticated');
+    await this.gmail.users.threads.trash({
+      userId: 'me',
+      id: threadId,
     });
   }
 
