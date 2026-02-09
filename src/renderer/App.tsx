@@ -47,7 +47,10 @@ export default function App() {
   const {
     threads,
     loading,
+    loadingMore,
+    hasMore,
     refresh,
+    loadMore,
     archiveThread,
     labelThread,
     markRead,
@@ -69,7 +72,7 @@ export default function App() {
           .map(async (v) => {
             try {
               const result = await window.kenaz.fetchThreads(v.query || 'in:inbox', 50);
-              counts[v.id] = result.length;
+              counts[v.id] = result.threads.length;
             } catch {
               counts[v.id] = 0;
             }
@@ -543,7 +546,10 @@ export default function App() {
             threads={threads}
             selectedId={selectedThread?.id || null}
             loading={loading}
+            loadingMore={loadingMore}
+            hasMore={hasMore}
             onSelect={handleSelectThread}
+            onLoadMore={loadMore}
             currentView={currentView}
             userEmail={userEmail}
             views={views}

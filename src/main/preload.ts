@@ -44,8 +44,8 @@ const api = {
   gmailAuthStatus: () => ipcRenderer.invoke(IPC.GMAIL_AUTH_STATUS),
 
   // Gmail Operations
-  fetchThreads: (query: string, maxResults?: number) =>
-    ipcRenderer.invoke(IPC.GMAIL_FETCH_THREADS, query, maxResults),
+  fetchThreads: (query: string, maxResults?: number, pageToken?: string) =>
+    ipcRenderer.invoke(IPC.GMAIL_FETCH_THREADS, query, maxResults, pageToken),
   fetchThread: (threadId: string) =>
     ipcRenderer.invoke(IPC.GMAIL_FETCH_THREAD, threadId),
   search: (query: string) =>

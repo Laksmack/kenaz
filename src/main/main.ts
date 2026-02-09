@@ -108,8 +108,8 @@ function registerIpcHandlers() {
   });
 
   // ── Gmail Operations ──
-  ipcMain.handle(IPC.GMAIL_FETCH_THREADS, async (_event, query: string, maxResults: number = 50) => {
-    return gmail.fetchThreads(query, maxResults);
+  ipcMain.handle(IPC.GMAIL_FETCH_THREADS, async (_event, query: string, maxResults: number = 50, pageToken?: string) => {
+    return gmail.fetchThreads(query, maxResults, pageToken);
   });
 
   ipcMain.handle(IPC.GMAIL_FETCH_THREAD, async (_event, threadId: string) => {

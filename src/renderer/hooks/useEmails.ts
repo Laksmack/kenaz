@@ -18,9 +18,14 @@ function buildQuery(currentView: ViewType, searchQuery: string, views: View[]): 
   return view?.query || 'in:inbox';
 }
 
+const PAGE_SIZE = 200;
+
 export function useEmails(currentView: ViewType, searchQuery: string, enabled: boolean = true, views: View[] = []) {
   const [threads, setThreads] = useState<EmailThread[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const nextPageTokenRef = useRef<string | undefined>(undefined);
 
   // Per-view cache for instant switching
   const cacheRef = useRef<Record<string, EmailThread[]>>({});
@@ -31,16 +36,40 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
   const fetchThreads = useCallback(async () => {
     if (!enabled) return;
     setLoading(true);
+    nextPageTokenRef.current = undefined;
     try {
-      const result = await window.kenaz.fetchThreads(query, 50);
-      cacheRef.current[query] = result;
-      setThreads(result);
+      const result = await window.kenaz.fetchThreads(query, PAGE_SIZE);
+      nextPageTokenRef.current = result.nextPageToken;
+      setHasMore(!!result.nextPageToken);
+      cacheRef.current[query] = result.threads;
+      setThreads(result.threads);
     } catch (e) {
       console.error('Failed to fetch threads:', e);
     } finally {
       setLoading(false);
     }
   }, [query, enabled]);
+
+  const loadMore = useCallback(async () => {
+    if (!enabled || !nextPageTokenRef.current || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const result = await window.kenaz.fetchThreads(query, PAGE_SIZE, nextPageTokenRef.current);
+      nextPageTokenRef.current = result.nextPageToken;
+      setHasMore(!!result.nextPageToken);
+      setThreads((prev) => {
+        const existingIds = new Set(prev.map((t) => t.id));
+        const newThreads = result.threads.filter((t: EmailThread) => !existingIds.has(t.id));
+        const merged = [...prev, ...newThreads];
+        cacheRef.current[query] = merged;
+        return merged;
+      });
+    } catch (e) {
+      console.error('Failed to load more threads:', e);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [query, enabled, loadingMore]);
 
   // Fetch whenever query or enabled changes
   useEffect(() => {
@@ -111,7 +140,10 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
   return {
     threads,
     loading,
+    loadingMore,
+    hasMore,
     refresh: fetchThreads,
+    loadMore,
     archiveThread,
     labelThread,
     markRead,

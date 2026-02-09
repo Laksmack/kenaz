@@ -3,7 +3,7 @@ declare global {
     kenaz: {
       gmailAuth: () => Promise<any>;
       gmailAuthStatus: () => Promise<boolean>;
-      fetchThreads: (query: string, maxResults?: number) => Promise<any>;
+      fetchThreads: (query: string, maxResults?: number, pageToken?: string) => Promise<{ threads: any[]; nextPageToken?: string }>;
       fetchThread: (threadId: string) => Promise<any>;
       search: (query: string) => Promise<any>;
       sendEmail: (payload: any) => Promise<any>;

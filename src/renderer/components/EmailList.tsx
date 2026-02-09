@@ -14,7 +14,10 @@ interface Props {
   threads: EmailThread[];
   selectedId: string | null;
   loading: boolean;
+  loadingMore?: boolean;
+  hasMore?: boolean;
   onSelect: (thread: EmailThread) => void;
+  onLoadMore?: () => void;
   currentView: ViewType;
   userEmail?: string;
   views?: View[];
@@ -24,7 +27,7 @@ interface Props {
   onCreateRule?: (senderEmail: string, senderName: string) => void;
 }
 
-export function EmailList({ threads, selectedId, loading, onSelect, currentView, userEmail, views = [], onArchive, onLabel, onStar, onCreateRule }: Props) {
+export function EmailList({ threads, selectedId, loading, loadingMore, hasMore, onSelect, onLoadMore, currentView, userEmail, views = [], onArchive, onLabel, onStar, onCreateRule }: Props) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; thread: EmailThread } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -129,6 +132,24 @@ export function EmailList({ threads, selectedId, loading, onSelect, currentView,
 
     return actions;
   };
+
+  // Infinite scroll: trigger loadMore when sentinel enters viewport
+  // (must be declared before early returns to avoid React hook ordering issues)
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!hasMore || !onLoadMore || !sentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !loadingMore) {
+          onLoadMore();
+        }
+      },
+      { rootMargin: '200px' }
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, onLoadMore]);
+
   if (loading && threads.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -162,6 +183,22 @@ export function EmailList({ threads, selectedId, loading, onSelect, currentView,
           userEmail={userEmail}
         />
       ))}
+
+      {/* Load More / Infinite Scroll */}
+      {hasMore && (
+        <div ref={sentinelRef} className="py-3 flex items-center justify-center">
+          {loadingMore ? (
+            <span className="text-xs text-text-muted">Loading more…</span>
+          ) : (
+            <button
+              onClick={onLoadMore}
+              className="text-xs text-accent-primary hover:text-accent-primary/80 transition-colors"
+            >
+              Load more
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Context Menu */}
       {contextMenu && (
