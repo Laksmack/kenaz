@@ -15,6 +15,7 @@ declare global {
       getDraft: (draftId: string) => Promise<any>;
       deleteDraft: (draftId: string) => Promise<void>;
       listLabels: () => Promise<Array<{ id: string; name: string; type: string }>>;
+      readFileBase64: (filePath: string) => Promise<{ base64: string; mimeType: string; size: number; filename: string }>;
       calendarToday: () => Promise<any>;
       calendarRange: (timeMin: string, timeMax: string) => Promise<any>;
       calendarRsvp: (eventId: string, response: 'accepted' | 'tentative' | 'declined', calendarId?: string) => Promise<{ success: boolean; status: string }>;

@@ -172,6 +172,43 @@ function registerIpcHandlers() {
     return gmail.listLabels();
   });
 
+  // ── File operations ──
+  ipcMain.handle(IPC.FILE_READ_BASE64, async (_event, filePath: string) => {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    const data = await fs.readFile(filePath);
+    const base64 = data.toString('base64');
+    const ext = path.extname(filePath).toLowerCase().slice(1);
+    const mimeTypes: Record<string, string> = {
+      pdf: 'application/pdf',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ppt: 'application/vnd.ms-powerpoint',
+      pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      png: 'image/png',
+      jpg: 'image/jpeg',
+      jpeg: 'image/jpeg',
+      gif: 'image/gif',
+      webp: 'image/webp',
+      svg: 'image/svg+xml',
+      zip: 'application/zip',
+      txt: 'text/plain',
+      csv: 'text/csv',
+      html: 'text/html',
+      json: 'application/json',
+      mp4: 'video/mp4',
+      mp3: 'audio/mpeg',
+    };
+    return {
+      base64,
+      mimeType: mimeTypes[ext] || 'application/octet-stream',
+      size: data.length,
+      filename: path.basename(filePath),
+    };
+  });
+
   // ── Calendar ──
   ipcMain.handle(IPC.CALENDAR_TODAY, async () => {
     return calendar.getTodayEvents();

@@ -26,6 +26,7 @@ const IPC = {
   GMAIL_GET_DRAFT: 'gmail:get-draft',
   GMAIL_DELETE_DRAFT: 'gmail:delete-draft',
   GMAIL_LIST_LABELS: 'gmail:list-labels',
+  FILE_READ_BASE64: 'file:read-base64',
   APP_SET_BADGE: 'app:set-badge',
   APP_NOTIFY: 'app:notify',
   VIEWS_LIST: 'views:list',
@@ -71,6 +72,8 @@ const api = {
     ipcRenderer.invoke(IPC.GMAIL_DELETE_DRAFT, draftId),
   listLabels: () =>
     ipcRenderer.invoke(IPC.GMAIL_LIST_LABELS),
+  readFileBase64: (filePath: string) =>
+    ipcRenderer.invoke(IPC.FILE_READ_BASE64, filePath),
 
   // Calendar
   calendarToday: () => ipcRenderer.invoke(IPC.CALENDAR_TODAY),
