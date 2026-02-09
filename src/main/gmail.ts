@@ -521,19 +521,62 @@ export class GmailService {
     }
 
     // Build RFC 2822 message
-    const headers = [
-      `To: ${payload.to}`,
-      payload.cc ? `Cc: ${payload.cc}` : null,
-      bcc ? `Bcc: ${bcc}` : null,
-      `Subject: ${mimeEncodeHeader(payload.subject)}`,
-      'Content-Type: text/html; charset=utf-8',
-      'MIME-Version: 1.0',
-    ].filter(Boolean);
+    let rawMessage: string;
 
-    // Empty line between headers and body is mandatory in RFC 2822
-    const messageParts = [...headers, '', htmlBody].join('\r\n');
+    if (payload.attachments && payload.attachments.length > 0) {
+      // Multipart MIME with attachments
+      const boundary = `kenaz_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-    const encodedMessage = Buffer.from(messageParts)
+      const topHeaders = [
+        `To: ${payload.to}`,
+        payload.cc ? `Cc: ${payload.cc}` : null,
+        bcc ? `Bcc: ${bcc}` : null,
+        `Subject: ${mimeEncodeHeader(payload.subject)}`,
+        'MIME-Version: 1.0',
+        `Content-Type: multipart/mixed; boundary="${boundary}"`,
+      ].filter(Boolean);
+
+      const parts: string[] = [];
+
+      // HTML body part
+      parts.push(
+        `--${boundary}\r\n` +
+        'Content-Type: text/html; charset=utf-8\r\n' +
+        'Content-Transfer-Encoding: 7bit\r\n' +
+        '\r\n' +
+        htmlBody
+      );
+
+      // Attachment parts
+      for (const att of payload.attachments) {
+        // Wrap base64 at 76 chars per line per RFC 2045
+        const wrappedBase64 = att.base64.replace(/(.{76})/g, '$1\r\n');
+        parts.push(
+          `--${boundary}\r\n` +
+          `Content-Type: ${att.mimeType}; name="${att.filename}"\r\n` +
+          'Content-Transfer-Encoding: base64\r\n' +
+          `Content-Disposition: attachment; filename="${att.filename}"\r\n` +
+          '\r\n' +
+          wrappedBase64
+        );
+      }
+
+      rawMessage = [...topHeaders, '', parts.join('\r\n'), `--${boundary}--`].join('\r\n');
+    } else {
+      // Simple message without attachments
+      const headers = [
+        `To: ${payload.to}`,
+        payload.cc ? `Cc: ${payload.cc}` : null,
+        bcc ? `Bcc: ${bcc}` : null,
+        `Subject: ${mimeEncodeHeader(payload.subject)}`,
+        'Content-Type: text/html; charset=utf-8',
+        'MIME-Version: 1.0',
+      ].filter(Boolean);
+
+      rawMessage = [...headers, '', htmlBody].join('\r\n');
+    }
+
+    const encodedMessage = Buffer.from(rawMessage)
       .toString('base64')
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
