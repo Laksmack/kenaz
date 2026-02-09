@@ -105,7 +105,7 @@ function EmailChipInput({
 interface Props {
   initialData: Partial<ComposeData> | null;
   onClose: () => void;
-  onSent: () => void;
+  onSent: (payload: SendEmailPayload, draftId?: string) => void;
   autoBccEnabled?: boolean;
 }
 

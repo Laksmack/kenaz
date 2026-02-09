@@ -27,6 +27,8 @@ export default function App() {
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [userEmail, setUserEmail] = useState('');
   const [views, setViews] = useState<View[]>([]);
+  const [undoActions, setUndoActions] = useState<import('./components/UndoToast').UndoAction[]>([]);
+  const pendingSendsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Check auth on mount, load config, user email, and views
   useEffect(() => {
@@ -171,6 +173,16 @@ export default function App() {
       .map((m) => m![1]);
   }, [views]);
 
+  // ── Undo infrastructure ──────────────────────────────────
+  const addUndo = useCallback((message: string, onUndo: () => void, duration = 5000) => {
+    const id = Date.now().toString();
+    setUndoActions((prev) => [...prev, { id, message, onUndo, duration }]);
+  }, []);
+
+  const removeUndo = useCallback((id: string) => {
+    setUndoActions((prev) => prev.filter((a) => a.id !== id));
+  }, []);
+
   const handleArchive = useCallback(async () => {
     if (!selectedThread) return;
 
@@ -252,6 +264,50 @@ export default function App() {
     setComposeData(data || {});
     setComposeOpen(true);
   }, []);
+
+  // Deferred send with undo window
+  const handleSent = useCallback((payload: SendEmailPayload, draftId?: string) => {
+    setComposeOpen(false);
+
+    const sendId = Date.now().toString();
+    let cancelled = false;
+
+    // Schedule actual send after 5 seconds
+    const timer = setTimeout(async () => {
+      pendingSendsRef.current.delete(sendId);
+      if (cancelled) return;
+      try {
+        await window.kenaz.sendEmail(payload);
+        if (draftId) {
+          try { await window.kenaz.deleteDraft(draftId); } catch {}
+        }
+        refresh();
+      } catch (e: any) {
+        console.error('Failed to send email:', e);
+      }
+    }, 5000);
+
+    pendingSendsRef.current.set(sendId, timer);
+
+    addUndo(`Sending to ${payload.to.split(',')[0].trim()}…`, () => {
+      cancelled = true;
+      clearTimeout(timer);
+      pendingSendsRef.current.delete(sendId);
+      // Re-open compose with the same data
+      setComposeData({
+        to: payload.to,
+        cc: payload.cc,
+        bcc: payload.bcc,
+        subject: payload.subject,
+        bodyMarkdown: payload.body_markdown,
+        replyToThreadId: payload.reply_to_thread_id,
+        replyToMessageId: payload.reply_to_message_id,
+        draftId,
+        attachments: payload.attachments,
+      });
+      setComposeOpen(true);
+    });
+  }, [addUndo, refresh]);
 
   const handleReply = useCallback(() => {
     if (!selectedThread) return;
@@ -524,10 +580,13 @@ export default function App() {
         <ComposeBar
           initialData={composeData}
           onClose={() => setComposeOpen(false)}
-          onSent={() => { setComposeOpen(false); refresh(); }}
+          onSent={handleSent}
           autoBccEnabled={appConfig?.autoBccEnabled}
         />
       )}
+
+      {/* Undo Toast */}
+      <UndoToast actions={undoActions} onExpire={removeUndo} />
 
       {/* Advanced Search Modal */}
       {advancedSearchOpen && (
