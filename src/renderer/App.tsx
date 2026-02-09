@@ -8,9 +8,10 @@ import { SearchBar } from './components/SearchBar';
 import { AuthScreen } from './components/AuthScreen';
 import { SettingsModal } from './components/SettingsModal';
 import { AdvancedSearch } from './components/AdvancedSearch';
+import { UndoToast } from './components/UndoToast';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useEmails } from './hooks/useEmails';
-import type { ViewType, ComposeData, EmailThread, AppConfig, View, Rule } from '@shared/types';
+import type { ViewType, ComposeData, SendEmailPayload, EmailThread, AppConfig, View, Rule } from '@shared/types';
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);

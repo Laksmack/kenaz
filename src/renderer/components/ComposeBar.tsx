@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import type { ComposeData, SendEmailPayload } from '@shared/types';
+import type { ComposeData, SendEmailPayload, EmailAttachment } from '@shared/types';
 
 // ── Email Chip Input ────────────────────────────────────────
 // Renders emails as removable chips. Type and press Enter/Tab/comma to add.
@@ -120,9 +120,13 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
   const [error, setError] = useState<string | null>(null);
   const [useAutoBcc, setUseAutoBcc] = useState(true);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [attachments, setAttachments] = useState<EmailAttachment[]>(initialData?.attachments || []);
+  const [dragging, setDragging] = useState(false);
   const sentRef = useRef(false); // track if we sent successfully
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const toRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragCountRef = useRef(0);
 
   // Snapshot the initial state so we can detect real changes
   const initialSnapshot = useRef({
@@ -151,9 +155,72 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
       [...cc].sort().join(',') !== snap.cc ||
       [...bcc].sort().join(',') !== snap.bcc ||
       subject !== snap.subject ||
-      body !== snap.body
+      body !== snap.body ||
+      attachments.length > 0
     );
   })();
+
+  // Add files as attachments (via drag & drop or file picker)
+  const addFiles = useCallback(async (filePaths: string[]) => {
+    for (const filePath of filePaths) {
+      try {
+        const result = await window.kenaz.readFileBase64(filePath);
+        setAttachments((prev) => {
+          // Skip duplicates by filename
+          if (prev.some((a) => a.filename === result.filename)) return prev;
+          return [...prev, {
+            filename: result.filename,
+            mimeType: result.mimeType,
+            base64: result.base64,
+            size: result.size,
+          }];
+        });
+      } catch (e) {
+        console.error('Failed to read file:', e);
+      }
+    }
+  }, []);
+
+  const removeAttachment = useCallback((idx: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  // Drag & drop handlers
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCountRef.current++;
+    if (dragCountRef.current === 1) setDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCountRef.current--;
+    if (dragCountRef.current === 0) setDragging(false);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    dragCountRef.current = 0;
+    setDragging(false);
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      // In Electron, dropped files have a `path` property
+      const paths = files.map((f) => (f as any).path).filter(Boolean);
+      if (paths.length > 0) addFiles(paths);
+    }
+  }, [addFiles]);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    const paths = files.map((f) => (f as any).path).filter(Boolean);
+    if (paths.length > 0) addFiles(paths);
+    // Reset input so the same file can be selected again
+    e.target.value = '';
+  }, [addFiles]);
 
   const handleSend = useCallback(async () => {
     if (to.length === 0 || !subject) {
@@ -161,36 +228,21 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
       return;
     }
 
-    setSending(true);
-    setError(null);
+    const payload: SendEmailPayload = {
+      to: to.join(', '),
+      cc: cc.length > 0 ? cc.join(', ') : undefined,
+      bcc: bcc.length > 0 ? bcc.join(', ') : undefined,
+      subject,
+      body_markdown: body,
+      reply_to_thread_id: initialData?.replyToThreadId,
+      reply_to_message_id: initialData?.replyToMessageId,
+      signature: true,
+      skip_auto_bcc: autoBccEnabled ? !useAutoBcc : undefined,
+      attachments: attachments.length > 0 ? attachments : undefined,
+    };
 
-    try {
-      const payload: SendEmailPayload = {
-        to: to.join(', '),
-        cc: cc.length > 0 ? cc.join(', ') : undefined,
-        bcc: bcc.length > 0 ? bcc.join(', ') : undefined,
-        subject,
-        body_markdown: body,
-        reply_to_thread_id: initialData?.replyToThreadId,
-        reply_to_message_id: initialData?.replyToMessageId,
-        signature: true,
-        skip_auto_bcc: autoBccEnabled ? !useAutoBcc : undefined,
-      };
-
-      await window.kenaz.sendEmail(payload);
-
-      // If we were editing a draft, delete it after sending
-      if (initialData?.draftId) {
-        try { await window.kenaz.deleteDraft(initialData.draftId); } catch {}
-      }
-
-      sentRef.current = true;
-      onSent();
-    } catch (e: any) {
-      setError(e.message);
-    } finally {
-      setSending(false);
-    }
+    sentRef.current = true;
+    onSent(payload, initialData?.draftId);
   }, [to, cc, bcc, subject, body, initialData, onSent, autoBccEnabled, useAutoBcc]);
 
   const handleClose = useCallback(async () => {
@@ -223,8 +275,38 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
     }
   }, [to, cc, bcc, subject, body, initialData, hasChanges, onClose]);
 
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const totalAttachmentSize = attachments.reduce((sum, a) => sum + a.size, 0);
+
   return (
-    <div className="border-t border-border-subtle bg-bg-secondary">
+    <div
+      className={`border-t border-border-subtle bg-bg-secondary relative ${dragging ? 'ring-2 ring-accent-primary ring-inset' : ''}`}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {dragging && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-accent-primary/10 border-2 border-dashed border-accent-primary rounded pointer-events-none">
+          <span className="text-sm font-medium text-accent-primary">Drop files to attach</span>
+        </div>
+      )}
+
+      {/* Hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={handleFileSelect}
+      />
+
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle">
         <span className="text-xs font-semibold text-text-secondary">
@@ -318,8 +400,51 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
             }
           }}
         />
+
+        {/* Attachments */}
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {attachments.map((att, i) => (
+              <span
+                key={`${att.filename}-${i}`}
+                className="inline-flex items-center gap-1.5 px-2 py-1 rounded bg-bg-hover border border-border-subtle text-[11px] text-text-secondary max-w-[220px] group"
+              >
+                <svg className="w-3 h-3 flex-shrink-0 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                </svg>
+                <span className="truncate">{att.filename}</span>
+                <span className="text-text-muted text-[9px] flex-shrink-0">({formatSize(att.size)})</span>
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(i)}
+                  className="flex-shrink-0 text-text-muted hover:text-accent-danger transition-colors opacity-0 group-hover:opacity-100"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            {totalAttachmentSize > 20 * 1024 * 1024 && (
+              <span className="text-[10px] text-accent-danger self-center ml-1">
+                Total size exceeds 20 MB — email may fail
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="flex items-center justify-between mt-1">
-          <span className="text-[10px] text-text-muted">Markdown supported · Cmd+Enter to send</span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors"
+              title="Attach files"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+            </button>
+            <span className="text-[10px] text-text-muted">Markdown supported · Cmd+Enter to send</span>
+          </div>
           <div className="flex items-center gap-3">
             {autoBccEnabled && (
               <label className="flex items-center gap-1.5 cursor-pointer select-none" title="Automatically BCC your CRM logging address">
