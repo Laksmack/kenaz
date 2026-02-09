@@ -47,7 +47,10 @@ function EmailChipInput({
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
       if (input.trim()) {
-        e.preventDefault();
+        // For Tab, tokenize but let default behavior advance focus to next field
+        if (e.key !== 'Tab') {
+          e.preventDefault();
+        }
         addEmails(input);
       }
     } else if (e.key === 'Backspace' && !input && emails.length > 0) {

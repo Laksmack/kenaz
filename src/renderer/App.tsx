@@ -507,6 +507,16 @@ export default function App() {
         </div>
         <div className="flex-1" /> {/* This space IS draggable */}
         <div className="titlebar-no-drag flex items-center gap-2">
+          <button
+            onClick={() => handleCompose()}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors bg-gradient-to-r from-[#C43E0C] to-[#F7A94B] text-white hover:opacity-90 shadow-sm"
+            title="Compose (C)"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 512 512" fill="none">
+              <path d="M332.8 112.6L189.4 256L332.8 399.4" stroke="currentColor" strokeWidth="52" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            </svg>
+            Compose
+          </button>
           <SearchBar
             query={searchQuery}
             onSearch={handleSearch}
