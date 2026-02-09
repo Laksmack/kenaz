@@ -117,7 +117,8 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle(IPC.GMAIL_SEARCH, async (_event, query: string) => {
-    return gmail.fetchThreads(query, 50);
+    const result = await gmail.fetchThreads(query, 50);
+    return result.threads;
   });
 
   ipcMain.handle(IPC.GMAIL_SEND, async (_event, payload: SendEmailPayload) => {

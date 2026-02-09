@@ -14,8 +14,8 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
 
   app.get('/api/inbox', async (_req, res) => {
     try {
-      const threads = await gmail.fetchThreads('in:inbox', 50);
-      res.json({ threads });
+      const result = await gmail.fetchThreads('in:inbox', 50);
+      res.json({ threads: result.threads });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -23,8 +23,8 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
 
   app.get('/api/unread', async (_req, res) => {
     try {
-      const threads = await gmail.fetchThreads('is:unread in:inbox', 50);
-      res.json({ count: threads.length, threads });
+      const result = await gmail.fetchThreads('is:unread in:inbox', 50);
+      res.json({ count: result.threads.length, threads: result.threads });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -52,8 +52,8 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
   app.get('/api/search', async (req, res) => {
     try {
       const q = (req.query.q as string) || '';
-      const threads = await gmail.fetchThreads(q, 50);
-      res.json({ threads });
+      const result = await gmail.fetchThreads(q, 50);
+      res.json({ threads: result.threads });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -251,10 +251,10 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
       // Run Gmail search and HubSpot lookup in parallel
       const [hubspotContext, emailThreads] = await Promise.all([
         hubspot.lookupContact(email).catch(() => ({ contact: null, deals: [], activities: [], loading: false, error: null })),
-        gmail.fetchThreads(`from:${email} OR to:${email}`, 5).catch(() => []),
+        gmail.fetchThreads(`from:${email} OR to:${email}`, 5).catch(() => ({ threads: [], nextPageToken: undefined })),
       ]);
 
-      const recentThreads = emailThreads.map((t) => ({
+      const recentThreads = emailThreads.threads.map((t) => ({
         threadId: t.id,
         subject: t.subject,
         lastDate: t.lastDate,
