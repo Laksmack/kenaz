@@ -207,26 +207,36 @@ export default function App() {
       return;
     }
 
-    // Remove ALL Kenaz-managed labels (labels backing any view) so the thread
-    // cleanly disappears from Inbox, Pending, Todo, and any custom views.
-    // We don't filter by thread labels because thread.labels uses internal IDs
-    // (e.g. "Label_34") while view queries use display names (e.g. "TODO").
-    // The server-side modifyLabels resolves names→IDs and is safe to call even
-    // if the label isn't on the thread.
-    const managedLabels = views
-      .map((v) => v.query.match(/^label:(\S+)$/))
-      .filter(Boolean)
-      .map((m) => m![1]);
+    // Snapshot state for undo
+    const threadId = selectedThread.id;
+    const threadSubject = selectedThread.subject;
+    const viewAtArchive = currentView;
+
+    // Remove ALL Kenaz-managed labels (labels backing any view)
+    const managedLabels = getManagedLabels();
 
     for (const label of managedLabels) {
-      labelThread(selectedThread.id, null, label);
+      labelThread(threadId, null, label);
     }
 
-    await archiveThread(selectedThread.id);
-    const idx = threads.findIndex((t) => t.id === selectedThread.id);
+    await archiveThread(threadId);
+    const idx = threads.findIndex((t) => t.id === threadId);
     const next = threads[idx + 1] || threads[idx - 1] || null;
     setSelectedThread(next);
-  }, [selectedThread, threads, archiveThread, labelThread, currentView, views, refresh]);
+
+    // Offer undo
+    addUndo(`"${threadSubject.slice(0, 40)}${threadSubject.length > 40 ? '…' : ''}" archived`, () => {
+      // Re-add INBOX label
+      labelThread(threadId, 'INBOX', null);
+      // Restore the view-specific label if the user was in a labeled view
+      const viewDef = views.find((v) => v.id === viewAtArchive);
+      const labelMatch = viewDef?.query.match(/^label:(\S+)$/);
+      if (labelMatch) {
+        labelThread(threadId, labelMatch[1], null);
+      }
+      setTimeout(() => refresh(), 500);
+    });
+  }, [selectedThread, threads, archiveThread, labelThread, currentView, views, refresh, getManagedLabels, addUndo]);
 
   const handleLabel = useCallback(async (label: string) => {
     if (!selectedThread) return;
