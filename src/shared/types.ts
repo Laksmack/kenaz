@@ -116,6 +116,7 @@ export interface ComposeData {
   hubspotDealId?: string;
   draftId?: string; // Gmail draft ID if resuming a draft
   signature: boolean;
+  attachments?: EmailAttachment[];
 }
 
 // ── HubSpot Types ────────────────────────────────────────────
@@ -175,6 +176,13 @@ export interface CalendarEvent {
 
 // ── API Types ────────────────────────────────────────────────
 
+export interface EmailAttachment {
+  filename: string;
+  mimeType: string;
+  base64: string; // base64-encoded file content
+  size: number;   // bytes
+}
+
 export interface SendEmailPayload {
   to: string;
   cc?: string;
@@ -186,6 +194,7 @@ export interface SendEmailPayload {
   hubspot_deal_id?: string;
   signature?: boolean;
   skip_auto_bcc?: boolean;
+  attachments?: EmailAttachment[];
 }
 
 // ── IPC Channels ─────────────────────────────────────────────
@@ -222,6 +231,9 @@ export const IPC = {
   GMAIL_GET_DRAFT: 'gmail:get-draft',
   GMAIL_DELETE_DRAFT: 'gmail:delete-draft',
   GMAIL_LIST_LABELS: 'gmail:list-labels',
+
+  // File operations
+  FILE_READ_BASE64: 'file:read-base64',
 
   // Badge & Notifications
   APP_SET_BADGE: 'app:set-badge',
