@@ -220,13 +220,14 @@ export class GmailService {
 
   // ── Fetch Threads ──────────────────────────────────────────
 
-  async fetchThreads(query: string, maxResults: number = 50): Promise<EmailThread[]> {
+  async fetchThreads(query: string, maxResults: number = 50, pageToken?: string): Promise<{ threads: EmailThread[]; nextPageToken?: string }> {
     if (!this.gmail) throw new Error('Not authenticated');
 
     const res = await this.gmail.users.threads.list({
       userId: 'me',
       q: query || undefined,
       maxResults,
+      pageToken: pageToken || undefined,
     });
 
     const threads = res.data.threads || [];
@@ -241,7 +242,7 @@ export class GmailService {
       results.push(...details.filter((d): d is EmailThread => d !== null));
     }
 
-    return results;
+    return { threads: results, nextPageToken: res.data.nextPageToken || undefined };
   }
 
   async fetchThread(threadId: string): Promise<EmailThread | null> {
