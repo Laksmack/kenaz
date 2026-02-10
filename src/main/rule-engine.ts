@@ -120,15 +120,26 @@ export async function applyRules(
   ruleStore: RuleStore,
   gmail: GmailService,
   threads: EmailThread[]
-): Promise<void> {
+): Promise<boolean> {
   const rules = ruleStore.list();
-  if (rules.length === 0) return;
+  if (rules.length === 0) return false;
+
+  let madeChanges = false;
 
   for (const thread of threads) {
     // Only process inbox threads
     if (!thread.labels.includes('INBOX')) continue;
 
     const actions = evaluateRules(rules, thread);
+
+    // Check if this thread has any actions to apply
+    const hasActions = actions.addLabels.length > 0
+      || actions.removeLabels.length > 0
+      || actions.archive
+      || actions.markRead;
+    if (!hasActions) continue;
+
+    madeChanges = true;
 
     // Apply label changes
     for (const label of actions.addLabels) {
@@ -162,4 +173,6 @@ export async function applyRules(
       }
     }
   }
+
+  return madeChanges;
 }

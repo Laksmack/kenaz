@@ -144,6 +144,9 @@ function GeneralSettings({ config, onSave, saving }: TabProps) {
   const [defaultView, setDefaultView] = useState(config.defaultView);
   const [viewOptions, setViewOptions] = useState<View[]>([]);
   useEffect(() => { window.kenaz.listViews().then(setViewOptions); }, []);
+  const [displayName, setDisplayName] = useState(config.displayName ?? '');
+  const [archiveOnReply, setArchiveOnReply] = useState(config.archiveOnReply ?? false);
+  const [composeMode, setComposeMode] = useState<'html' | 'markdown'>(config.composeMode ?? 'html');
   const [autoBccEnabled, setAutoBccEnabled] = useState(config.autoBccEnabled);
   const [autoBccAddress, setAutoBccAddress] = useState(config.autoBccAddress);
   const [autoBccExcludedDomains, setAutoBccExcludedDomains] = useState(
@@ -154,6 +157,16 @@ function GeneralSettings({ config, onSave, saving }: TabProps) {
     <div>
       <h3 className="text-sm font-semibold text-text-primary mb-4">General</h3>
       <div className="space-y-4">
+        <SettingsField label="Display Name" description="Your name as shown in the email list (e.g. for sent items)">
+          <input
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary"
+            placeholder="Martin Stenkilde"
+          />
+        </SettingsField>
+
         <SettingsField label="Default View" description="Which view to show when the app opens">
           <select
             value={defaultView}
@@ -163,6 +176,21 @@ function GeneralSettings({ config, onSave, saving }: TabProps) {
             {viewOptions.map((v) => (
               <option key={v.id} value={v.id}>{v.name}</option>
             ))}
+          </select>
+        </SettingsField>
+
+        <SettingsField label="Archive on Reply" description="Automatically mark a thread as done when you send a reply">
+          <ToggleSwitch checked={archiveOnReply} onChange={setArchiveOnReply} />
+        </SettingsField>
+
+        <SettingsField label="Compose Mode" description="Choose the editor for composing emails">
+          <select
+            value={composeMode}
+            onChange={(e) => setComposeMode(e.target.value as 'html' | 'markdown')}
+            className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary"
+          >
+            <option value="html">Rich Text (HTML)</option>
+            <option value="markdown">Markdown</option>
           </select>
         </SettingsField>
 
@@ -204,7 +232,10 @@ function GeneralSettings({ config, onSave, saving }: TabProps) {
         </div>
 
         <SaveButton onClick={() => onSave({
+          displayName: displayName.trim(),
           defaultView,
+          archiveOnReply,
+          composeMode,
           autoBccEnabled,
           autoBccAddress: autoBccAddress.trim(),
           autoBccExcludedDomains: autoBccExcludedDomains.split(',').map(s => s.trim()).filter(Boolean),

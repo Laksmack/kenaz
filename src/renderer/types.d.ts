@@ -34,7 +34,9 @@ declare global {
       getConfig: () => Promise<any>;
       setConfig: (updates: any) => Promise<any>;
       getUserEmail: () => Promise<string>;
+      onRulesApplied: (callback: () => void) => () => void;
       downloadAttachment: (messageId: string, attachmentId: string, filename: string) => Promise<string>;
+      getAttachmentBase64: (messageId: string, attachmentId: string) => Promise<string>;
     };
   }
 }

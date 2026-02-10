@@ -52,6 +52,9 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         return;
       }
 
+      // Don't intercept single-key shortcuts when modifier keys are held (Cmd+C = copy, etc.)
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
       switch (e.key.toLowerCase()) {
         case 'e':
         case 'd':

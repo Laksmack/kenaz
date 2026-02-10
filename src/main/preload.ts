@@ -12,6 +12,7 @@ const IPC = {
   GMAIL_LABEL: 'gmail:label',
   GMAIL_MARK_READ: 'gmail:mark-read',
   GMAIL_DOWNLOAD_ATTACHMENT: 'gmail:download-attachment',
+  GMAIL_GET_ATTACHMENT_BASE64: 'gmail:get-attachment-base64',
   CALENDAR_TODAY: 'calendar:today',
   CALENDAR_RANGE: 'calendar:range',
   CALENDAR_RSVP: 'calendar:rsvp',
@@ -60,6 +61,8 @@ const api = {
     ipcRenderer.invoke(IPC.GMAIL_MARK_READ, threadId),
   downloadAttachment: (messageId: string, attachmentId: string, filename: string) =>
     ipcRenderer.invoke(IPC.GMAIL_DOWNLOAD_ATTACHMENT, messageId, attachmentId, filename),
+  getAttachmentBase64: (messageId: string, attachmentId: string) =>
+    ipcRenderer.invoke(IPC.GMAIL_GET_ATTACHMENT_BASE64, messageId, attachmentId),
 
   // Drafts
   createDraft: (payload: any) =>
@@ -110,6 +113,10 @@ const api = {
   getConfig: () => ipcRenderer.invoke(IPC.APP_GET_CONFIG),
   setConfig: (updates: any) => ipcRenderer.invoke(IPC.APP_SET_CONFIG, updates),
   getUserEmail: () => ipcRenderer.invoke(IPC.APP_USER_EMAIL),
+  onRulesApplied: (callback: () => void) => {
+    ipcRenderer.on('rules-applied', callback);
+    return () => { ipcRenderer.removeListener('rules-applied', callback); };
+  },
 };
 
 contextBridge.exposeInMainWorld('kenaz', api);

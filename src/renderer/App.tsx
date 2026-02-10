@@ -28,6 +28,7 @@ export default function App() {
   const [userEmail, setUserEmail] = useState('');
   const [views, setViews] = useState<View[]>([]);
   const [undoActions, setUndoActions] = useState<import('./components/UndoToast').UndoAction[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const pendingSendsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Check auth on mount, load config, user email, and views
@@ -118,6 +119,15 @@ export default function App() {
     prevUnreadIds.current = currentIds;
   }, [threads, currentView, userEmail]);
 
+  // Refresh when rules finish processing in the background
+  useEffect(() => {
+    const cleanup = window.kenaz.onRulesApplied(() => {
+      console.log(`[RULES-APPLIED] triggering refresh, pendingId=${pendingSelectIdRef.current?.slice(0,8) ?? 'null'}, selected="${selectedThread?.subject?.slice(0,30) ?? 'null'}"`);
+      refresh();
+    });
+    return cleanup;
+  }, [refresh]);
+
   // Also update counts when threads change (user actions)
   useEffect(() => {
     if (currentView && currentView !== 'search' && currentView !== 'all') {
@@ -129,39 +139,71 @@ export default function App() {
     }
   }, [threads, currentView]);
 
-  // Select first thread when list changes
+  // After archive/label, we stash the desired-next thread ID here.
+  // The threads useEffect consumes it once to pick the right selection.
+  const pendingSelectIdRef = useRef<string | null>(null);
+
   useEffect(() => {
-    if (threads.length > 0 && !selectedThread) {
-      setSelectedThread(threads[0]);
+    if (threads.length === 0) return;
+
+    // 1. If an archive/label action told us what to select next, honour it
+    const pendingId = pendingSelectIdRef.current;
+    if (pendingId) {
+      pendingSelectIdRef.current = null; // consume once
+      const pending = threads.find((t) => t.id === pendingId);
+      if (pending) {
+        console.log(`[SELECT] pendingId=${pendingId} → found "${pending.subject?.slice(0,30)}"`);
+        setSelectedThread(pending);
+        return;
+      }
+      console.log(`[SELECT] pendingId=${pendingId} → NOT FOUND in ${threads.length} threads, falling through`);
+      // Thread was removed (e.g. by rules) — fall through to sync logic
     }
+
+    // 2. Keep selected thread reference in sync after list refreshes
+    if (selectedThread) {
+      const match = threads.find((t) => t.id === selectedThread.id);
+      if (match && match !== selectedThread) {
+        console.log(`[SELECT] syncing ref for "${match.subject?.slice(0,30)}" (same id=${match.id.slice(0,8)})`);
+        setSelectedThread(match);
+      } else if (!match) {
+        console.log(`[SELECT] selectedThread "${selectedThread.subject?.slice(0,30)}" (${selectedThread.id.slice(0,8)}) NOT in threads — keeping stale ref`);
+      }
+      // If !match the thread was removed — don't auto-jump to threads[0],
+      // the archive handler already set pendingSelectIdRef for the next render.
+      return;
+    }
+
+    // 3. Nothing selected at all — pick first thread (initial load / view change)
+    console.log(`[SELECT] no selection, picking threads[0] "${threads[0].subject?.slice(0,30)}"`);
+    setSelectedThread(threads[0]);
   }, [threads]);
 
-  const handleSelectThread = useCallback(async (thread: EmailThread) => {
-    // In drafts view, open the draft in compose instead of viewing it
-    if (currentView === 'drafts') {
-      try {
-        // List drafts to find the one matching this thread
-        const drafts = await window.kenaz.listDrafts();
-        const draft = drafts.find((d: any) => d.threadId === thread.id);
-        if (draft) {
-          const draftDetail = await window.kenaz.getDraft(draft.id);
-          setComposeData({
-            to: draftDetail.to,
-            cc: draftDetail.cc,
-            bcc: draftDetail.bcc,
-            subject: draftDetail.subject,
-            bodyMarkdown: draftDetail.body,
-            replyToThreadId: draftDetail.threadId || undefined,
-            draftId: draftDetail.id,
-          });
-          setComposeOpen(true);
-          return;
-        }
-      } catch (e) {
-        console.error('Failed to load draft:', e);
+  // Open a draft in the composer (used by Enter/R in drafts view, or double-click)
+  const openDraftInComposer = useCallback(async (thread: EmailThread) => {
+    try {
+      const drafts = await window.kenaz.listDrafts();
+      const draft = drafts.find((d: any) => d.threadId === thread.id);
+      if (draft) {
+        const draftDetail = await window.kenaz.getDraft(draft.id);
+        setComposeData({
+          to: draftDetail.to,
+          cc: draftDetail.cc,
+          bcc: draftDetail.bcc,
+          subject: draftDetail.subject,
+          bodyMarkdown: draftDetail.body,
+          bodyHtml: draftDetail.body, // Draft body is HTML — feed to rich editor too
+          replyToThreadId: draftDetail.threadId || undefined,
+          draftId: draftDetail.id,
+        });
+        setComposeOpen(true);
       }
+    } catch (e) {
+      console.error('Failed to load draft:', e);
     }
+  }, []);
 
+  const handleSelectThread = useCallback(async (thread: EmailThread) => {
     setSelectedThread(thread);
     if (thread.isUnread) {
       markRead(thread.id);
@@ -176,6 +218,42 @@ export default function App() {
       .map((m) => m![1]);
   }, [views]);
 
+  // Helper: find the next thread to select after removing targets from the list.
+  // Prefers the thread just ABOVE (idx - 1), falls back to just BELOW (idx + 1).
+  const findNextThread = useCallback((idx: number, excludeIds: Set<string> | string[]) => {
+    const excluded = excludeIds instanceof Set ? excludeIds : new Set(excludeIds);
+    // Try the closest thread above (backwards from idx)
+    for (let i = idx - 1; i >= 0; i--) {
+      if (!excluded.has(threads[i].id)) return threads[i];
+    }
+    // Fall back to the thread just below
+    const after = threads.find((t, i) => i > idx && !excluded.has(t.id));
+    if (after) return after;
+    return null;
+  }, [threads]);
+
+  const handleDeleteDraft = useCallback(async (thread: EmailThread) => {
+    try {
+      const drafts = await window.kenaz.listDrafts();
+      const draft = drafts.find((d: any) => d.threadId === thread.id);
+      if (draft) {
+        await window.kenaz.deleteDraft(draft.id);
+      }
+      // Move selection to next thread
+      const idx = threads.findIndex((t) => t.id === thread.id);
+      const next = findNextThread(idx, [thread.id]);
+      if (next) {
+        pendingSelectIdRef.current = next.id;
+        setSelectedThread(next);
+      } else {
+        setSelectedThread(null);
+      }
+      refresh();
+    } catch (e) {
+      console.error('Failed to delete draft:', e);
+    }
+  }, [threads, findNextThread, refresh]);
+
   // ── Undo infrastructure ──────────────────────────────────
   const addUndo = useCallback((message: string, onUndo: () => void, duration = 5000) => {
     const id = Date.now().toString();
@@ -186,90 +264,118 @@ export default function App() {
     setUndoActions((prev) => prev.filter((a) => a.id !== id));
   }, []);
 
+  // Helper: get target thread IDs (multi-select takes precedence)
+  const getTargetThreads = useCallback((): EmailThread[] => {
+    if (selectedIds.size > 0) {
+      return threads.filter((t) => selectedIds.has(t.id));
+    }
+    return selectedThread ? [selectedThread] : [];
+  }, [selectedIds, selectedThread, threads]);
+
   const handleArchive = useCallback(async () => {
-    if (!selectedThread) return;
+    const targets = getTargetThreads();
+    if (targets.length === 0) return;
 
     // In drafts view, delete the draft instead of archiving
     if (currentView === 'drafts') {
       try {
         const drafts = await window.kenaz.listDrafts();
-        const draft = drafts.find((d: any) => d.threadId === selectedThread.id);
-        if (draft) {
-          await window.kenaz.deleteDraft(draft.id);
+        for (const t of targets) {
+          const draft = drafts.find((d: any) => d.threadId === t.id);
+          if (draft) await window.kenaz.deleteDraft(draft.id);
         }
       } catch (e) {
         console.error('Failed to delete draft:', e);
       }
-      const idx = threads.findIndex((t) => t.id === selectedThread.id);
-      const next = threads[idx + 1] || threads[idx - 1] || null;
-      setSelectedThread(next);
+      setSelectedThread(null);
+      setSelectedIds(new Set());
       setTimeout(() => refresh(), 500);
       return;
     }
 
-    // Snapshot state for undo
-    const threadId = selectedThread.id;
-    const threadSubject = selectedThread.subject;
+    // Snapshot for undo
+    const targetIds = targets.map((t) => t.id);
     const viewAtArchive = currentView;
-
-    // Remove ALL Kenaz-managed labels (labels backing any view)
     const managedLabels = getManagedLabels();
 
-    for (const label of managedLabels) {
-      labelThread(threadId, null, label);
+    // Compute next selection BEFORE removing threads
+    if (selectedThread && targetIds.includes(selectedThread.id)) {
+      const idx = threads.findIndex((t) => t.id === selectedThread.id);
+      const nextThread = findNextThread(idx, targetIds);
+      console.log(`[ARCHIVE] current="${selectedThread.subject?.slice(0,30)}" idx=${idx} total=${threads.length}`);
+      console.log(`[ARCHIVE] next="${nextThread?.subject?.slice(0,30) ?? 'NULL'}" nextId=${nextThread?.id?.slice(0,8) ?? 'null'}`);
+      pendingSelectIdRef.current = nextThread?.id ?? null;
+      setSelectedThread(nextThread);
+    }
+    setSelectedIds(new Set());
+
+    // Remove managed labels + archive for all targets
+    for (const t of targets) {
+      for (const label of managedLabels) {
+        labelThread(t.id, null, label);
+      }
+      archiveThread(t.id);
     }
 
-    await archiveThread(threadId);
-    const idx = threads.findIndex((t) => t.id === threadId);
-    const next = threads[idx + 1] || threads[idx - 1] || null;
-    setSelectedThread(next);
-
     // Offer undo
-    addUndo(`"${threadSubject.slice(0, 40)}${threadSubject.length > 40 ? '…' : ''}" archived`, () => {
-      // Re-add INBOX label
-      labelThread(threadId, 'INBOX', null);
-      // Restore the view-specific label if the user was in a labeled view
-      const viewDef = views.find((v) => v.id === viewAtArchive);
-      const labelMatch = viewDef?.query.match(/^label:(\S+)$/);
-      if (labelMatch) {
-        labelThread(threadId, labelMatch[1], null);
+    const undoMsg = targets.length === 1
+      ? `"${targets[0].subject.slice(0, 40)}${targets[0].subject.length > 40 ? '…' : ''}" archived`
+      : `${targets.length} conversations archived`;
+    addUndo(undoMsg, () => {
+      for (const id of targetIds) {
+        labelThread(id, 'INBOX', null);
+        const viewDef = views.find((v) => v.id === viewAtArchive);
+        const labelMatch = viewDef?.query.match(/^label:(\S+)$/);
+        if (labelMatch) {
+          labelThread(id, labelMatch[1], null);
+        }
       }
       setTimeout(() => refresh(), 500);
     });
-  }, [selectedThread, threads, archiveThread, labelThread, currentView, views, refresh, getManagedLabels, addUndo]);
+  }, [getTargetThreads, threads, archiveThread, labelThread, currentView, views, refresh, getManagedLabels, addUndo, selectedThread]);
 
   const handleLabel = useCallback(async (label: string) => {
-    if (!selectedThread) return;
-    const hasLabel = selectedThread.labels.some((l) => l === label);
-    if (hasLabel) {
-      // Toggle off: remove the label (optimistic update happens inside labelThread)
-      labelThread(selectedThread.id, null, label);
+    const targets = getTargetThreads();
+    if (targets.length === 0) return;
+
+    // For single thread, toggle; for multi, always add
+    if (targets.length === 1 && targets[0].labels.some((l) => l === label)) {
+      labelThread(targets[0].id, null, label);
     } else {
-      // Toggle on: add the label, remove other managed labels, and archive
-      const idx = threads.findIndex((t) => t.id === selectedThread.id);
-      const next = threads[idx + 1] || threads[idx - 1] || null;
-      setSelectedThread(next);
-      // Remove other managed labels (e.g. pressing T while in Pending removes PENDING)
-      for (const managed of getManagedLabels()) {
-        if (managed !== label) {
-          labelThread(selectedThread.id, null, managed);
-        }
+      // Move selection past the targets
+      if (selectedThread && targets.some((t) => t.id === selectedThread.id)) {
+        const idx = threads.findIndex((t) => t.id === selectedThread.id);
+        const targetIds = new Set(targets.map((t) => t.id));
+        const next = findNextThread(idx, targetIds);
+        pendingSelectIdRef.current = next?.id ?? null;
+        setSelectedThread(next);
       }
-      labelThread(selectedThread.id, label, null);
-      archiveThread(selectedThread.id);
+      for (const t of targets) {
+        for (const managed of getManagedLabels()) {
+          if (managed !== label) {
+            labelThread(t.id, null, managed);
+          }
+        }
+        labelThread(t.id, label, null);
+        archiveThread(t.id);
+      }
     }
-    // Delayed refresh to sync with server after API calls have time to land
+    setSelectedIds(new Set());
     setTimeout(() => refresh(), 2000);
-  }, [selectedThread, threads, labelThread, archiveThread, getManagedLabels, refresh]);
+  }, [getTargetThreads, selectedThread, threads, labelThread, archiveThread, getManagedLabels, refresh]);
 
   const handleStar = useCallback(async () => {
-    if (!selectedThread) return;
-    const isStarred = selectedThread.labels.includes('STARRED');
-    if (isStarred) {
-      await labelThread(selectedThread.id, null, 'STARRED');
-    } else {
-      await labelThread(selectedThread.id, 'STARRED', null);
+    const targets = getTargetThreads();
+    if (targets.length === 0) return;
+    for (const t of targets) {
+      const isStarred = t.labels.includes('STARRED');
+      if (isStarred) {
+        await labelThread(t.id, null, 'STARRED');
+      } else {
+        await labelThread(t.id, 'STARRED', null);
+      }
     }
+    setSelectedIds(new Set());
     refresh();
   }, [selectedThread, labelThread, refresh]);
 
@@ -285,6 +391,10 @@ export default function App() {
     const sendId = Date.now().toString();
     let cancelled = false;
 
+    // Capture the reply thread ID and current config for archive-on-reply
+    const replyThreadId = payload.reply_to_thread_id;
+    const shouldArchive = appConfig?.archiveOnReply && replyThreadId;
+
     // Schedule actual send after 5 seconds
     const timer = setTimeout(async () => {
       pendingSendsRef.current.delete(sendId);
@@ -293,6 +403,23 @@ export default function App() {
         await window.kenaz.sendEmail(payload);
         if (draftId) {
           try { await window.kenaz.deleteDraft(draftId); } catch {}
+        }
+        // Auto-archive the thread if this was a reply and the setting is on
+        if (shouldArchive) {
+          const managedLabels = getManagedLabels();
+          const removedLabels = [...managedLabels];
+          for (const label of managedLabels) {
+            labelThread(replyThreadId, null, label);
+          }
+          await archiveThread(replyThreadId);
+          // Give user a chance to undo just the archive (send already happened)
+          addUndo('Reply sent — thread archived', () => {
+            labelThread(replyThreadId, 'INBOX', null);
+            for (const label of removedLabels) {
+              labelThread(replyThreadId, label, null);
+            }
+            refresh();
+          });
         }
         refresh();
       } catch (e: any) {
@@ -313,6 +440,7 @@ export default function App() {
         bcc: payload.bcc,
         subject: payload.subject,
         bodyMarkdown: payload.body_markdown,
+        bodyHtml: payload.body_html,
         replyToThreadId: payload.reply_to_thread_id,
         replyToMessageId: payload.reply_to_message_id,
         draftId,
@@ -320,7 +448,7 @@ export default function App() {
       });
       setComposeOpen(true);
     });
-  }, [addUndo, refresh]);
+  }, [addUndo, refresh, appConfig?.archiveOnReply, getManagedLabels, archiveThread, labelThread]);
 
   const handleReply = useCallback(() => {
     if (!selectedThread) return;
@@ -353,6 +481,10 @@ export default function App() {
       if (c.email.toLowerCase() !== me) allCc.add(c.email);
     }
 
+    // Build HTML quoted content for rich editor
+    // Build HTML quoted content for rich editor
+    const quotedHtml = `<br/><br/><div style="color:#666;border-left:2px solid #ccc;padding-left:8px;margin-left:4px;">On ${dateStr}, ${senderStr} wrote:<br/>${lastMsg.body || lastMsg.bodyText?.replace(/\n/g, '<br/>') || ''}</div>`;
+
     handleCompose({
       to: Array.from(allTo).join(', '),
       cc: Array.from(allCc).join(', '),
@@ -362,18 +494,46 @@ export default function App() {
       replyToThreadId: selectedThread.id,
       replyToMessageId: lastMsg.id,
       bodyMarkdown: `\n\nOn ${dateStr}, ${senderStr} wrote:\n${quotedBody}`,
+      bodyHtml: quotedHtml,
     });
   }, [selectedThread, handleCompose, userEmail]);
 
-  const handleForward = useCallback(() => {
+  const handleForward = useCallback(async () => {
     if (!selectedThread) return;
     const lastMsg = selectedThread.messages[selectedThread.messages.length - 1];
+
+    // Fetch attachments from the original message
+    let forwardedAttachments: import('../shared/types').EmailAttachment[] = [];
+    if (lastMsg.attachments && lastMsg.attachments.length > 0) {
+      try {
+        const fetched = await Promise.all(
+          lastMsg.attachments.map(async (att) => {
+            const base64 = await window.kenaz.getAttachmentBase64(lastMsg.id, att.id);
+            return {
+              filename: att.filename,
+              mimeType: att.mimeType,
+              base64,
+              size: att.size,
+            };
+          })
+        );
+        forwardedAttachments = fetched;
+      } catch (e) {
+        console.error('Failed to fetch attachments for forward:', e);
+      }
+    }
+
+    const fwdHeader = `---------- Forwarded message ----------<br/>From: ${lastMsg.from.name || lastMsg.from.email} &lt;${lastMsg.from.email}&gt;<br/>Date: ${new Date(lastMsg.date).toLocaleString()}<br/>Subject: ${selectedThread.subject}<br/>To: ${lastMsg.to.map(t => t.email).join(', ')}`;
+    const fwdBodyHtml = `<br/><br/><div style="color:#666;">${fwdHeader}<br/><br/>${lastMsg.body || lastMsg.bodyText?.replace(/\n/g, '<br/>') || ''}</div>`;
+
     handleCompose({
       to: '',
       subject: selectedThread.subject.startsWith('Fwd:')
         ? selectedThread.subject
         : `Fwd: ${selectedThread.subject}`,
       bodyMarkdown: `\n\n---------- Forwarded message ----------\nFrom: ${lastMsg.from.name || lastMsg.from.email} <${lastMsg.from.email}>\nDate: ${new Date(lastMsg.date).toLocaleString()}\nSubject: ${selectedThread.subject}\nTo: ${lastMsg.to.map(t => t.email).join(', ')}\n\n${lastMsg.bodyText || ''}`,
+      bodyHtml: fwdBodyHtml,
+      attachments: forwardedAttachments.length > 0 ? forwardedAttachments : undefined,
     });
   }, [selectedThread, handleCompose]);
 
@@ -393,6 +553,7 @@ export default function App() {
   const handleViewChange = useCallback((view: ViewType) => {
     setCurrentView(view);
     setSelectedThread(null);
+    setSelectedIds(new Set());
     setSearchQuery('');
   }, []);
 
@@ -403,13 +564,15 @@ export default function App() {
     for (const label of getManagedLabels()) {
       labelThread(threadId, null, label);
     }
-    await archiveThread(threadId);
+    // Compute next BEFORE archiving
     if (selectedThread?.id === threadId) {
       const idx = threads.findIndex((t) => t.id === threadId);
-      const next = threads[idx + 1] || threads[idx - 1] || null;
+      const next = findNextThread(idx, [threadId]);
+      pendingSelectIdRef.current = next?.id ?? null;
       setSelectedThread(next);
     }
-  }, [archiveThread, labelThread, getManagedLabels, selectedThread, threads]);
+    await archiveThread(threadId);
+  }, [archiveThread, labelThread, getManagedLabels, selectedThread, threads, findNextThread]);
 
   const handleContextLabel = useCallback(async (threadId: string, label: string) => {
     // Remove all OTHER managed labels first (e.g. moving from Pending to Todo
@@ -421,15 +584,17 @@ export default function App() {
     }
     // Add the target label
     await labelThread(threadId, label, null);
-    // Archive (remove from inbox) since we're moving to a specific view
-    await archiveThread(threadId);
+    // Compute next BEFORE archiving
     if (selectedThread?.id === threadId) {
       const idx = threads.findIndex((t) => t.id === threadId);
-      const next = threads[idx + 1] || threads[idx - 1] || null;
+      const next = findNextThread(idx, [threadId]);
+      pendingSelectIdRef.current = next?.id ?? null;
       setSelectedThread(next);
     }
+    // Archive (remove from inbox) since we're moving to a specific view
+    await archiveThread(threadId);
     refresh();
-  }, [labelThread, archiveThread, getManagedLabels, selectedThread, threads, refresh]);
+  }, [labelThread, archiveThread, getManagedLabels, selectedThread, threads, refresh, findNextThread]);
 
   const handleContextStar = useCallback(async (threadId: string) => {
     const thread = threads.find((t) => t.id === threadId);
@@ -469,7 +634,13 @@ export default function App() {
     onTodo: () => handleLabel('TODO'),
     onStar: handleStar,
     onCompose: () => handleCompose(),
-    onReply: handleReply,
+    onReply: () => {
+      if (currentView === 'drafts' && selectedThread) {
+        openDraftInComposer(selectedThread);
+      } else {
+        handleReply();
+      }
+    },
     onForward: handleForward,
     onNavigateUp: () => navigateList('up'),
     onNavigateDown: () => navigateList('down'),
@@ -477,7 +648,8 @@ export default function App() {
     onEscape: () => {
       if (settingsOpen) setSettingsOpen(false);
       else if (advancedSearchOpen) setAdvancedSearchOpen(false);
-      else if (composeOpen) setComposeOpen(false);
+      // ComposeBar handles its own Escape (saves draft if changes)
+      else if (composeOpen) { /* handled by ComposeBar */ }
       else setSelectedThread(null);
     },
     onRefresh: refresh,
@@ -565,30 +737,46 @@ export default function App() {
           <EmailList
             threads={threads}
             selectedId={selectedThread?.id || null}
+            selectedIds={selectedIds}
             loading={loading}
             loadingMore={loadingMore}
             hasMore={hasMore}
             onSelect={handleSelectThread}
+            onMultiSelect={setSelectedIds}
             onLoadMore={loadMore}
             currentView={currentView}
             userEmail={userEmail}
+            userDisplayName={appConfig?.displayName}
             views={views}
             onArchive={handleContextArchive}
             onLabel={handleContextLabel}
             onStar={handleContextStar}
             onCreateRule={handleCreateRule}
+            onDoubleClick={currentView === 'drafts' ? openDraftInComposer : undefined}
           />
         </div>
 
-        {/* Email Body */}
+        {/* Email Body / Compose */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <EmailView
-            thread={selectedThread}
-            onReply={handleReply}
-            onArchive={handleArchive}
-            onLabel={handleLabel}
-            onStar={handleStar}
-          />
+          {composeOpen ? (
+            <ComposeBar
+              initialData={composeData}
+              onClose={() => setComposeOpen(false)}
+              onSent={handleSent}
+              autoBccEnabled={appConfig?.autoBccEnabled}
+              composeMode={appConfig?.composeMode || 'html'}
+            />
+          ) : (
+            <EmailView
+              key={selectedThread?.id || 'none'}
+              thread={selectedThread}
+              onReply={currentView === 'drafts' && selectedThread ? () => openDraftInComposer(selectedThread) : handleReply}
+              onArchive={handleArchive}
+              onLabel={handleLabel}
+              onStar={handleStar}
+              onDeleteDraft={currentView === 'drafts' ? handleDeleteDraft : undefined}
+            />
+          )}
         </div>
 
         {/* HubSpot Sidebar */}
@@ -600,16 +788,6 @@ export default function App() {
           />
         </div>
       </div>
-
-      {/* Compose Bar */}
-      {composeOpen && (
-        <ComposeBar
-          initialData={composeData}
-          onClose={() => setComposeOpen(false)}
-          onSent={handleSent}
-          autoBccEnabled={appConfig?.autoBccEnabled}
-        />
-      )}
 
       {/* Undo Toast */}
       <UndoToast actions={undoActions} onExpire={removeUndo} />

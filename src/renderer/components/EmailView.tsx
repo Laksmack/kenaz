@@ -2,6 +2,12 @@ import React, { useRef, useEffect, useState, useCallback } from 'react';
 import type { EmailThread, Email } from '@shared/types';
 import { formatFullDate } from '../lib/utils';
 
+function decodeHtmlEntities(text: string): string {
+  const el = document.createElement('textarea');
+  el.innerHTML = text;
+  return el.value;
+}
+
 /**
  * Detect if an email is a calendar invite.
  * Gmail calendar invites typically:
@@ -57,9 +63,10 @@ interface Props {
   onArchive: () => void;
   onLabel: (label: string) => void;
   onStar: () => void;
+  onDeleteDraft?: (thread: EmailThread) => void;
 }
 
-export function EmailView({ thread, onReply, onArchive, onLabel, onStar }: Props) {
+export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDeleteDraft }: Props) {
   const [showDetails, setShowDetails] = useState(false);
   const [labelMap, setLabelMap] = useState<Record<string, string>>({});
 
@@ -119,12 +126,11 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar }: Props
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Thread header */}
-      <div className="flex-shrink-0 px-6 py-4 border-b border-border-subtle">
-        <div className="flex items-start justify-between gap-4">
-          <h2 className="text-lg font-semibold text-text-primary leading-tight">
-            {thread.subject || '(no subject)'}
-          </h2>
-          <div className="flex items-center gap-1 flex-shrink-0">
+      <div className="flex-shrink-0 px-6 py-3 border-b border-border-subtle">
+        <h2 className="text-lg font-semibold text-text-primary leading-tight mb-2">
+          {thread.subject || '(no subject)'}
+        </h2>
+        <div className="flex items-center gap-1 flex-wrap">
             <ActionButton
               label="Done"
               shortcut="E"
@@ -178,6 +184,18 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar }: Props
                 </svg>
               }
             />
+            {onDeleteDraft && thread.labels.includes('DRAFT') && (
+              <ActionButton
+                label="Delete Draft"
+                onClick={() => onDeleteDraft(thread)}
+                color="text-red-400"
+                icon={
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                  </svg>
+                }
+              />
+            )}
             <div className="w-px h-4 bg-border-subtle mx-1" />
             <ActionButton
               label="Details"
@@ -190,9 +208,8 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar }: Props
                 </svg>
               }
             />
-          </div>
         </div>
-        <div className="text-xs text-text-muted mt-1">
+        <div className="text-xs text-text-muted mt-1.5">
           {thread.messages.length} message{thread.messages.length !== 1 ? 's' : ''} · {thread.participants.length} participant{thread.participants.length !== 1 ? 's' : ''}
         </div>
       </div>
@@ -229,7 +246,7 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar }: Props
           </div>
           <div>
             <span className="text-text-muted">Snippet: </span>
-            <span className="text-text-secondary">{thread.snippet}</span>
+            <span className="text-text-secondary">{decodeHtmlEntities(thread.snippet)}</span>
           </div>
           {thread.messages.map((msg, idx) => (
             <details key={msg.id} className="border border-border-subtle rounded p-2" open={idx === thread.messages.length - 1}>
@@ -278,17 +295,110 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar }: Props
         </div>
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide px-6 py-4 space-y-4">
-        {thread.messages.map((message, idx) => (
-          <MessageBubble key={message.id} message={message} isLast={idx === thread.messages.length - 1} />
-        ))}
-      </div>
+      {/* Messages — newest first, older collapsed */}
+      <ThreadMessages thread={thread} onArchive={onArchive} />
     </div>
   );
 }
 
-function RsvpBar({ message }: { message: Email }) {
+function ThreadMessages({ thread, onArchive }: { thread: EmailThread; onArchive: () => void }) {
+  // Newest message first
+  const reversed = [...thread.messages].reverse();
+  const newestId = reversed[0]?.id;
+
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set([newestId]));
+  const [showAll, setShowAll] = useState(false);
+
+  // Reset expanded state when thread changes
+  useEffect(() => {
+    const newest = thread.messages[thread.messages.length - 1]?.id;
+    setExpandedIds(new Set([newest]));
+    setShowAll(false);
+  }, [thread.id]);
+
+  const toggleMessage = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleAll = useCallback(() => {
+    if (showAll) {
+      // Collapse all except newest
+      setExpandedIds(new Set([newestId]));
+      setShowAll(false);
+    } else {
+      // Expand all
+      setExpandedIds(new Set(reversed.map((m) => m.id)));
+      setShowAll(true);
+    }
+  }, [showAll, newestId, reversed]);
+
+  return (
+    <div className="flex-1 overflow-y-auto scrollbar-hide px-6 py-4 space-y-2">
+      {/* Show all toggle (only if more than 1 message) */}
+      {reversed.length > 1 && (
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[10px] text-text-muted">
+            {reversed.length} messages — newest first
+          </span>
+          <button
+            onClick={toggleAll}
+            className="text-[10px] text-accent-primary hover:text-accent-primary/80 transition-colors"
+          >
+            {showAll ? 'Collapse older' : 'Expand all'}
+          </button>
+        </div>
+      )}
+
+      {reversed.map((message) => {
+        const isExpanded = expandedIds.has(message.id);
+
+        if (isExpanded) {
+          return <MessageBubble key={message.id} message={message} isNewest={message.id === newestId} onArchive={onArchive} />;
+        }
+
+        // Collapsed summary bar
+        return (
+          <button
+            key={message.id}
+            onClick={() => toggleMessage(message.id)}
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg bg-bg-secondary/60 border border-border-subtle hover:bg-bg-hover transition-colors text-left group"
+          >
+            {/* Avatar */}
+            <div className="w-6 h-6 rounded-full bg-bg-tertiary flex items-center justify-center text-[10px] font-semibold text-text-muted flex-shrink-0">
+              {(message.from.name || message.from.email)[0]?.toUpperCase()}
+            </div>
+            {/* Sender */}
+            <span className="text-xs font-medium text-text-secondary truncate min-w-[100px] max-w-[160px]">
+              {message.from.name || message.from.email}
+            </span>
+            {/* Preview */}
+            <span className="text-xs text-text-muted truncate flex-1">
+              {decodeHtmlEntities(message.snippet || message.subject)}
+            </span>
+            {/* Date */}
+            <span className="text-[10px] text-text-muted flex-shrink-0">
+              {formatFullDate(message.date)}
+            </span>
+            {/* Expand indicator */}
+            <svg className="w-3 h-3 text-text-muted group-hover:text-text-secondary flex-shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => void }) {
   const [rsvpStatus, setRsvpStatus] = useState<'none' | 'accepted' | 'tentative' | 'declined' | 'loading'>('none');
   const [eventId, setEventId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -318,6 +428,10 @@ function RsvpBar({ message }: { message: Email }) {
     try {
       await window.kenaz.calendarRsvp(eventId, response);
       setRsvpStatus(response);
+      // Auto-archive the thread after RSVP
+      if (onArchive) {
+        onArchive();
+      }
     } catch (e: any) {
       setError(e.message || 'RSVP failed');
       setRsvpStatus('none');
@@ -401,14 +515,20 @@ function RsvpBar({ message }: { message: Email }) {
   );
 }
 
-function MessageBubble({ message, isLast }: { message: Email; isLast: boolean }) {
+function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNewest: boolean; onArchive?: () => void }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  // Newest message shows everything by default; older messages collapse quotes
+  const [showQuoted, setShowQuoted] = useState(isNewest);
 
   useEffect(() => {
     if (!iframeRef.current) return;
 
     const doc = iframeRef.current.contentDocument;
     if (!doc) return;
+
+    // Strip quoted/forwarded content from the HTML body
+    // We'll hide it and show a "show quoted text" button
+    let bodyHtml = message.body;
 
     doc.open();
     doc.write(`
@@ -471,12 +591,52 @@ function MessageBubble({ message, isLast }: { message: Email; isLast: boolean })
           pre { padding: 12px; overflow-x: auto; }
           /* Horizontal rules */
           hr { border-color: #334155 !important; }
+          /* Quoted content toggle */
+          .kenaz-quoted { display: ${showQuoted ? 'block' : 'none'}; }
         </style>
       </head>
-      <body>${message.body}</body>
+      <body>${bodyHtml}</body>
       </html>
     `);
     doc.close();
+
+    // Collapse quoted/forwarded content:
+    // Gmail wraps quoted text in .gmail_quote, .gmail_extra, or blockquote
+    // Also detect "On ... wrote:" patterns
+    const quoteSelectors = [
+      '.gmail_quote',
+      '.gmail_extra',
+      '.moz-cite-prefix',
+      'blockquote[type="cite"]',
+    ];
+    const quotedElements: HTMLElement[] = [];
+    for (const sel of quoteSelectors) {
+      doc.querySelectorAll(sel).forEach((el) => quotedElements.push(el as HTMLElement));
+    }
+
+    // Also detect forwarded message separators
+    const allElements = doc.body.querySelectorAll('*');
+    for (const el of allElements) {
+      const text = (el as HTMLElement).textContent || '';
+      if (
+        /^-{5,}\s*(Forwarded|Original)\s*message\s*-{5,}/i.test(text.trim()) ||
+        /^On .+ wrote:$/m.test(text.trim())
+      ) {
+        // Walk up to a block-level parent to collapse the whole section
+        let target = el as HTMLElement;
+        if (target.parentElement && target.parentElement !== doc.body) {
+          target = target.parentElement;
+        }
+        if (!quotedElements.includes(target)) {
+          quotedElements.push(target);
+        }
+      }
+    }
+
+    // Wrap each quoted element with the kenaz-quoted class
+    for (const el of quotedElements) {
+      el.classList.add('kenaz-quoted');
+    }
 
     // Prevent iframe from stealing focus after content write
     if (iframeRef.current) {
@@ -555,10 +715,13 @@ function MessageBubble({ message, isLast }: { message: Email; isLast: boolean })
       clearTimeout(t3);
       if (resizeObserver) resizeObserver.disconnect();
     };
-  }, [message.body]);
+  }, [message.body, showQuoted]);
+
+  // Detect if this message has quoted content (for showing the toggle)
+  const hasQuotedContent = /gmail_quote|gmail_extra|blockquote.*?type="cite"|Forwarded message|On .+ wrote:/i.test(message.body);
 
   return (
-    <div className={`rounded-lg bg-bg-secondary border border-border-subtle ${isLast ? '' : 'opacity-80'}`}>
+    <div className={`rounded-lg bg-bg-secondary border border-border-subtle`}>
       {/* Message header */}
       <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -584,7 +747,7 @@ function MessageBubble({ message, isLast }: { message: Email; isLast: boolean })
       </div>
 
       {/* Calendar invite RSVP bar */}
-      <RsvpBar message={message} />
+      <RsvpBar message={message} onArchive={onArchive} />
 
       {/* Message body - sandboxed iframe */}
       <div className="px-4 py-3 selectable">
@@ -597,6 +760,21 @@ function MessageBubble({ message, isLast }: { message: Email; isLast: boolean })
           title={`Email from ${message.from.email}`}
         />
       </div>
+
+      {/* Show quoted text toggle */}
+      {hasQuotedContent && (
+        <div className="px-4 pb-2">
+          <button
+            onClick={() => setShowQuoted((p) => !p)}
+            className="text-[11px] text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
+          >
+            <span className="inline-block w-6 h-[2px] bg-text-muted/40 rounded" />
+            <span className="inline-block w-6 h-[2px] bg-text-muted/40 rounded" />
+            <span className="inline-block w-6 h-[2px] bg-text-muted/40 rounded" />
+            <span className="ml-1">{showQuoted ? 'Hide quoted text' : ''}</span>
+          </button>
+        </div>
+      )}
 
       {/* Attachments */}
       {message.attachments.length > 0 && (
@@ -631,7 +809,7 @@ function ActionButton({
   color,
 }: {
   label: string;
-  shortcut: string;
+  shortcut?: string;
   onClick: () => void;
   icon: React.ReactNode;
   color?: string;
@@ -640,7 +818,7 @@ function ActionButton({
     <button
       onClick={onClick}
       className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs transition-colors hover:bg-bg-hover ${color || 'text-text-secondary hover:text-text-primary'}`}
-      title={`${label} (${shortcut})`}
+      title={shortcut ? `${label} (${shortcut})` : label}
     >
       {icon}
       <span className="hidden lg:inline">{label}</span>

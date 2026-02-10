@@ -371,7 +371,196 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
   // ── Health ─────────────────────────────────────────────────
 
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', app: 'kenaz', version: '0.1.0' });
+    res.json({ status: 'ok', app: 'kenaz' });
+  });
+
+  // ── OpenAPI Spec ──────────────────────────────────────────
+
+  app.get('/openapi.json', (_req, res) => {
+    res.json({
+      openapi: '3.0.3',
+      info: {
+        title: 'Kenaz API',
+        description: 'Local API for the Kenaz email client. Provides access to Gmail, HubSpot CRM, Google Calendar, and client configuration (views/rules).',
+        version: '0.4.2',
+        contact: { name: 'Kenaz' },
+      },
+      servers: [{ url: `http://localhost:${port}`, description: 'Local Kenaz instance' }],
+      paths: {
+        '/api/health': {
+          get: { summary: 'Health check', operationId: 'health', tags: ['System'], responses: { '200': { description: 'Server status', content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string' }, app: { type: 'string' } } } } } } } },
+        },
+        '/api/inbox': {
+          get: { summary: 'List inbox threads', operationId: 'getInbox', tags: ['Gmail'], responses: { '200': { description: 'Inbox threads', content: { 'application/json': { schema: { type: 'object', properties: { threads: { type: 'array', items: { $ref: '#/components/schemas/Thread' } } } } } } } } },
+        },
+        '/api/unread': {
+          get: { summary: 'Unread inbox threads with count', operationId: 'getUnread', tags: ['Gmail'], responses: { '200': { description: 'Unread threads', content: { 'application/json': { schema: { type: 'object', properties: { count: { type: 'integer' }, threads: { type: 'array', items: { $ref: '#/components/schemas/Thread' } } } } } } } } },
+        },
+        '/api/email/{id}': {
+          get: { summary: 'Get full thread by ID', operationId: 'getThread', tags: ['Gmail'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Full thread with messages' }, '404': { description: 'Thread not found' } } },
+        },
+        '/api/thread/{id}/summary': {
+          get: { summary: 'AI-ready thread summary (timeline, participants, latest message)', operationId: 'getThreadSummary', tags: ['Gmail'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Thread summary' } } },
+        },
+        '/api/search': {
+          get: { summary: 'Search threads using Gmail query syntax', operationId: 'searchThreads', tags: ['Gmail'], parameters: [{ name: 'q', in: 'query', required: true, schema: { type: 'string' }, description: 'Gmail search query (e.g. "from:user@example.com", "subject:invoice", "is:unread")' }], responses: { '200': { description: 'Matching threads' } } },
+        },
+        '/api/send': {
+          post: { summary: 'Send an email', operationId: 'sendEmail', tags: ['Gmail'], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/SendEmailPayload' } } } }, responses: { '200': { description: 'Sent message ID and thread ID' } } },
+        },
+        '/api/draft': {
+          post: { summary: 'Create a draft', operationId: 'createDraft', tags: ['Gmail'], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/SendEmailPayload' } } } }, responses: { '200': { description: 'Draft ID' } } },
+        },
+        '/api/drafts': {
+          get: { summary: 'List drafts', operationId: 'listDrafts', tags: ['Gmail'], responses: { '200': { description: 'List of drafts' } } },
+        },
+        '/api/draft/{id}': {
+          get: { summary: 'Get draft by ID', operationId: 'getDraft', tags: ['Gmail'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Draft content' } } },
+          delete: { summary: 'Delete a draft', operationId: 'deleteDraft', tags: ['Gmail'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Success' } } },
+        },
+        '/api/labels': {
+          get: { summary: 'List all Gmail labels', operationId: 'listLabels', tags: ['Gmail'], responses: { '200': { description: 'Label list with IDs, names, and types' } } },
+        },
+        '/api/label/{id}': {
+          post: { summary: 'Add/remove labels on a thread', operationId: 'modifyLabels', tags: ['Gmail'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Thread ID' }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { add: { type: 'string', description: 'Label name to add' }, remove: { type: 'string', description: 'Label name to remove' } } } } } }, responses: { '200': { description: 'Success' } } },
+        },
+        '/api/archive/{id}': {
+          post: { summary: 'Archive a thread (remove from inbox)', operationId: 'archiveThread', tags: ['Gmail'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Success' } } },
+        },
+        '/api/thread/{id}': {
+          delete: { summary: 'Trash a thread', operationId: 'trashThread', tags: ['Gmail'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Success' } } },
+        },
+        '/api/batch/archive': {
+          post: { summary: 'Archive multiple threads at once', operationId: 'batchArchive', tags: ['Gmail'], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { threadIds: { type: 'array', items: { type: 'string' } } }, required: ['threadIds'] } } } }, responses: { '200': { description: 'Success with count' } } },
+        },
+        '/api/attachment/{messageId}/{attachmentId}': {
+          get: { summary: 'Download an attachment', operationId: 'getAttachment', tags: ['Gmail'], parameters: [{ name: 'messageId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'attachmentId', in: 'path', required: true, schema: { type: 'string' } }, { name: 'filename', in: 'query', schema: { type: 'string' } }], responses: { '200': { description: 'Binary file download' } } },
+        },
+        '/api/stats': {
+          get: { summary: 'Inbox statistics (counts for inbox, unread, pending, todo, starred)', operationId: 'getStats', tags: ['Gmail'], responses: { '200': { description: 'Count object' } } },
+        },
+        '/api/hubspot/contact/{email}': {
+          get: { summary: 'Look up HubSpot contact by email', operationId: 'getHubspotContact', tags: ['HubSpot'], parameters: [{ name: 'email', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Contact, deals, activities' } } },
+        },
+        '/api/hubspot/deals': {
+          get: { summary: 'List active HubSpot deals', operationId: 'getHubspotDeals', tags: ['HubSpot'], parameters: [{ name: 'stage', in: 'query', schema: { type: 'string' } }, { name: 'owner', in: 'query', schema: { type: 'string' } }], responses: { '200': { description: 'Deal list' } } },
+        },
+        '/api/hubspot/recent/{email}': {
+          get: { summary: 'Recent HubSpot activities for a contact', operationId: 'getHubspotRecent', tags: ['HubSpot'], parameters: [{ name: 'email', in: 'path', required: true, schema: { type: 'string' } }, { name: 'limit', in: 'query', schema: { type: 'integer', default: 10 } }], responses: { '200': { description: 'Recent activities' } } },
+        },
+        '/api/hubspot/log': {
+          post: { summary: 'Log an email to HubSpot', operationId: 'logToHubspot', tags: ['HubSpot'], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object' } } } }, responses: { '200': { description: 'Success' } } },
+        },
+        '/api/context/{email}': {
+          get: { summary: 'Combined context: HubSpot contact + deals + activities + recent email threads', operationId: 'getContext', tags: ['Combined'], parameters: [{ name: 'email', in: 'path', required: true, schema: { type: 'string', format: 'email' } }], responses: { '200': { description: 'Full context for a contact' } } },
+        },
+        '/api/views': {
+          get: { summary: 'List custom email views', operationId: 'listViews', tags: ['Views & Rules'], responses: { '200': { description: 'View list' } } },
+          post: { summary: 'Create a custom view', operationId: 'createView', tags: ['Views & Rules'], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/View' } } } }, responses: { '200': { description: 'Updated view list' } } },
+        },
+        '/api/views/{id}': {
+          put: { summary: 'Update a view', operationId: 'updateView', tags: ['Views & Rules'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/View' } } } }, responses: { '200': { description: 'Updated view list' } } },
+          delete: { summary: 'Delete a view', operationId: 'deleteView', tags: ['Views & Rules'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Updated view list' } } },
+        },
+        '/api/rules': {
+          get: { summary: 'List automation rules', operationId: 'listRules', tags: ['Views & Rules'], responses: { '200': { description: 'Rule list' } } },
+          post: { summary: 'Create a rule', operationId: 'createRule', tags: ['Views & Rules'], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Rule' } } } }, responses: { '200': { description: 'Updated rule list' } } },
+        },
+        '/api/rules/{id}': {
+          put: { summary: 'Update a rule', operationId: 'updateRule', tags: ['Views & Rules'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/Rule' } } } }, responses: { '200': { description: 'Updated rule list' } } },
+          delete: { summary: 'Delete a rule', operationId: 'deleteRule', tags: ['Views & Rules'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Updated rule list' } } },
+        },
+        '/api/calendar/events': {
+          get: { summary: 'List calendar events in a time range', operationId: 'listEvents', tags: ['Calendar'], parameters: [{ name: 'timeMin', in: 'query', schema: { type: 'string', format: 'date-time' } }, { name: 'timeMax', in: 'query', schema: { type: 'string', format: 'date-time' } }], responses: { '200': { description: 'Event list' } } },
+        },
+        '/api/calendar/rsvp/{eventId}': {
+          post: { summary: 'RSVP to a calendar event', operationId: 'rsvpEvent', tags: ['Calendar'], parameters: [{ name: 'eventId', in: 'path', required: true, schema: { type: 'string' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', properties: { response: { type: 'string', enum: ['accepted', 'tentative', 'declined'] }, calendarId: { type: 'string', default: 'primary' } }, required: ['response'] } } } }, responses: { '200': { description: 'Updated event' } } },
+        },
+      },
+      components: {
+        schemas: {
+          Thread: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              subject: { type: 'string' },
+              snippet: { type: 'string' },
+              lastDate: { type: 'string', format: 'date-time' },
+              labels: { type: 'array', items: { type: 'string' } },
+              isUnread: { type: 'boolean' },
+              from: { type: 'object', properties: { name: { type: 'string' }, email: { type: 'string' } } },
+              messages: { type: 'array', items: { $ref: '#/components/schemas/Message' } },
+            },
+          },
+          Message: {
+            type: 'object',
+            properties: {
+              id: { type: 'string' },
+              from: { type: 'object', properties: { name: { type: 'string' }, email: { type: 'string' } } },
+              to: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, email: { type: 'string' } } } },
+              cc: { type: 'array', items: { type: 'object', properties: { name: { type: 'string' }, email: { type: 'string' } } } },
+              subject: { type: 'string' },
+              snippet: { type: 'string' },
+              body: { type: 'string', description: 'HTML body' },
+              bodyText: { type: 'string', description: 'Plain text body' },
+              date: { type: 'string', format: 'date-time' },
+              labels: { type: 'array', items: { type: 'string' } },
+              isUnread: { type: 'boolean' },
+              hasAttachments: { type: 'boolean' },
+              attachments: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, filename: { type: 'string' }, mimeType: { type: 'string' }, size: { type: 'integer' } } } },
+            },
+          },
+          SendEmailPayload: {
+            type: 'object',
+            required: ['to', 'subject', 'body_markdown'],
+            properties: {
+              to: { type: 'string', description: 'Comma-separated recipient emails' },
+              cc: { type: 'string' },
+              bcc: { type: 'string' },
+              subject: { type: 'string' },
+              body_markdown: { type: 'string', description: 'Email body in markdown (converted to HTML)' },
+              reply_to_thread_id: { type: 'string' },
+              reply_to_message_id: { type: 'string' },
+              signature: { type: 'boolean', default: true },
+              skip_auto_bcc: { type: 'boolean' },
+            },
+          },
+          View: {
+            type: 'object',
+            required: ['id', 'name', 'query'],
+            properties: {
+              id: { type: 'string' },
+              name: { type: 'string' },
+              icon: { type: 'string' },
+              query: { type: 'string', description: 'Gmail search query (e.g. "in:inbox", "label:PENDING")' },
+              shortcut: { type: 'string' },
+              color: { type: 'string' },
+            },
+          },
+          Rule: {
+            type: 'object',
+            required: ['id', 'name', 'conditions', 'actions'],
+            properties: {
+              id: { type: 'string' },
+              name: { type: 'string' },
+              enabled: { type: 'boolean' },
+              conditions: { type: 'array', items: { type: 'object', properties: { field: { type: 'string', enum: ['sender', 'to', 'cc', 'subject', 'body', 'has_attachment', 'label'] }, operator: { type: 'string', enum: ['contains', 'not_contains', 'equals', 'matches'] }, value: { type: 'string' } } } },
+              actions: { type: 'array', items: { type: 'object', properties: { type: { type: 'string', enum: ['add_label', 'remove_label', 'archive', 'mark_read'] }, label: { type: 'string' } } } },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  // ── Root discovery ────────────────────────────────────────
+
+  app.get('/', (_req, res) => {
+    res.json({
+      name: 'Kenaz API',
+      docs: `http://localhost:${port}/openapi.json`,
+      health: `http://localhost:${port}/api/health`,
+    });
   });
 
   const server = app.listen(port, '127.0.0.1', () => {

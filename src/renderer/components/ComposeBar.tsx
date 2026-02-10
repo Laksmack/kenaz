@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { ComposeData, SendEmailPayload, EmailAttachment } from '@shared/types';
+import { RichTextEditor } from './RichTextEditor';
 
 // ── Email Chip Input ────────────────────────────────────────
 // Renders emails as removable chips. Type and press Enter/Tab/comma to add.
@@ -110,14 +111,20 @@ interface Props {
   onClose: () => void;
   onSent: (payload: SendEmailPayload, draftId?: string) => void;
   autoBccEnabled?: boolean;
+  composeMode?: 'html' | 'markdown';
 }
 
-export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = false }: Props) {
+export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = false, composeMode = 'html' }: Props) {
   const [to, setTo] = useState<string[]>(() => initialData?.to ? parseEmails(initialData.to) : []);
   const [cc, setCc] = useState<string[]>(() => initialData?.cc ? parseEmails(initialData.cc) : []);
   const [bcc, setBcc] = useState<string[]>(() => initialData?.bcc ? parseEmails(initialData.bcc) : []);
   const [subject, setSubject] = useState(initialData?.subject || '');
-  const [body, setBody] = useState(initialData?.bodyMarkdown || '');
+  // For HTML mode, initialize from bodyHtml if available, else bodyMarkdown
+  const initialBodyHtml = initialData?.bodyHtml || initialData?.bodyMarkdown || '';
+  const initialBodyMarkdown = initialData?.bodyMarkdown || '';
+
+  const [bodyMarkdown, setBodyMarkdown] = useState(initialBodyMarkdown);
+  const [bodyHtml, setBodyHtml] = useState(initialBodyHtml);
   const [showCcBcc, setShowCcBcc] = useState(() => (initialData?.cc || initialData?.bcc) ? true : false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,28 +144,32 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
     cc: initialData?.cc ? parseEmails(initialData.cc).sort().join(',') : '',
     bcc: initialData?.bcc ? parseEmails(initialData.bcc).sort().join(',') : '',
     subject: initialData?.subject || '',
-    body: initialData?.bodyMarkdown || '',
+    bodyMarkdown: initialBodyMarkdown,
+    bodyHtml: initialBodyHtml,
   });
 
-  // Auto-focus: TO field for new compose, body for replies
+  // Auto-focus: TO field for new compose, body for replies (markdown only — TipTap handles its own autofocus)
   useEffect(() => {
-    if (initialData?.replyToThreadId && bodyRef.current) {
+    if (composeMode === 'markdown' && initialData?.replyToThreadId && bodyRef.current) {
       bodyRef.current.focus();
       bodyRef.current.setSelectionRange(0, 0);
       bodyRef.current.scrollTop = 0;
-    } else if (toRef.current) {
+    } else if (!initialData?.replyToThreadId && toRef.current) {
       toRef.current.focus();
     }
   }, []);
 
   const hasChanges = (() => {
     const snap = initialSnapshot.current;
+    const bodyChanged = composeMode === 'html'
+      ? bodyHtml !== snap.bodyHtml
+      : bodyMarkdown !== snap.bodyMarkdown;
     return (
       [...to].sort().join(',') !== snap.to ||
       [...cc].sort().join(',') !== snap.cc ||
       [...bcc].sort().join(',') !== snap.bcc ||
       subject !== snap.subject ||
-      body !== snap.body ||
+      bodyChanged ||
       attachments.length > 0
     );
   })();
@@ -236,7 +247,8 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
       cc: cc.length > 0 ? cc.join(', ') : undefined,
       bcc: bcc.length > 0 ? bcc.join(', ') : undefined,
       subject,
-      body_markdown: body,
+      body_markdown: composeMode === 'markdown' ? bodyMarkdown : '',
+      body_html: composeMode === 'html' ? bodyHtml : undefined,
       reply_to_thread_id: initialData?.replyToThreadId,
       reply_to_message_id: initialData?.replyToMessageId,
       signature: true,
@@ -246,27 +258,20 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
 
     sentRef.current = true;
     onSent(payload, initialData?.draftId);
-  }, [to, cc, bcc, subject, body, initialData, onSent, autoBccEnabled, useAutoBcc]);
+  }, [to, cc, bcc, subject, bodyMarkdown, bodyHtml, composeMode, initialData, onSent, autoBccEnabled, useAutoBcc, attachments]);
 
-  const handleClose = useCallback(async () => {
-    if (sentRef.current || !hasChanges) {
-      onClose();
-      return;
-    }
-
-    // Auto-save as draft
+  const handleSaveDraft = useCallback(async () => {
     setSavingDraft(true);
     try {
+      const draftBody = composeMode === 'html' ? bodyHtml : bodyMarkdown;
       await window.kenaz.createDraft({
         to: to.length > 0 ? to.join(', ') : undefined,
         cc: cc.length > 0 ? cc.join(', ') : undefined,
         bcc: bcc.length > 0 ? bcc.join(', ') : undefined,
         subject: subject || undefined,
-        body_markdown: body || undefined,
+        body_markdown: draftBody || undefined,
         reply_to_thread_id: initialData?.replyToThreadId,
       });
-
-      // If we resumed from an existing draft, delete the old one
       if (initialData?.draftId) {
         try { await window.kenaz.deleteDraft(initialData.draftId); } catch {}
       }
@@ -276,7 +281,33 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
       setSavingDraft(false);
       onClose();
     }
-  }, [to, cc, bcc, subject, body, initialData, hasChanges, onClose]);
+  }, [to, cc, bcc, subject, bodyMarkdown, bodyHtml, composeMode, initialData, onClose]);
+
+  const handleDiscard = useCallback(async () => {
+    // Delete the draft if this was a draft
+    if (initialData?.draftId) {
+      try { await window.kenaz.deleteDraft(initialData.draftId); } catch (e) {
+        console.error('Failed to delete draft:', e);
+      }
+    }
+    onClose();
+  }, [initialData, onClose]);
+
+  // Escape key → save draft if changes, otherwise just close
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        if (hasChanges && !sentRef.current) {
+          handleSaveDraft();
+        } else {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [hasChanges, handleSaveDraft, onClose]);
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -288,7 +319,7 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
 
   return (
     <div
-      className={`border-t border-border-subtle bg-bg-secondary relative ${dragging ? 'ring-2 ring-accent-primary ring-inset' : ''}`}
+      className={`flex flex-col h-full bg-bg-secondary relative ${dragging ? 'ring-2 ring-accent-primary ring-inset' : ''}`}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       onDragOver={handleDragOver}
@@ -311,41 +342,44 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
       />
 
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle">
+      <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle flex-shrink-0">
         <span className="text-xs font-semibold text-text-secondary">
           {initialData?.draftId ? 'Draft' : initialData?.replyToThreadId ? 'Reply' : 'New Email'}
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button
             onClick={handleSend}
             disabled={sending || savingDraft}
             className="px-3 py-1 bg-accent-primary hover:bg-accent-primary/80 disabled:opacity-50 text-white text-xs rounded font-medium transition-colors"
+            title="Send (Cmd+Enter)"
           >
             {sending ? 'Sending...' : 'Send'}
           </button>
           <button
-            onClick={handleClose}
-            disabled={savingDraft}
-            className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors"
-            title={hasChanges ? 'Close & save as draft' : 'Close'}
+            onClick={handleSaveDraft}
+            disabled={sending || savingDraft}
+            className="px-3 py-1 bg-bg-hover hover:bg-border-subtle disabled:opacity-50 text-text-secondary text-xs rounded font-medium transition-colors"
+            title="Save as draft (Esc)"
           >
-            {savingDraft ? (
-              <span className="text-[10px] text-text-muted px-1">Saving...</span>
-            ) : (
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            )}
+            {savingDraft ? 'Saving...' : 'Save'}
+          </button>
+          <button
+            onClick={handleDiscard}
+            disabled={sending || savingDraft}
+            className="px-3 py-1 bg-bg-hover hover:bg-red-500/20 hover:text-red-400 disabled:opacity-50 text-text-muted text-xs rounded font-medium transition-colors"
+            title="Discard"
+          >
+            Discard
           </button>
         </div>
       </div>
 
       {error && (
-        <div className="px-4 py-1.5 bg-accent-danger/10 text-accent-danger text-xs">{error}</div>
+        <div className="px-4 py-1.5 bg-accent-danger/10 text-accent-danger text-xs flex-shrink-0">{error}</div>
       )}
 
       {/* Fields */}
-      <div className="px-4 py-2 space-y-1.5">
+      <div className="px-4 py-2 space-y-1.5 flex-shrink-0">
         <div className="flex items-center gap-2">
           <label className="text-xs text-text-muted w-12">To</label>
           <EmailChipInput
@@ -387,26 +421,38 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
         </div>
       </div>
 
-      {/* Body - markdown editor */}
-      <div className="px-4 pb-3">
-        <textarea
-          ref={bodyRef}
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          className="w-full h-32 bg-bg-primary border border-border-subtle rounded px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary resize-y font-mono selectable"
-          placeholder="Write in markdown..."
-          onKeyDown={(e) => {
-            // Cmd+Enter to send
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-              e.preventDefault();
-              handleSend();
-            }
-          }}
+      {/* Editor area — fills remaining space */}
+      {composeMode === 'html' ? (
+        <RichTextEditor
+          content={bodyHtml}
+          onChange={setBodyHtml}
+          placeholder="Write your email..."
+          autoFocus={!!initialData?.replyToThreadId}
+          onCmdEnter={handleSend}
         />
+      ) : (
+        <div className="flex-1 flex flex-col px-4 pb-3 overflow-hidden">
+          <textarea
+            ref={bodyRef}
+            value={bodyMarkdown}
+            onChange={(e) => setBodyMarkdown(e.target.value)}
+            className="flex-1 w-full bg-bg-primary border border-border-subtle rounded px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary resize-none font-mono selectable"
+            placeholder="Write in markdown..."
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+          />
+        </div>
+      )}
 
+      {/* Footer: Attachments + info bar */}
+      <div className="flex-shrink-0 px-4 py-2 border-t border-border-subtle">
         {/* Attachments */}
         {attachments.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-2">
+          <div className="flex flex-wrap gap-1.5 mb-2">
             {attachments.map((att, i) => (
               <span
                 key={`${att.filename}-${i}`}
@@ -434,7 +480,7 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
           </div>
         )}
 
-        <div className="flex items-center justify-between mt-1">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -446,7 +492,9 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
               </svg>
             </button>
-            <span className="text-[10px] text-text-muted">Markdown supported · Cmd+Enter to send</span>
+            <span className="text-[10px] text-text-muted">
+              {composeMode === 'html' ? 'Rich text' : 'Markdown'} · Cmd+Enter to send
+            </span>
           </div>
           <div className="flex items-center gap-3">
             {autoBccEnabled && (

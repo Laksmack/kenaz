@@ -486,8 +486,10 @@ export class GmailService {
 
     const appConfig = this.config.get();
 
-    // Convert markdown to simple HTML
-    let htmlBody = this.markdownToHtml(payload.body_markdown);
+    // Use pre-built HTML if provided (rich editor), otherwise convert markdown
+    let htmlBody = payload.body_html
+      ? payload.body_html
+      : this.markdownToHtml(payload.body_markdown);
 
     // Append signature
     if (payload.signature !== false) {
@@ -520,6 +522,11 @@ export class GmailService {
       }
     }
 
+    // Build From header with display name if configured
+    const fromHeader = appConfig.displayName
+      ? `From: ${mimeEncodeHeader(appConfig.displayName)} <${this.userEmail}>`
+      : `From: ${this.userEmail}`;
+
     // Build RFC 2822 message
     let rawMessage: string;
 
@@ -528,6 +535,7 @@ export class GmailService {
       const boundary = `kenaz_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
       const topHeaders = [
+        fromHeader,
         `To: ${payload.to}`,
         payload.cc ? `Cc: ${payload.cc}` : null,
         bcc ? `Bcc: ${bcc}` : null,
@@ -536,35 +544,38 @@ export class GmailService {
         `Content-Type: multipart/mixed; boundary="${boundary}"`,
       ].filter(Boolean);
 
-      const parts: string[] = [];
+      // Build the MIME body with proper boundary separators
+      // RFC 2046: each boundary must be preceded by a CRLF, and
+      // there must be a CRLF after each part's content before the next boundary.
+      const mimeBody: string[] = [];
 
       // HTML body part
-      parts.push(
-        `--${boundary}\r\n` +
-        'Content-Type: text/html; charset=utf-8\r\n' +
-        'Content-Transfer-Encoding: 7bit\r\n' +
-        '\r\n' +
-        htmlBody
-      );
+      mimeBody.push(`--${boundary}`);
+      mimeBody.push('Content-Type: text/html; charset=utf-8');
+      mimeBody.push('Content-Transfer-Encoding: 7bit');
+      mimeBody.push('');
+      mimeBody.push(htmlBody);
 
       // Attachment parts
       for (const att of payload.attachments) {
         // Wrap base64 at 76 chars per line per RFC 2045
         const wrappedBase64 = att.base64.replace(/(.{76})/g, '$1\r\n');
-        parts.push(
-          `--${boundary}\r\n` +
-          `Content-Type: ${att.mimeType}; name="${att.filename}"\r\n` +
-          'Content-Transfer-Encoding: base64\r\n' +
-          `Content-Disposition: attachment; filename="${att.filename}"\r\n` +
-          '\r\n' +
-          wrappedBase64
-        );
+        mimeBody.push(`--${boundary}`);
+        mimeBody.push(`Content-Type: ${att.mimeType}; name="${att.filename}"`);
+        mimeBody.push('Content-Transfer-Encoding: base64');
+        mimeBody.push(`Content-Disposition: attachment; filename="${att.filename}"`);
+        mimeBody.push('');
+        mimeBody.push(wrappedBase64);
       }
 
-      rawMessage = [...topHeaders, '', parts.join('\r\n'), `--${boundary}--`].join('\r\n');
+      // Closing boundary
+      mimeBody.push(`--${boundary}--`);
+
+      rawMessage = [...topHeaders, '', ...mimeBody].join('\r\n');
     } else {
       // Simple message without attachments
       const headers = [
+        fromHeader,
         `To: ${payload.to}`,
         payload.cc ? `Cc: ${payload.cc}` : null,
         bcc ? `Bcc: ${bcc}` : null,
@@ -574,6 +585,19 @@ export class GmailService {
       ].filter(Boolean);
 
       rawMessage = [...headers, '', htmlBody].join('\r\n');
+    }
+
+    // Debug: log MIME structure
+    console.log(`[SEND] rawMessage length: ${rawMessage.length}`);
+    if (payload.attachments && payload.attachments.length > 0) {
+      console.log(`[SEND] attachments: ${payload.attachments.length}`);
+      for (const att of payload.attachments) {
+        console.log(`[SEND]   ${att.filename} (${att.mimeType}, base64 len=${att.base64.length})`);
+      }
+      // Log first 500 chars of the raw message for MIME header verification
+      console.log(`[SEND] MIME start:\n${rawMessage.slice(0, 500)}`);
+      // Log last 200 chars to verify closing boundary
+      console.log(`[SEND] MIME end:\n${rawMessage.slice(-200)}`);
     }
 
     const encodedMessage = Buffer.from(rawMessage)
@@ -603,17 +627,29 @@ export class GmailService {
   async createDraft(payload: Partial<SendEmailPayload>): Promise<string> {
     if (!this.gmail) throw new Error('Not authenticated');
 
+    const appConfig = this.config.get();
+
+    // Build From header with display name if configured
+    const fromHeader = appConfig.displayName
+      ? `From: ${mimeEncodeHeader(appConfig.displayName)} <${this.userEmail}>`
+      : `From: ${this.userEmail}`;
+
+    // Detect if body content looks like HTML
+    const bodyContent = payload.body_markdown || '';
+    const isHtml = /<[a-z][\s\S]*>/i.test(bodyContent);
+
     const messageParts = [
+      fromHeader,
       payload.to ? `To: ${payload.to}` : '',
       payload.cc ? `Cc: ${payload.cc}` : '',
       payload.bcc ? `Bcc: ${payload.bcc}` : '',
       payload.subject ? `Subject: ${mimeEncodeHeader(payload.subject)}` : 'Subject: ',
-      'Content-Type: text/plain; charset=utf-8',
+      isHtml ? 'Content-Type: text/html; charset=utf-8' : 'Content-Type: text/plain; charset=utf-8',
       'MIME-Version: 1.0',
       '',
-      payload.body_markdown || '',
+      bodyContent,
     ]
-      .filter((line, i) => i >= 4 || line) // keep content headers, filter empty address lines
+      .filter((line, i) => i >= 5 || line) // keep content headers + From, filter empty address lines
       .join('\r\n');
 
     const encodedMessage = Buffer.from(messageParts)
@@ -698,15 +734,28 @@ export class GmailService {
     const getHeader = (name: string) =>
       headers.find((h: {name?: string | null; value?: string | null}) => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
 
-    // Extract plain text body
+    // Extract body — prefer HTML, fall back to plain text
     let bodyText = '';
     const payload = msg?.payload;
-    if (payload?.body?.data) {
-      bodyText = Buffer.from(payload.body.data, 'base64').toString('utf-8');
-    } else if (payload?.parts) {
+    if (payload?.parts) {
+      // Prefer HTML part for rich editor
+      const htmlPart = payload.parts.find((p) => p.mimeType === 'text/html');
       const textPart = payload.parts.find((p) => p.mimeType === 'text/plain');
-      if (textPart?.body?.data) {
-        bodyText = Buffer.from(textPart.body.data, 'base64').toString('utf-8');
+      if (htmlPart?.body?.data) {
+        bodyText = Buffer.from(htmlPart.body.data, 'base64').toString('utf-8');
+      } else if (textPart?.body?.data) {
+        const plain = Buffer.from(textPart.body.data, 'base64').toString('utf-8');
+        bodyText = plain.split('\n').map(line => `<p>${line || '<br>'}</p>`).join('');
+      }
+    } else if (payload?.body?.data) {
+      const raw = Buffer.from(payload.body.data, 'base64').toString('utf-8');
+      // Check content-type to decide if it's HTML
+      const contentType = headers.find((h) => h.name?.toLowerCase() === 'content-type')?.value || '';
+      if (contentType.includes('text/html')) {
+        bodyText = raw;
+      } else {
+        // Plain text — convert to HTML paragraphs
+        bodyText = raw.split('\n').map(line => `<p>${line || '<br>'}</p>`).join('');
       }
     }
 
@@ -841,9 +890,9 @@ export class GmailService {
       .replace(/^## (.+)$/gm, '<h2>$1</h2>')
       .replace(/^# (.+)$/gm, '<h1>$1</h1>')
       .replace(/^- (.+)$/gm, '<li>$1</li>')
-      .replace(/\n\n/g, '</p><p>')
+      .replace(/\n\n/g, '<br/><br/>')
       .replace(/\n/g, '<br/>');
 
-    return `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; font-size: 14px; color: #333;"><p>${html}</p></div>`;
+    return `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; font-size: 14px; color: #333;">${html}</div>`;
   }
 }

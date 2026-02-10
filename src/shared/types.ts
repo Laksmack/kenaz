@@ -111,6 +111,7 @@ export interface ComposeData {
   bcc: string;
   subject: string;
   bodyMarkdown: string;
+  bodyHtml?: string; // HTML content for rich editor mode
   replyToThreadId?: string;
   replyToMessageId?: string;
   hubspotDealId?: string;
@@ -189,6 +190,7 @@ export interface SendEmailPayload {
   bcc?: string;
   subject: string;
   body_markdown: string;
+  body_html?: string; // If present, sent directly (skip markdown conversion)
   reply_to_thread_id?: string;
   reply_to_message_id?: string;
   hubspot_deal_id?: string;
@@ -211,6 +213,7 @@ export const IPC = {
   GMAIL_LABEL: 'gmail:label',
   GMAIL_MARK_READ: 'gmail:mark-read',
   GMAIL_DOWNLOAD_ATTACHMENT: 'gmail:download-attachment',
+  GMAIL_GET_ATTACHMENT_BASE64: 'gmail:get-attachment-base64',
 
   // Calendar
   CALENDAR_TODAY: 'calendar:today',
@@ -254,6 +257,7 @@ export const IPC = {
 // ── Config ───────────────────────────────────────────────────
 
 export interface AppConfig {
+  displayName: string; // User's display name (shown in email list for sent items)
   signature: string;
   hubspotToken: string;
   hubspotEnabled: boolean;
@@ -264,9 +268,12 @@ export interface AppConfig {
   autoBccEnabled: boolean;
   autoBccAddress: string; // e.g. "crm@hubspot.com"
   autoBccExcludedDomains: string[]; // e.g. ["compscience.com"] — skip BCC for these domains
+  archiveOnReply: boolean; // Automatically mark thread as done when replying
+  composeMode: 'html' | 'markdown'; // Editor mode for compose window
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
+  displayName: '',
   signature: `<p style="color:#666;font-size:13px;">Martin Stenkilde<br/>Director of Product & Business Development<br/>CompScience</p>`,
   hubspotToken: '',
   hubspotEnabled: false,
@@ -277,4 +284,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   autoBccEnabled: false,
   autoBccAddress: '',
   autoBccExcludedDomains: [],
+  archiveOnReply: false,
+  composeMode: 'html',
 };

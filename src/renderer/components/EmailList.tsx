@@ -2,6 +2,19 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { EmailThread, ViewType, View } from '@shared/types';
 import { formatRelativeDate } from '../lib/utils';
 
+// Clean snippet text: strip HTML tags, decode entities, collapse whitespace
+function cleanSnippet(text: string): string {
+  // Strip HTML tags
+  const stripped = text.replace(/<[^>]*>/g, ' ');
+  // Strip data URIs (base64 images etc.) that leak into snippets
+  const noData = stripped.replace(/data:[^\s"')]+/g, '');
+  // Decode HTML entities
+  const el = document.createElement('textarea');
+  el.innerHTML = noData;
+  // Collapse whitespace
+  return el.value.replace(/\s+/g, ' ').trim();
+}
+
 interface ContextMenuAction {
   label: string;
   icon?: string;
@@ -13,10 +26,12 @@ interface ContextMenuAction {
 interface Props {
   threads: EmailThread[];
   selectedId: string | null;
+  selectedIds: Set<string>;
   loading: boolean;
   loadingMore?: boolean;
   hasMore?: boolean;
   onSelect: (thread: EmailThread) => void;
+  onMultiSelect: (ids: Set<string>) => void;
   onLoadMore?: () => void;
   currentView: ViewType;
   userEmail?: string;
@@ -25,11 +40,14 @@ interface Props {
   onLabel?: (threadId: string, label: string) => void;
   onStar?: (threadId: string) => void;
   onCreateRule?: (senderEmail: string, senderName: string) => void;
+  onDoubleClick?: (thread: EmailThread) => void;
+  userDisplayName?: string;
 }
 
-export function EmailList({ threads, selectedId, loading, loadingMore, hasMore, onSelect, onLoadMore, currentView, userEmail, views = [], onArchive, onLabel, onStar, onCreateRule }: Props) {
+export function EmailList({ threads, selectedId, selectedIds, loading, loadingMore, hasMore, onSelect, onMultiSelect, onLoadMore, currentView, userEmail, userDisplayName, views = [], onArchive, onLabel, onStar, onCreateRule, onDoubleClick }: Props) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; thread: EmailThread } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const lastClickedIdRef = useRef<string | null>(null);
 
   // Close context menu on click outside or Escape
   useEffect(() => {
@@ -72,14 +90,66 @@ export function EmailList({ threads, selectedId, loading, loadingMore, hasMore, 
     }
   });
 
+  const handleItemClick = (e: React.MouseEvent, thread: EmailThread) => {
+    if (e.metaKey || e.ctrlKey) {
+      // Cmd/Ctrl+click: toggle individual selection
+      const next = new Set(selectedIds);
+      if (next.has(thread.id)) {
+        next.delete(thread.id);
+      } else {
+        next.add(thread.id);
+      }
+      onMultiSelect(next);
+      lastClickedIdRef.current = thread.id;
+    } else if (e.shiftKey && lastClickedIdRef.current) {
+      // Shift+click: range selection from last clicked to this one
+      const startIdx = threads.findIndex((t) => t.id === lastClickedIdRef.current);
+      const endIdx = threads.findIndex((t) => t.id === thread.id);
+      if (startIdx !== -1 && endIdx !== -1) {
+        const from = Math.min(startIdx, endIdx);
+        const to = Math.max(startIdx, endIdx);
+        const next = new Set(selectedIds);
+        for (let i = from; i <= to; i++) {
+          next.add(threads[i].id);
+        }
+        onMultiSelect(next);
+      }
+    } else {
+      // Normal click: clear multi-select, select single thread
+      if (selectedIds.size > 0) {
+        onMultiSelect(new Set());
+      }
+      setContextMenu(null);
+      onSelect(thread);
+      lastClickedIdRef.current = thread.id;
+    }
+  };
+
   const handleContextMenu = (e: React.MouseEvent, thread: EmailThread) => {
     e.preventDefault();
+    // If right-clicking a thread not in the multi-selection, select only that one
+    if (selectedIds.size > 0 && !selectedIds.has(thread.id)) {
+      onMultiSelect(new Set([thread.id]));
+    } else if (selectedIds.size === 0) {
+      // No multi-select: context menu for this single thread
+    }
     setContextMenu({ x: e.clientX, y: e.clientY, thread });
   };
 
-  // Build context menu actions for a thread
+  // Get the thread IDs that the context menu should apply to
+  const getTargetIds = (thread: EmailThread): string[] => {
+    if (selectedIds.size > 1 && selectedIds.has(thread.id)) {
+      return Array.from(selectedIds);
+    }
+    return [thread.id];
+  };
+
+  // Build context menu actions for a thread (or multiple selected threads)
   const getMenuActions = (thread: EmailThread): ContextMenuAction[] => {
     const actions: ContextMenuAction[] = [];
+    const targetIds = getTargetIds(thread);
+    const count = targetIds.length;
+    const plural = count > 1 ? ` (${count})` : '';
 
     // Move to view actions (label-based views, skip current view, sent, all, drafts)
     const moveableViews = views.filter((v) =>
@@ -88,14 +158,14 @@ export function EmailList({ threads, selectedId, loading, loadingMore, hasMore, 
     if (moveableViews.length > 0) {
       for (const v of moveableViews) {
         actions.push({
-          label: `Move to ${v.name}`,
+          label: `Move to ${v.name}${plural}`,
           icon: v.icon || '📁',
           onClick: () => {
-            // Extract label from query (e.g. "label:PENDING" -> "PENDING")
             const match = v.query.match(/label:(\S+)/i);
             if (match && onLabel) {
-              onLabel(thread.id, match[1]);
+              for (const id of targetIds) onLabel(id, match[1]);
             }
+            onMultiSelect(new Set());
           },
         });
       }
@@ -104,31 +174,38 @@ export function EmailList({ threads, selectedId, loading, loadingMore, hasMore, 
 
     // Archive
     actions.push({
-      label: 'Done (Archive)',
+      label: `Done (Archive)${plural}`,
       icon: '✓',
-      onClick: () => onArchive?.(thread.id),
+      onClick: () => {
+        for (const id of targetIds) onArchive?.(id);
+        onMultiSelect(new Set());
+      },
     });
 
-    // Star/Unstar
-    const isStarred = thread.labels.includes('STARRED');
-    actions.push({
-      label: isStarred ? 'Unstar' : 'Star',
-      icon: isStarred ? '☆' : '⭐',
-      onClick: () => onStar?.(thread.id),
-    });
+    // Star/Unstar (only for single thread)
+    if (count === 1) {
+      const isStarred = thread.labels.includes('STARRED');
+      actions.push({
+        label: isStarred ? 'Unstar' : 'Star',
+        icon: isStarred ? '☆' : '⭐',
+        onClick: () => onStar?.(thread.id),
+      });
+    }
 
     actions.push({ label: '', onClick: () => {}, separator: true });
 
-    // Create rule
-    actions.push({
-      label: 'Create Rule for Sender...',
-      icon: '⚡',
-      onClick: () => {
-        const sender = thread.from.email;
-        const name = thread.from.name || sender;
-        onCreateRule?.(sender, name);
-      },
-    });
+    // Create rule (only for single thread)
+    if (count === 1) {
+      actions.push({
+        label: 'Create Rule for Sender...',
+        icon: '⚡',
+        onClick: () => {
+          const sender = thread.from.email;
+          const name = thread.from.name || sender;
+          onCreateRule?.(sender, name);
+        },
+      });
+    }
 
     return actions;
   };
@@ -178,9 +255,12 @@ export function EmailList({ threads, selectedId, loading, loadingMore, hasMore, 
           key={thread.id}
           thread={thread}
           selected={thread.id === selectedId}
-          onClick={() => { setContextMenu(null); onSelect(thread); }}
+          multiSelected={selectedIds.has(thread.id)}
+          onClick={(e) => handleItemClick(e, thread)}
+          onDoubleClick={onDoubleClick ? () => onDoubleClick(thread) : undefined}
           onContextMenu={(e) => handleContextMenu(e, thread)}
           userEmail={userEmail}
+          userDisplayName={userDisplayName}
         />
       ))}
 
@@ -296,15 +376,21 @@ function RecipientDot({ role, isUnread }: { role: 'to' | 'cc' | 'none'; isUnread
 function EmailListItem({
   thread,
   selected,
+  multiSelected,
   onClick,
+  onDoubleClick,
   onContextMenu,
   userEmail,
+  userDisplayName,
 }: {
   thread: EmailThread;
   selected: boolean;
-  onClick: () => void;
+  multiSelected?: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  onDoubleClick?: (e: React.MouseEvent) => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   userEmail?: string;
+  userDisplayName?: string;
 }) {
   const isPending = thread.labels.includes('PENDING');
   const isTodo = thread.labels.includes('TODO');
@@ -315,13 +401,21 @@ function EmailListItem({
   return (
     <div
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
-      className={`email-item ${selected ? 'active' : ''} ${thread.isUnread ? 'unread' : ''}`}
+      className={`email-item ${selected ? 'active' : ''} ${multiSelected ? 'multi-selected' : ''} ${thread.isUnread ? 'unread' : ''}`}
     >
       <div className="flex items-center gap-2 mb-1">
         {/* Sender */}
         <span className={`text-sm truncate flex-1 ${thread.isUnread ? 'text-text-primary font-semibold' : 'text-text-secondary'}`}>
-          {thread.from.name || thread.from.email}
+          {(() => {
+            const name = thread.from.name || thread.from.email;
+            // If sender is current user and name looks like an email, use display name
+            if (userDisplayName && userEmail && thread.from.email.toLowerCase() === userEmail.toLowerCase() && name.includes('@')) {
+              return userDisplayName;
+            }
+            return name;
+          })()}
         </span>
 
         {/* Recipient role dot (right of sender) */}
@@ -350,7 +444,7 @@ function EmailListItem({
 
       {/* Snippet */}
       <div className="text-xs text-text-muted truncate">
-        {thread.snippet}
+        {cleanSnippet(thread.snippet)}
       </div>
 
       {/* Labels */}

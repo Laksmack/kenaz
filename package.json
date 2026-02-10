@@ -1,6 +1,6 @@
 {
   "name": "kenaz",
-  "version": "0.3.0",
+  "version": "0.6.1",
   "description": "Kenaz ᚲ — Personal Gmail client with HubSpot CRM, Google Calendar, and Claude API",
   "main": "dist/main/main/main.js",
   "scripts": {
@@ -77,12 +77,6 @@
     "vite": "^5.0.12"
   },
   "dependencies": {
-    "@tiptap/core": "^2.1.16",
-    "@tiptap/extension-link": "^2.1.16",
-    "@tiptap/extension-placeholder": "^2.1.16",
-    "@tiptap/pm": "^2.1.16",
-    "@tiptap/react": "^2.1.16",
-    "@tiptap/starter-kit": "^2.1.16",
     "dotenv": "^17.2.4",
     "express": "^4.18.2",
     "googleapis": "^130.0.0",

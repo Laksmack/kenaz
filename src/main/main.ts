@@ -6,6 +6,7 @@ import { CalendarService } from './calendar';
 import { startApiServer } from './api-server';
 import { ConfigStore } from './config';
 import { ViewStore, RuleStore } from './stores';
+import { applyRules } from './rule-engine';
 import { IPC } from '../shared/types';
 import type { SendEmailPayload, View, Rule } from '../shared/types';
 
@@ -49,6 +50,13 @@ function createWindow() {
     console.log('[Kenaz] Loading HTML from:', htmlPath);
     mainWindow.loadFile(htmlPath);
   }
+
+  // Allow toggling DevTools with Cmd+Shift+I in production
+  mainWindow.webContents.on('before-input-event', (_event, input) => {
+    if (input.meta && input.shift && input.key.toLowerCase() === 'i') {
+      mainWindow?.webContents.toggleDevTools();
+    }
+  });
 
   // Log renderer errors
   mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
@@ -109,7 +117,17 @@ function registerIpcHandlers() {
 
   // ── Gmail Operations ──
   ipcMain.handle(IPC.GMAIL_FETCH_THREADS, async (_event, query: string, maxResults: number = 50, pageToken?: string) => {
-    return gmail.fetchThreads(query, maxResults, pageToken);
+    const result = await gmail.fetchThreads(query, maxResults, pageToken);
+    // Apply rules to inbox threads in the background (non-blocking)
+    applyRules(ruleStore, gmail, result.threads)
+      .then((madeChanges) => {
+        if (madeChanges && mainWindow && !mainWindow.isDestroyed()) {
+          // Tell the renderer to refresh since rules modified some threads
+          mainWindow.webContents.send('rules-applied');
+        }
+      })
+      .catch((e) => console.error('[Rules] Failed to apply rules:', e));
+    return result;
   });
 
   ipcMain.handle(IPC.GMAIL_FETCH_THREAD, async (_event, threadId: string) => {
@@ -150,6 +168,11 @@ function registerIpcHandlers() {
     const filePath = await gmail.downloadAttachment(messageId, attachmentId, filename);
     shell.openPath(filePath);
     return filePath;
+  });
+
+  ipcMain.handle(IPC.GMAIL_GET_ATTACHMENT_BASE64, async (_event, messageId: string, attachmentId: string) => {
+    const buffer = await gmail.getAttachmentBuffer(messageId, attachmentId);
+    return buffer.toString('base64');
   });
 
   // ── Drafts ──

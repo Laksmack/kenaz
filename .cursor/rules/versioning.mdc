@@ -1,0 +1,16 @@
+---
+description: Always bump the version in package.json after any code change (fix, feature, refactor)
+globs:
+alwaysApply: true
+---
+
+# Version Bumping Rule
+
+After every code change (bug fix, feature, refactor, or any modification to source files), bump the patch version in `package.json` before building.
+
+- Use semver: `MAJOR.MINOR.PATCH`
+- Fixes and small changes: bump PATCH (e.g. 0.3.0 → 0.3.1)
+- New features: bump MINOR (e.g. 0.3.1 → 0.4.0)
+- Breaking changes: bump MAJOR
+- Always bump before running `npm run dist` or `npm run build`
+- The version in `package.json` is the single source of truth
