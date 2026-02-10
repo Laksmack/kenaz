@@ -18,7 +18,7 @@ function buildQuery(currentView: ViewType, searchQuery: string, views: View[]): 
   return view?.query || 'in:inbox';
 }
 
-const PAGE_SIZE = 200;
+const PAGE_SIZE = 50;
 
 export function useEmails(currentView: ViewType, searchQuery: string, enabled: boolean = true, views: View[] = []) {
   const [threads, setThreads] = useState<EmailThread[]>([]);

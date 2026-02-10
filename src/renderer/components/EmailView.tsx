@@ -85,27 +85,50 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
   // Resolve a label ID to its human-readable name
   const labelName = (id: string) => labelMap[id] ? `${labelMap[id]}` : id;
 
-  // Global focus guardian: whenever an iframe steals focus, reclaim it for the main document.
-  // This ensures keyboard shortcuts always work regardless of where the user clicks.
+  // Keyboard event bridge: forward key events from iframes to the main window
+  // so shortcuts work even when an iframe has focus, without blocking text selection/copy.
   useEffect(() => {
-    const reclaimFocus = () => {
-      // If active element is an iframe, blur it so keyboard events go to the main window
-      if (document.activeElement?.tagName === 'IFRAME') {
-        (document.activeElement as HTMLElement).blur();
-      }
+    const bridgeIframeKeys = () => {
+      const iframes = document.querySelectorAll('iframe');
+      iframes.forEach((iframe) => {
+        try {
+          const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+          if (!iframeDoc || (iframeDoc as any).__kenazBridged) return;
+          (iframeDoc as any).__kenazBridged = true;
+
+          iframeDoc.addEventListener('keydown', (e: KeyboardEvent) => {
+            // Let Cmd+C / Cmd+A / Cmd+V pass through natively inside the iframe
+            if ((e.metaKey || e.ctrlKey) && ['c', 'a', 'v', 'x'].includes(e.key.toLowerCase())) {
+              return;
+            }
+            // Forward all other key events to the main window for shortcut handling
+            window.dispatchEvent(new KeyboardEvent('keydown', {
+              key: e.key,
+              code: e.code,
+              metaKey: e.metaKey,
+              ctrlKey: e.ctrlKey,
+              altKey: e.altKey,
+              shiftKey: e.shiftKey,
+              bubbles: true,
+            }));
+          });
+        } catch {
+          // Cross-origin iframe — can't access, skip
+        }
+      });
     };
 
-    // Check focus periodically (catches iframe focus grabs after content loads)
-    const interval = setInterval(reclaimFocus, 300);
+    // Bridge after a delay (iframes need time to load)
+    const timer1 = setTimeout(bridgeIframeKeys, 500);
+    const timer2 = setTimeout(bridgeIframeKeys, 1500);
+    const timer3 = setTimeout(bridgeIframeKeys, 3000);
 
-    // Also catch direct focus shifts
-    window.addEventListener('blur', () => {
-      // When the main window loses focus to an iframe, reclaim it after a tick
-      setTimeout(reclaimFocus, 50);
-    });
-
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+    };
+  }, [thread]);
 
   if (!thread) {
     return (

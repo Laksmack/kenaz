@@ -61,12 +61,13 @@ export default function App() {
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
   const prevUnreadIds = useRef<Set<string>>(new Set());
 
+  const prevCountsRef = useRef<Record<string, number>>({});
+
   useEffect(() => {
     if (authenticated !== true || views.length === 0) return;
 
     const fetchCounts = async () => {
       const counts: Record<string, number> = {};
-      // Fetch counts for each view in parallel (skip 'all', 'sent', 'search')
       await Promise.all(
         views
           .filter((v) => v.id !== 'all' && v.id !== 'sent')
@@ -84,13 +85,21 @@ export default function App() {
       // Dock badge: unread inbox count
       const inboxCount = counts['inbox'] || 0;
       window.kenaz.setBadge(inboxCount);
+
+      // Auto-refresh current view if its count changed (new mail arrived or was removed)
+      const prevCount = prevCountsRef.current[currentView];
+      const newCount = counts[currentView];
+      if (prevCount !== undefined && newCount !== undefined && prevCount !== newCount) {
+        refresh();
+      }
+      prevCountsRef.current = counts;
     };
 
     fetchCounts();
-    // Refresh counts every 60 seconds
-    const interval = setInterval(fetchCounts, 60000);
+    // Poll every 30 seconds
+    const interval = setInterval(fetchCounts, 30000);
     return () => clearInterval(interval);
-  }, [authenticated, views]);
+  }, [authenticated, views, currentView, refresh]);
 
   // ── Notifications for new unread mail ──────────────────
   useEffect(() => {

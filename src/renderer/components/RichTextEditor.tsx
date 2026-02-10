@@ -41,7 +41,7 @@ export function RichTextEditor({ content, onChange, placeholder, autoFocus, onCm
       }),
     ],
     content,
-    autofocus: autoFocus ? 'end' : false,
+    autofocus: autoFocus ? 'start' : false,
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },

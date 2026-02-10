@@ -233,16 +233,105 @@ export class GmailService {
     const threads = res.data.threads || [];
     const results: EmailThread[] = [];
 
-    // Fetch thread details in parallel (batches of 10)
-    for (let i = 0; i < threads.length; i += 10) {
-      const batch = threads.slice(i, i + 10);
+    // Fetch thread details in parallel (batches of 20) using metadata format for speed
+    for (let i = 0; i < threads.length; i += 20) {
+      const batch = threads.slice(i, i + 20);
       const details = await Promise.all(
-        batch.map((t) => this.fetchThread(t.id!))
+        batch.map((t) => this.fetchThreadMetadata(t.id!))
       );
       results.push(...details.filter((d): d is EmailThread => d !== null));
     }
 
     return { threads: results, nextPageToken: res.data.nextPageToken || undefined };
+  }
+
+  /**
+   * Lightweight thread fetch using 'metadata' format — much faster than 'full'.
+   * Only returns headers, labels, and snippet (no body content).
+   * Used for list views where we don't need message bodies.
+   */
+  private async fetchThreadMetadata(threadId: string): Promise<EmailThread | null> {
+    if (!this.gmail) throw new Error('Not authenticated');
+
+    try {
+      const res = await this.gmail.users.threads.get({
+        userId: 'me',
+        id: threadId,
+        format: 'metadata',
+        metadataHeaders: ['From', 'To', 'Cc', 'Bcc', 'Subject', 'Date'],
+      });
+
+      const rawMessages = res.data.messages || [];
+      if (rawMessages.length === 0) return null;
+
+      const messages: Email[] = rawMessages.map((msg) => {
+        const headers = msg.payload?.headers || [];
+        const getHeader = (name: string) =>
+          headers.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
+
+        const from = this.parseEmailAddress(getHeader('From'));
+        const to = this.parseEmailAddresses(getHeader('To'));
+        const cc = this.parseEmailAddresses(getHeader('Cc'));
+        const bcc = this.parseEmailAddresses(getHeader('Bcc'));
+
+        return {
+          id: msg.id || '',
+          threadId: msg.threadId || '',
+          from,
+          to,
+          cc,
+          bcc,
+          subject: getHeader('Subject'),
+          snippet: msg.snippet || '',
+          body: '', // Not available in metadata format
+          bodyText: '', // Not available in metadata format
+          date: getHeader('Date'),
+          labels: msg.labelIds || [],
+          isUnread: (msg.labelIds || []).includes('UNREAD'),
+          attachments: [], // Not available in metadata format
+          hasAttachments: false,
+        };
+      });
+
+      // Check for attachments via a quick look at the last message payload parts
+      const lastRawMsg = rawMessages[rawMessages.length - 1];
+      const hasAttachments = this.checkHasAttachments(lastRawMsg);
+      if (hasAttachments) {
+        messages[messages.length - 1].hasAttachments = true;
+      }
+
+      const lastMessage = messages[messages.length - 1];
+      const allLabels = [...new Set(messages.flatMap((m) => m.labels))];
+      const participants = this.extractParticipants(messages);
+
+      return {
+        id: threadId,
+        subject: lastMessage.subject,
+        snippet: lastMessage.snippet,
+        messages,
+        lastDate: lastMessage.date,
+        labels: allLabels,
+        isUnread: messages.some((m) => m.isUnread),
+        from: lastMessage.from,
+        participants,
+      };
+    } catch (e) {
+      console.error(`Failed to fetch thread metadata ${threadId}:`, e);
+      return null;
+    }
+  }
+
+  /**
+   * Quick check if a message likely has attachments (works with metadata format).
+   */
+  private checkHasAttachments(msg: gmail_v1.Schema$Message): boolean {
+    const payload = msg?.payload;
+    if (!payload) return false;
+    // In metadata format, parts are minimal but we can check the payload structure
+    const parts = payload.parts || [];
+    return parts.some((p) =>
+      p.filename && p.filename.length > 0 && p.body?.attachmentId
+    );
   }
 
   async fetchThread(threadId: string): Promise<EmailThread | null> {
