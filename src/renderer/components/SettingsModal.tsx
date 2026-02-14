@@ -8,7 +8,7 @@ interface Props {
   prefillRule?: Partial<Rule>;
 }
 
-type SettingsTab = 'general' | 'views' | 'rules' | 'hubspot' | 'api' | 'signature';
+type SettingsTab = 'general' | 'views' | 'rules' | 'hubspot' | 'api' | 'signature' | 'cache';
 
 export function SettingsModal({ onClose, onViewsChanged, initialTab, prefillRule }: Props) {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -57,6 +57,7 @@ export function SettingsModal({ onClose, onViewsChanged, initialTab, prefillRule
     { id: 'hubspot', label: 'HubSpot', icon: '🔗' },
     { id: 'api', label: 'API', icon: '🔌' },
     { id: 'signature', label: 'Signature', icon: '✍️' },
+    { id: 'cache', label: 'Cache', icon: '💾' },
   ];
 
   return (
@@ -115,6 +116,9 @@ export function SettingsModal({ onClose, onViewsChanged, initialTab, prefillRule
           )}
           {activeTab === 'signature' && (
             <SignatureSettings config={config} onSave={handleSave} saving={saving} />
+          )}
+          {activeTab === 'cache' && (
+            <CacheSettings config={config} onSave={handleSave} saving={saving} />
           )}
         </div>
 
@@ -1095,6 +1099,132 @@ function RulesSettings({ prefillRule }: { prefillRule?: Partial<Rule> }) {
       <p className="text-[10px] text-text-muted mt-4">
         Rules run client-side when new mail is fetched. Power users can edit the JSON directly at<br />
         <span className="font-mono">~/Library/Application Support/kenaz/rules.json</span>
+      </p>
+    </div>
+  );
+}
+
+// ── Cache Settings ────────────────────────────────────────────
+
+function CacheSettings({ config, onSave, saving }: TabProps) {
+  const [cacheEnabled, setCacheEnabled] = useState(config.cacheEnabled ?? true);
+  const [cacheMaxSizeMB, setCacheMaxSizeMB] = useState(config.cacheMaxSizeMB ?? 500);
+  const [stats, setStats] = useState<{ sizeBytes: number; threadCount: number; messageCount: number; lastSyncedAt: string | null; pendingActions: number; outboxCount: number } | null>(null);
+  const [clearing, setClearing] = useState(false);
+
+  useEffect(() => {
+    window.kenaz.getCacheStats().then(setStats).catch(() => {});
+  }, []);
+
+  const handleClear = async () => {
+    setClearing(true);
+    try {
+      await window.kenaz.clearCache();
+      const newStats = await window.kenaz.getCacheStats();
+      setStats(newStats);
+    } catch (e) {
+      console.error('Failed to clear cache:', e);
+    }
+    setClearing(false);
+  };
+
+  const formatBytes = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  };
+
+  const formatDate = (iso: string | null): string => {
+    if (!iso) return 'Never';
+    try {
+      return new Date(iso).toLocaleString();
+    } catch {
+      return 'Unknown';
+    }
+  };
+
+  const usagePct = stats ? (stats.sizeBytes / (cacheMaxSizeMB * 1024 * 1024)) * 100 : 0;
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-text-primary mb-1">Offline Cache</h3>
+      <p className="text-xs text-text-muted mb-4">
+        Cache emails locally for offline access and faster search. The cache stores email metadata and message bodies in a local SQLite database.
+      </p>
+
+      <div className="space-y-4">
+        <SettingsField label="Enable Cache" description="Store emails locally for offline access and instant search.">
+          <div className="flex items-center gap-2">
+            <ToggleSwitch checked={cacheEnabled} onChange={setCacheEnabled} />
+            <span className="text-xs text-text-muted">{cacheEnabled ? 'Enabled' : 'Disabled'}</span>
+          </div>
+        </SettingsField>
+
+        <SettingsField label="Max Cache Size" description="Maximum disk space for the email cache.">
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={100}
+              max={5000}
+              step={100}
+              value={cacheMaxSizeMB}
+              onChange={(e) => setCacheMaxSizeMB(Number(e.target.value))}
+              className="flex-1 accent-accent-primary"
+            />
+            <span className="text-xs text-text-primary font-mono w-16 text-right">{cacheMaxSizeMB >= 1000 ? `${(cacheMaxSizeMB / 1000).toFixed(1)} GB` : `${cacheMaxSizeMB} MB`}</span>
+          </div>
+        </SettingsField>
+
+        {stats && (
+          <div className="p-3 rounded-lg bg-bg-primary border border-border-subtle space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-text-secondary">Storage Used</span>
+              <span className="text-xs text-text-primary font-mono">
+                {formatBytes(stats.sizeBytes)} / {cacheMaxSizeMB >= 1000 ? `${(cacheMaxSizeMB / 1000).toFixed(1)} GB` : `${cacheMaxSizeMB} MB`}
+              </span>
+            </div>
+            <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${usagePct > 90 ? 'bg-accent-danger' : usagePct > 70 ? 'bg-yellow-500' : 'bg-accent-primary'}`}
+                style={{ width: `${Math.min(100, usagePct)}%` }}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <div>
+                <div className="text-[10px] text-text-muted">Cached Threads</div>
+                <div className="text-xs text-text-primary font-mono">{stats.threadCount.toLocaleString()}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-text-muted">Cached Messages</div>
+                <div className="text-xs text-text-primary font-mono">{stats.messageCount.toLocaleString()}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-text-muted">Last Synced</div>
+                <div className="text-xs text-text-primary">{formatDate(stats.lastSyncedAt)}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-text-muted">Pending Actions</div>
+                <div className="text-xs text-text-primary font-mono">{stats.pendingActions + stats.outboxCount}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <SaveButton onClick={() => onSave({ cacheEnabled, cacheMaxSizeMB })} saving={saving} />
+          <button
+            onClick={handleClear}
+            disabled={clearing}
+            className="px-4 py-1.5 bg-accent-danger/10 hover:bg-accent-danger/20 text-accent-danger text-xs rounded-lg font-medium transition-colors disabled:opacity-50"
+          >
+            {clearing ? 'Clearing...' : 'Clear Cache'}
+          </button>
+        </div>
+      </div>
+
+      <p className="text-[10px] text-text-muted mt-4">
+        Cache location: <span className="font-mono">~/Library/Application Support/kenaz/kenaz-cache.db</span>
       </p>
     </div>
   );

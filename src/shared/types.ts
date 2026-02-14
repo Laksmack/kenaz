@@ -30,6 +30,8 @@ export interface Attachment {
   size: number;
 }
 
+export type NudgeType = 'follow_up' | 'reply';
+
 export interface EmailThread {
   id: string;
   subject: string;
@@ -40,6 +42,7 @@ export interface EmailThread {
   isUnread: boolean;
   from: EmailAddress; // most recent sender
   participants: EmailAddress[];
+  nudgeType?: NudgeType | null; // Gmail nudge: 'follow_up' (you sent last) or 'reply' (they sent last)
 }
 
 // ── Views ────────────────────────────────────────────────────
@@ -252,6 +255,19 @@ export const IPC = {
   APP_GET_CONFIG: 'app:get-config',
   APP_SET_CONFIG: 'app:set-config',
   APP_USER_EMAIL: 'app:user-email',
+
+  // Connectivity
+  CONNECTIVITY_STATUS: 'connectivity:status',
+
+  // Cache
+  CACHE_GET_STATS: 'cache:get-stats',
+  CACHE_CLEAR: 'cache:clear',
+  CACHE_SEARCH_LOCAL: 'cache:search-local',
+
+  // Outbox
+  OUTBOX_LIST: 'outbox:list',
+  OUTBOX_CANCEL: 'outbox:cancel',
+  OUTBOX_RETRY: 'outbox:retry',
 } as const;
 
 // ── Config ───────────────────────────────────────────────────
@@ -270,6 +286,28 @@ export interface AppConfig {
   autoBccExcludedDomains: string[]; // e.g. ["compscience.com"] — skip BCC for these domains
   archiveOnReply: boolean; // Automatically mark thread as done when replying
   composeMode: 'html' | 'markdown'; // Editor mode for compose window
+  cacheEnabled: boolean; // Enable local SQLite email cache
+  cacheMaxSizeMB: number; // Max cache size in MB (default 500)
+}
+
+// ── Cache / Offline Types ───────────────────────────────────
+
+export interface CacheStats {
+  sizeBytes: number;
+  threadCount: number;
+  messageCount: number;
+  lastSyncedAt: string | null;
+  pendingActions: number;
+  outboxCount: number;
+}
+
+export interface OutboxItem {
+  id: number;
+  payload: SendEmailPayload;
+  createdAt: string;
+  status: 'queued' | 'sending' | 'sent' | 'failed';
+  error: string | null;
+  sentAt: string | null;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -286,4 +324,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   autoBccExcludedDomains: [],
   archiveOnReply: false,
   composeMode: 'html',
+  cacheEnabled: true,
+  cacheMaxSizeMB: 500,
 };

@@ -11,12 +11,14 @@ import { AdvancedSearch } from './components/AdvancedSearch';
 import { UndoToast } from './components/UndoToast';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useEmails } from './hooks/useEmails';
+import { useConnectivity } from './hooks/useConnectivity';
 import type { ViewType, ComposeData, SendEmailPayload, EmailThread, AppConfig, View, Rule } from '@shared/types';
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('inbox');
   const [selectedThread, setSelectedThread] = useState<EmailThread | null>(null);
+  const [threadUpdateAvailable, setThreadUpdateAvailable] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeData, setComposeData] = useState<Partial<ComposeData> | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -30,6 +32,9 @@ export default function App() {
   const [undoActions, setUndoActions] = useState<import('./components/UndoToast').UndoAction[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const pendingSendsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
+  // Connectivity / offline state
+  const { isOnline, pendingActions, outboxCount } = useConnectivity();
 
   // Check auth on mount, load config, user email, and views
   useEffect(() => {
@@ -96,10 +101,10 @@ export default function App() {
     };
 
     fetchCounts();
-    // Poll every 30 seconds
-    const interval = setInterval(fetchCounts, 30000);
+    // Poll every 30 seconds when online, 120s when offline (rely on cache)
+    const interval = setInterval(fetchCounts, isOnline ? 30000 : 120000);
     return () => clearInterval(interval);
-  }, [authenticated, views, currentView, refresh]);
+  }, [authenticated, views, currentView, refresh, isOnline]);
 
   // ── Notifications for new unread mail ──────────────────
   useEffect(() => {
@@ -169,12 +174,38 @@ export default function App() {
       // Thread was removed (e.g. by rules) — fall through to sync logic
     }
 
-    // 2. Keep selected thread reference in sync after list refreshes
+    // 2. Keep selected thread metadata in sync after list refreshes,
+    //    but preserve full message bodies if we already fetched them.
     if (selectedThread) {
       const match = threads.find((t) => t.id === selectedThread.id);
       if (match && match !== selectedThread) {
-        console.log(`[SELECT] syncing ref for "${match.subject?.slice(0,30)}" (same id=${match.id.slice(0,8)})`);
-        setSelectedThread(match);
+        // Check if selectedThread already has full bodies loaded
+        const lastMsg = selectedThread.messages[selectedThread.messages.length - 1];
+        const hasBodies = lastMsg && lastMsg.body;
+        if (hasBodies) {
+          // Detect new messages in thread (e.g. someone replied)
+          if (match.messages.length !== selectedThread.messages.length ||
+              match.snippet !== selectedThread.snippet) {
+            console.log(`[SELECT] thread "${match.subject?.slice(0,30)}" has update (${selectedThread.messages.length} → ${match.messages.length} msgs)`);
+            setThreadUpdateAvailable(true);
+          }
+          // Merge updated metadata (labels, isUnread) but keep full messages
+          const updated = {
+            ...selectedThread,
+            labels: match.labels,
+            isUnread: match.isUnread,
+          };
+          // Only update if something actually changed
+          if (selectedThread.labels.join(',') !== match.labels.join(',') ||
+              selectedThread.isUnread !== match.isUnread) {
+            console.log(`[SELECT] merging metadata for "${match.subject?.slice(0,30)}" (preserving bodies)`);
+            setSelectedThread(updated);
+          }
+        } else {
+          // No bodies yet — safe to replace with list version (will trigger full fetch)
+          console.log(`[SELECT] syncing ref for "${match.subject?.slice(0,30)}" (same id=${match.id.slice(0,8)})`);
+          setSelectedThread(match);
+        }
       } else if (!match) {
         console.log(`[SELECT] selectedThread "${selectedThread.subject?.slice(0,30)}" (${selectedThread.id.slice(0,8)}) NOT in threads — keeping stale ref`);
       }
@@ -213,11 +244,63 @@ export default function App() {
   }, []);
 
   const handleSelectThread = useCallback(async (thread: EmailThread) => {
-    setSelectedThread(thread);
+    // If re-clicking the already-selected thread, don't overwrite with metadata-only version
+    setSelectedThread((current) => {
+      if (current?.id === thread.id) {
+        // Already selected — keep existing (possibly full) content
+        return current;
+      }
+      return thread;
+    });
     if (thread.isUnread) {
       markRead(thread.id);
     }
   }, [markRead, currentView]);
+
+  // Clear thread-update banner when switching to a different thread
+  useEffect(() => {
+    setThreadUpdateAvailable(false);
+  }, [selectedThread?.id]);
+
+  // Refresh the currently selected thread (re-fetch full content)
+  const refreshSelectedThread = useCallback(async () => {
+    if (!selectedThread) return;
+    try {
+      const full = await window.kenaz.fetchThread(selectedThread.id);
+      if (full) {
+        setSelectedThread((current) =>
+          current?.id === full.id ? full : current
+        );
+      }
+      setThreadUpdateAvailable(false);
+    } catch (e) {
+      console.error('Failed to refresh thread:', e);
+    }
+  }, [selectedThread?.id]);
+
+  // Auto-fetch full thread content whenever selectedThread changes and has no body
+  // This covers: clicks, archive-next, keyboard nav, pending select, initial load
+  useEffect(() => {
+    if (!selectedThread) return;
+    // Check if the thread is metadata-only (body is empty on last message)
+    const lastMsg = selectedThread.messages[selectedThread.messages.length - 1];
+    if (lastMsg && lastMsg.body) return; // Already has full content
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const full = await window.kenaz.fetchThread(selectedThread.id);
+        if (!cancelled && full) {
+          setSelectedThread((current) =>
+            current?.id === full.id ? full : current
+          );
+        }
+      } catch (e) {
+        console.error('Failed to fetch full thread:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [selectedThread?.id]);
 
   // Collect all label names that back a view (e.g. PENDING, TODO, custom)
   const getManagedLabels = useCallback(() => {
@@ -409,10 +492,19 @@ export default function App() {
       pendingSendsRef.current.delete(sendId);
       if (cancelled) return;
       try {
-        await window.kenaz.sendEmail(payload);
+        const result = await window.kenaz.sendEmail(payload);
         if (draftId) {
           try { await window.kenaz.deleteDraft(draftId); } catch {}
         }
+
+        // Handle queued (offline) response
+        if (result?.queued) {
+          addUndo(`Email queued — will send when online`, () => {
+            window.kenaz.cancelOutbox(result.outboxId);
+          });
+          return;
+        }
+
         // Auto-archive the thread if this was a reply and the setting is on
         if (shouldArchive) {
           const managedLabels = getManagedLabels();
@@ -438,7 +530,11 @@ export default function App() {
 
     pendingSendsRef.current.set(sendId, timer);
 
-    addUndo(`Sending to ${payload.to.split(',')[0].trim()}…`, () => {
+    const undoMsg = isOnline
+      ? `Sending to ${payload.to.split(',')[0].trim()}…`
+      : `Queuing email to ${payload.to.split(',')[0].trim()}…`;
+
+    addUndo(undoMsg, () => {
       cancelled = true;
       clearTimeout(timer);
       pendingSendsRef.current.delete(sendId);
@@ -457,7 +553,7 @@ export default function App() {
       });
       setComposeOpen(true);
     });
-  }, [addUndo, refresh, appConfig?.archiveOnReply, getManagedLabels, archiveThread, labelThread]);
+  }, [addUndo, refresh, appConfig?.archiveOnReply, getManagedLabels, archiveThread, labelThread, isOnline]);
 
   const handleReply = useCallback(() => {
     if (!selectedThread) return;
@@ -688,10 +784,25 @@ export default function App() {
         </div>
         <div className="flex-1" /> {/* This space IS draggable */}
         <div className="titlebar-no-drag flex items-center gap-2">
+          {!isOnline && (
+            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent-danger/15 text-accent-danger text-[10px] font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent-danger animate-pulse" />
+              Offline
+              {(pendingActions > 0 || outboxCount > 0) && (
+                <span className="text-accent-danger/70">
+                  ({pendingActions + outboxCount} pending)
+                </span>
+              )}
+            </div>
+          )}
           <button
             onClick={() => handleCompose()}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors bg-gradient-to-r from-[#C43E0C] to-[#F7A94B] text-white hover:opacity-90 shadow-sm"
-            title="Compose (C)"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors text-white hover:opacity-90 shadow-sm ${
+              isOnline
+                ? 'bg-gradient-to-r from-[#C43E0C] to-[#F7A94B]'
+                : 'bg-gradient-to-r from-[#DC2626] to-[#C43E0C]'
+            }`}
+            title={isOnline ? 'Compose (C)' : 'Compose (C) — will queue offline'}
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 512 512" fill="none">
               <path d="M332.8 112.6L189.4 256L332.8 399.4" stroke="currentColor" strokeWidth="52" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
@@ -706,8 +817,10 @@ export default function App() {
           />
           <button
             onClick={refresh}
-            className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
-            title="Refresh (Cmd+Shift+R)"
+            className={`p-1.5 rounded hover:bg-bg-hover transition-colors ${
+              isOnline ? 'text-text-secondary hover:text-text-primary' : 'text-text-muted cursor-default'
+            }`}
+            title={isOnline ? 'Refresh (Cmd+Shift+R)' : 'Offline — using cached data'}
           >
             <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -784,6 +897,10 @@ export default function App() {
               onLabel={handleLabel}
               onStar={handleStar}
               onDeleteDraft={currentView === 'drafts' ? handleDeleteDraft : undefined}
+              threadUpdateAvailable={threadUpdateAvailable}
+              onRefreshThread={refreshSelectedThread}
+              userEmail={userEmail}
+              currentView={currentView}
             />
           )}
         </div>

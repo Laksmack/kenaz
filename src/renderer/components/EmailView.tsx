@@ -57,6 +57,50 @@ function detectCalendarInvite(message: Email): { isInvite: boolean; iCalUID: str
   return { isInvite, iCalUID };
 }
 
+// ── Nudge Detection ──────────────────────────────────────────
+// Mirrors the logic in EmailList. Prefers sync-engine detection, falls back to heuristic.
+
+interface NudgeInfo {
+  type: 'follow_up' | 'reply';
+  daysAgo: number;
+  label: string;
+}
+
+function detectNudge(thread: EmailThread, userEmail?: string, currentView?: string): NudgeInfo | null {
+  if (currentView !== 'inbox') return null;
+  if (!userEmail) return null;
+
+  const lastMsg = thread.messages[thread.messages.length - 1];
+  if (!lastMsg) return null;
+
+  const msgDate = new Date(lastMsg.date);
+  if (isNaN(msgDate.getTime())) return null;
+
+  const now = new Date();
+  const daysAgo = Math.floor((now.getTime() - msgDate.getTime()) / (1000 * 60 * 60 * 24));
+  const dayStr = daysAgo === 1 ? 'day' : 'days';
+  const isFromMe = lastMsg.from.email.toLowerCase() === userEmail.toLowerCase();
+
+  // 1. Prefer sync-engine–detected nudge (History API: INBOX re-added without new messages)
+  if (thread.nudgeType) {
+    if (thread.nudgeType === 'follow_up') {
+      return { type: 'follow_up', daysAgo, label: `Sent ${daysAgo} ${dayStr} ago. Follow up?` };
+    }
+    return { type: 'reply', daysAgo, label: `Received ${daysAgo} ${dayStr} ago. Reply?` };
+  }
+
+  // 2. Heuristic fallback
+  if (isFromMe && daysAgo >= 2) {
+    return { type: 'follow_up', daysAgo, label: `Sent ${daysAgo} ${dayStr} ago. Follow up?` };
+  }
+
+  if (!isFromMe && daysAgo >= 5) {
+    return { type: 'reply', daysAgo, label: `Received ${daysAgo} ${dayStr} ago. Reply?` };
+  }
+
+  return null;
+}
+
 interface Props {
   thread: EmailThread | null;
   onReply: () => void;
@@ -64,9 +108,13 @@ interface Props {
   onLabel: (label: string) => void;
   onStar: () => void;
   onDeleteDraft?: (thread: EmailThread) => void;
+  threadUpdateAvailable?: boolean;
+  onRefreshThread?: () => void;
+  userEmail?: string;
+  currentView?: string;
 }
 
-export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDeleteDraft }: Props) {
+export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDeleteDraft, threadUpdateAvailable, onRefreshThread, userEmail, currentView }: Props) {
   const [showDetails, setShowDetails] = useState(false);
   const [labelMap, setLabelMap] = useState<Record<string, string>>({});
 
@@ -232,10 +280,43 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
               }
             />
         </div>
-        <div className="text-xs text-text-muted mt-1.5">
-          {thread.messages.length} message{thread.messages.length !== 1 ? 's' : ''} · {thread.participants.length} participant{thread.participants.length !== 1 ? 's' : ''}
+        <div className="text-xs text-text-muted mt-1.5 flex items-center gap-3">
+          <span>
+            {thread.messages.length} message{thread.messages.length !== 1 ? 's' : ''} · {thread.participants.length} participant{thread.participants.length !== 1 ? 's' : ''}
+          </span>
+          {(() => {
+            const nudge = detectNudge(thread, userEmail, currentView);
+            if (!nudge) return null;
+            return (
+              <span
+                className={`text-[11px] font-medium ${
+                  nudge.type === 'follow_up' ? 'text-amber-500' : 'text-orange-400'
+                }`}
+                title={nudge.type === 'follow_up'
+                  ? 'Gmail nudge: you sent the last message and haven\'t received a reply'
+                  : 'Gmail nudge: you received this but haven\'t replied'}
+              >
+                {nudge.label}
+              </span>
+            );
+          })()}
         </div>
       </div>
+
+      {/* New messages in thread banner */}
+      {threadUpdateAvailable && onRefreshThread && (
+        <div className="flex-shrink-0 px-6 py-2 bg-accent/10 border-b border-accent/30">
+          <button
+            onClick={onRefreshThread}
+            className="w-full text-sm text-accent hover:text-accent-hover flex items-center justify-center gap-2 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M20.993 4.356v4.992" />
+            </svg>
+            New activity in this thread — click to refresh
+          </button>
+        </div>
+      )}
 
       {/* Details panel */}
       {showDetails && (
@@ -551,13 +632,20 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
 
     // Strip quoted/forwarded content from the HTML body
     // We'll hide it and show a "show quoted text" button
-    let bodyHtml = message.body;
+    // Fix protocol-relative URLs (//fonts.gstatic.com → https://fonts.gstatic.com)
+    // In Electron's file:// context these resolve to file:// instead of https://
+    let bodyHtml = message.body.replace(/(?:src|href)=(["'])\/\//g, (match, quote) => {
+      return match.replace(`${quote}//`, `${quote}https://`);
+    }).replace(/url\((['"]?)\/\//g, (_match, quote) => {
+      return `url(${quote}https://`;
+    });
 
     doc.open();
     doc.write(`
       <!DOCTYPE html>
       <html>
       <head>
+        <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http: cid:; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src data: https://fonts.gstatic.com https://fonts.googleapis.com;">
         <style>
           html {
             color-scheme: dark;
@@ -573,6 +661,10 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
             word-wrap: break-word;
             overflow-wrap: break-word;
             overflow: hidden;
+          }
+          img {
+            max-width: 100%;
+            height: auto;
           }
           /* Force dark-friendly colors on all elements */
           * {

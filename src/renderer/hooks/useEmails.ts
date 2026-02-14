@@ -83,6 +83,20 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     fetchThreads();
   }, [query, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Listen for push updates from sync engine
+  useEffect(() => {
+    const cleanupThreads = window.kenaz.onThreadsUpdated(() => {
+      // Sync engine updated the cache — refresh current view
+      if (enabled) {
+        fetchThreads();
+      }
+    });
+
+    return () => {
+      cleanupThreads();
+    };
+  }, [enabled, fetchThreads]);
+
   const archiveThread = useCallback(async (threadId: string) => {
     // Optimistic: remove from list immediately, then fire API call
     setThreads((prev) => prev.filter((t) => t.id !== threadId));

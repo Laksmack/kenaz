@@ -37,6 +37,13 @@ const IPC = {
   APP_GET_CONFIG: 'app:get-config',
   APP_SET_CONFIG: 'app:set-config',
   APP_USER_EMAIL: 'app:user-email',
+  CONNECTIVITY_STATUS: 'connectivity:status',
+  CACHE_GET_STATS: 'cache:get-stats',
+  CACHE_CLEAR: 'cache:clear',
+  CACHE_SEARCH_LOCAL: 'cache:search-local',
+  OUTBOX_LIST: 'outbox:list',
+  OUTBOX_CANCEL: 'outbox:cancel',
+  OUTBOX_RETRY: 'outbox:retry',
 } as const;
 
 const api = {
@@ -116,6 +123,36 @@ const api = {
   onRulesApplied: (callback: () => void) => {
     ipcRenderer.on('rules-applied', callback);
     return () => { ipcRenderer.removeListener('rules-applied', callback); };
+  },
+
+  // Connectivity
+  getConnectivityStatus: () => ipcRenderer.invoke(IPC.CONNECTIVITY_STATUS),
+  onConnectivityChange: (callback: (online: boolean) => void) => {
+    const handler = (_event: any, online: boolean) => callback(online);
+    ipcRenderer.on('connectivity:changed', handler);
+    return () => { ipcRenderer.removeListener('connectivity:changed', handler); };
+  },
+
+  // Cache
+  getCacheStats: () => ipcRenderer.invoke(IPC.CACHE_GET_STATS),
+  clearCache: () => ipcRenderer.invoke(IPC.CACHE_CLEAR),
+  searchLocal: (query: string) => ipcRenderer.invoke(IPC.CACHE_SEARCH_LOCAL, query),
+
+  // Outbox
+  listOutbox: () => ipcRenderer.invoke(IPC.OUTBOX_LIST),
+  cancelOutbox: (id: number) => ipcRenderer.invoke(IPC.OUTBOX_CANCEL, id),
+  retryOutbox: (id: number) => ipcRenderer.invoke(IPC.OUTBOX_RETRY, id),
+
+  // Push event listeners
+  onThreadsUpdated: (callback: (data: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('threads:updated', handler);
+    return () => { ipcRenderer.removeListener('threads:updated', handler); };
+  },
+  onThreadUpdated: (callback: (data: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('thread:updated', handler);
+    return () => { ipcRenderer.removeListener('thread:updated', handler); };
   },
 };
 

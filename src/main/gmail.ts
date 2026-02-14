@@ -117,6 +117,46 @@ export class GmailService {
     }
   }
 
+  /**
+   * Lightweight profile fetch — used by connectivity monitor to probe API access.
+   */
+  async getProfile(): Promise<{ email: string; historyId: string }> {
+    if (!this.gmail) throw new Error('Not authenticated');
+    const profile = await this.gmail.users.getProfile({ userId: 'me' });
+    return {
+      email: profile.data.emailAddress || '',
+      historyId: profile.data.historyId || '',
+    };
+  }
+
+  /**
+   * Fetch history records since a given historyId.
+   * Used by the sync engine for incremental sync.
+   */
+  async getHistory(startHistoryId: string): Promise<{ history: any[]; historyId: string }> {
+    if (!this.gmail) throw new Error('Not authenticated');
+    const allHistory: any[] = [];
+    let pageToken: string | undefined;
+    let latestHistoryId = startHistoryId;
+
+    do {
+      const res = await this.gmail.users.history.list({
+        userId: 'me',
+        startHistoryId,
+        historyTypes: ['messageAdded', 'messageDeleted', 'labelAdded', 'labelRemoved'],
+        pageToken,
+      });
+
+      if (res.data.history) {
+        allHistory.push(...res.data.history);
+      }
+      latestHistoryId = res.data.historyId || latestHistoryId;
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken);
+
+    return { history: allHistory, historyId: latestHistoryId };
+  }
+
   async authenticate(): Promise<{ success: boolean; error?: string }> {
     try {
       const oauthCreds = getOAuthCredentials();
@@ -347,6 +387,9 @@ export class GmailService {
       const messages = (res.data.messages || []).map((msg) => this.parseMessage(msg));
       if (messages.length === 0) return null;
 
+      // Resolve any deferred cid: inline images that need async attachment fetch
+      await this.resolveInlineImages(messages);
+
       const lastMessage = messages[messages.length - 1];
       const allLabels = [...new Set(messages.flatMap((m) => m.labels))];
       const participants = this.extractParticipants(messages);
@@ -378,8 +421,17 @@ export class GmailService {
     const cc = this.parseEmailAddresses(getHeader('Cc'));
     const bcc = this.parseEmailAddresses(getHeader('Bcc'));
 
-    const { html, text } = this.extractBody(msg.payload);
+    let { html, text } = this.extractBody(msg.payload);
     const attachments = this.extractAttachments(msg.payload);
+
+    // Resolve cid: inline images — extract Content-ID → data URI map
+    const cidMap = this.extractInlineImages(msg.payload, msg.id || '');
+    if (html && Object.keys(cidMap).length > 0) {
+      for (const [cid, dataUri] of Object.entries(cidMap)) {
+        // Replace cid:xxx references (with and without angle brackets)
+        html = html.replace(new RegExp(`cid:${cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'gi'), dataUri);
+      }
+    }
 
     return {
       id: msg.id || '',
@@ -440,6 +492,87 @@ export class GmailService {
 
     if (payload) processPart(payload);
     return attachments;
+  }
+
+  /**
+   * Extract inline images (Content-ID parts) and return a cid → data URI map.
+   * These are images embedded in the HTML body via cid: references (e.g. signatures, logos).
+   */
+  private extractInlineImages(payload: gmail_v1.Schema$MessagePart | undefined, messageId: string): Record<string, string> {
+    const cidMap: Record<string, string> = {};
+    if (!payload) return cidMap;
+
+    const processPart = (part: gmail_v1.Schema$MessagePart) => {
+      const headers = part.headers || [];
+      const contentId = headers.find((h) => h.name?.toLowerCase() === 'content-id')?.value;
+      const mimeType = part.mimeType || '';
+
+      if (contentId && mimeType.startsWith('image/')) {
+        // Strip angle brackets from Content-ID: <image001.png@xxx> → image001.png@xxx
+        const cid = contentId.replace(/^<|>$/g, '');
+
+        if (part.body?.data) {
+          // Inline data available directly (base64url encoded)
+          const base64 = Buffer.from(part.body.data, 'base64url').toString('base64');
+          cidMap[cid] = `data:${mimeType};base64,${base64}`;
+        } else if (part.body?.attachmentId) {
+          // Will need to be fetched async — store attachment info for later
+          cidMap[cid] = `__KENAZ_CID_FETCH__:${messageId}:${part.body.attachmentId}:${mimeType}`;
+        }
+      }
+
+      if (part.parts) {
+        part.parts.forEach(processPart);
+      }
+    };
+
+    processPart(payload);
+    return cidMap;
+  }
+
+  /**
+   * Resolve deferred inline image fetches (cid: images that need attachment API calls).
+   * Mutates messages in place, replacing placeholder URIs with actual data URIs.
+   */
+  private async resolveInlineImages(messages: Email[]): Promise<void> {
+    const placeholder = '__KENAZ_CID_FETCH__:';
+    const fetches: Promise<void>[] = [];
+
+    for (const msg of messages) {
+      if (!msg.body || !msg.body.includes(placeholder)) continue;
+
+      // Find all placeholders in this message
+      const regex = /__KENAZ_CID_FETCH__:([^:]+):([^:]+):([^"'\s)]+)/g;
+      let match: RegExpExecArray | null;
+      const replacements: { from: string; messageId: string; attachmentId: string; mimeType: string }[] = [];
+
+      while ((match = regex.exec(msg.body)) !== null) {
+        replacements.push({
+          from: match[0],
+          messageId: match[1],
+          attachmentId: match[2],
+          mimeType: match[3],
+        });
+      }
+
+      for (const r of replacements) {
+        fetches.push(
+          (async () => {
+            try {
+              const buf = await this.getAttachmentBuffer(r.messageId, r.attachmentId);
+              const dataUri = `data:${r.mimeType};base64,${buf.toString('base64')}`;
+              msg.body = msg.body.replace(r.from, dataUri);
+            } catch (e) {
+              console.error(`Failed to fetch inline image ${r.attachmentId}:`, e);
+              // Remove broken placeholder so it doesn't show raw text
+              msg.body = msg.body.replace(r.from, '');
+            }
+          })()
+        );
+      }
+    }
+
+    await Promise.all(fetches);
   }
 
   private parseEmailAddress(raw: string): EmailAddress {

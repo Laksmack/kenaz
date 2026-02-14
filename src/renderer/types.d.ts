@@ -37,6 +37,24 @@ declare global {
       onRulesApplied: (callback: () => void) => () => void;
       downloadAttachment: (messageId: string, attachmentId: string, filename: string) => Promise<string>;
       getAttachmentBase64: (messageId: string, attachmentId: string) => Promise<string>;
+
+      // Connectivity
+      getConnectivityStatus: () => Promise<{ online: boolean; pendingActions: number; outboxCount: number }>;
+      onConnectivityChange: (callback: (online: boolean) => void) => () => void;
+
+      // Cache
+      getCacheStats: () => Promise<import('@shared/types').CacheStats>;
+      clearCache: () => Promise<void>;
+      searchLocal: (query: string) => Promise<any[]>;
+
+      // Outbox
+      listOutbox: () => Promise<import('@shared/types').OutboxItem[]>;
+      cancelOutbox: (id: number) => Promise<void>;
+      retryOutbox: (id: number) => Promise<void>;
+
+      // Push events
+      onThreadsUpdated: (callback: (data: any) => void) => () => void;
+      onThreadUpdated: (callback: (data: any) => void) => () => void;
     };
   }
 }

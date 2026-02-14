@@ -7,6 +7,9 @@ import { startApiServer } from './api-server';
 import { ConfigStore } from './config';
 import { ViewStore, RuleStore } from './stores';
 import { applyRules } from './rule-engine';
+import { CacheStore } from './cache-store';
+import { ConnectivityMonitor } from './connectivity';
+import { SyncEngine } from './sync-engine';
 import { IPC } from '../shared/types';
 import type { SendEmailPayload, View, Rule } from '../shared/types';
 
@@ -17,14 +20,17 @@ let calendar: CalendarService;
 let config: ConfigStore;
 let viewStore: ViewStore;
 let ruleStore: RuleStore;
+let cache: CacheStore;
+let connectivity: ConnectivityMonitor;
+let syncEngine: SyncEngine;
 
 const isDev = process.env.NODE_ENV === 'development';
 
 function createWindow() {
   const preloadPath = path.join(__dirname, 'preload.js');
+  console.log(`[Kenaz] v${app.getVersion()} — ${isDev ? 'development' : 'production'}`);
   console.log('[Kenaz] __dirname:', __dirname);
   console.log('[Kenaz] preload path:', preloadPath);
-  console.log('[Kenaz] isDev:', isDev);
 
   mainWindow = new BrowserWindow({
     width: 1400,
@@ -75,7 +81,13 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null;
+    connectivity.setMainWindow(null);
+    syncEngine.setMainWindow(null);
   });
+
+  // Wire connectivity and sync engine to the window
+  connectivity.setMainWindow(mainWindow);
+  syncEngine.setMainWindow(mainWindow);
 }
 
 async function initServices() {
@@ -86,6 +98,18 @@ async function initServices() {
   hubspot = new HubSpotService(config);
   calendar = new CalendarService();
 
+  // Initialize cache
+  const appConfig = config.get();
+  cache = new CacheStore();
+
+  // Initialize connectivity monitor
+  connectivity = new ConnectivityMonitor();
+  connectivity.setGmail(gmail);
+  connectivity.start();
+
+  // Initialize sync engine
+  syncEngine = new SyncEngine(gmail, cache, connectivity, config);
+
   // Share OAuth client with calendar service
   const oauthClient = gmail.getOAuth2Client();
   if (oauthClient) {
@@ -93,9 +117,26 @@ async function initServices() {
   }
 
   // Start the local API server if enabled
-  const appConfig = config.get();
   if (appConfig.apiEnabled) {
     startApiServer(gmail, hubspot, appConfig.apiPort, viewStore, ruleStore, calendar);
+  }
+}
+
+// ── Helper: wrap an async Gmail call with offline awareness ──
+
+async function withOfflineAwareness<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    const result = await fn();
+    connectivity.reportOnline();
+    return result;
+  } catch (e: any) {
+    const msg = (e.message || '').toLowerCase();
+    if (msg.includes('enotfound') || msg.includes('enetunreach') ||
+        msg.includes('econnrefused') || msg.includes('etimedout') ||
+        msg.includes('err_network') || msg.includes('fetch failed')) {
+      connectivity.reportOffline();
+    }
+    throw e;
   }
 }
 
@@ -107,61 +148,284 @@ function registerIpcHandlers() {
     if (result.success) {
       const oauthClient = gmail.getOAuth2Client();
       if (oauthClient) calendar.setAuth(oauthClient);
+      // Start sync engine after authentication
+      syncEngine.start();
     }
     return result;
   });
 
   ipcMain.handle(IPC.GMAIL_AUTH_STATUS, async () => {
-    return gmail.isAuthenticated();
+    const isAuth = await gmail.isAuthenticated();
+    // Start sync engine if already authenticated
+    if (isAuth) {
+      syncEngine.start();
+    }
+    return isAuth;
   });
 
-  // ── Gmail Operations ──
+  // ── Gmail Operations (cache-first) ──
   ipcMain.handle(IPC.GMAIL_FETCH_THREADS, async (_event, query: string, maxResults: number = 50, pageToken?: string) => {
-    const result = await gmail.fetchThreads(query, maxResults, pageToken);
-    // Apply rules to inbox threads in the background (non-blocking)
-    applyRules(ruleStore, gmail, result.threads)
-      .then((madeChanges) => {
-        if (madeChanges && mainWindow && !mainWindow.isDestroyed()) {
-          // Tell the renderer to refresh since rules modified some threads
-          mainWindow.webContents.send('rules-applied');
+    const appConfig = config.get();
+
+    // 1. Return cached data immediately if available (and no page token — first page only)
+    let cachedThreads: any[] = [];
+    if (appConfig.cacheEnabled && !pageToken) {
+      try {
+        cachedThreads = cache.getThreadsByQuery(query, maxResults);
+      } catch (e) {
+        console.error('[Cache] Failed to read cache:', e);
+      }
+    }
+
+    // 2. If offline, return cached data
+    if (!connectivity.isOnline) {
+      return { threads: cachedThreads, nextPageToken: undefined, fromCache: true };
+    }
+
+    // 3. If online, fetch from API
+    try {
+      const result = await withOfflineAwareness(() =>
+        gmail.fetchThreads(query, maxResults, pageToken)
+      );
+
+      // Cache the results
+      if (appConfig.cacheEnabled && result.threads.length > 0) {
+        try {
+          cache.upsertThreads(result.threads);
+          // Cache message metadata
+          for (const thread of result.threads) {
+            if (thread.messages.length > 0) {
+              cache.upsertMessages(thread.messages);
+            }
+          }
+
+          // Merge nudge info from cache onto API-fetched threads
+          // (The sync engine sets nudgeType via History API; the API fetch doesn't include it)
+          for (const thread of result.threads) {
+            const cached = cache.getThread(thread.id);
+            if (cached?.nudgeType) {
+              thread.nudgeType = cached.nudgeType;
+            }
+          }
+        } catch (e) {
+          console.error('[Cache] Failed to write cache:', e);
         }
-      })
-      .catch((e) => console.error('[Rules] Failed to apply rules:', e));
-    return result;
+      }
+
+      // Apply rules to inbox threads in the background (non-blocking)
+      applyRules(ruleStore, gmail, result.threads)
+        .then((madeChanges) => {
+          if (madeChanges && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('rules-applied');
+          }
+        })
+        .catch((e) => console.error('[Rules] Failed to apply rules:', e));
+
+      return result;
+    } catch (e: any) {
+      // If API call fails, fall back to cache
+      if (cachedThreads.length > 0) {
+        console.log('[Kenaz] API failed, returning cached threads');
+        return { threads: cachedThreads, nextPageToken: undefined, fromCache: true };
+      }
+      throw e;
+    }
   });
 
   ipcMain.handle(IPC.GMAIL_FETCH_THREAD, async (_event, threadId: string) => {
-    return gmail.fetchThread(threadId);
+    const appConfig = config.get();
+
+    // 1. Check cache for full thread
+    if (appConfig.cacheEnabled) {
+      const cached = cache.getThread(threadId);
+      if (cached && cached.messages.length > 0 && cached.messages[0].body) {
+        // If online, refresh in background
+        if (connectivity.isOnline) {
+          withOfflineAwareness(() => gmail.fetchThread(threadId))
+            .then((fresh) => {
+              if (fresh) {
+                cache.upsertFullThread(fresh);
+                // Notify renderer if data changed
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                  mainWindow.webContents.send('thread:updated', fresh);
+                }
+              }
+            })
+            .catch(() => {}); // Silent failure for background refresh
+        }
+        return cached;
+      }
+    }
+
+    // 2. If offline and no cache, return null
+    if (!connectivity.isOnline) {
+      // Return metadata-only version from cache if available
+      if (appConfig.cacheEnabled) {
+        return cache.getThread(threadId);
+      }
+      return null;
+    }
+
+    // 3. Fetch from API
+    try {
+      const thread = await withOfflineAwareness(() => gmail.fetchThread(threadId));
+
+      // Cache the full thread
+      if (thread && appConfig.cacheEnabled) {
+        try {
+          cache.upsertFullThread(thread);
+        } catch (e) {
+          console.error('[Cache] Failed to cache thread:', e);
+        }
+      }
+
+      return thread;
+    } catch (e) {
+      // Fall back to cache
+      if (appConfig.cacheEnabled) {
+        return cache.getThread(threadId);
+      }
+      throw e;
+    }
   });
 
   ipcMain.handle(IPC.GMAIL_SEARCH, async (_event, query: string) => {
-    const result = await gmail.fetchThreads(query, 50);
-    return result.threads;
+    const appConfig = config.get();
+
+    // 1. Search local cache immediately
+    let localResults: any[] = [];
+    if (appConfig.cacheEnabled) {
+      try {
+        localResults = cache.searchLocal(query, 50);
+      } catch {}
+    }
+
+    // 2. If offline, return local results
+    if (!connectivity.isOnline) {
+      return localResults;
+    }
+
+    // 3. Fetch from API and merge
+    try {
+      const result = await withOfflineAwareness(() => gmail.fetchThreads(query, 50));
+
+      // Cache API results
+      if (appConfig.cacheEnabled && result.threads.length > 0) {
+        try {
+          cache.upsertThreads(result.threads);
+          for (const thread of result.threads) {
+            if (thread.messages.length > 0) {
+              cache.upsertMessages(thread.messages);
+            }
+          }
+        } catch {}
+      }
+
+      // Merge: API results take precedence, add local-only results
+      const apiIds = new Set(result.threads.map((t: any) => t.id));
+      const uniqueLocal = localResults.filter(t => !apiIds.has(t.id));
+      return [...result.threads, ...uniqueLocal];
+    } catch {
+      return localResults;
+    }
   });
 
   ipcMain.handle(IPC.GMAIL_SEND, async (_event, payload: SendEmailPayload) => {
-    const result = await gmail.sendEmail(payload);
-    // Auto-log to HubSpot if deal ID provided
-    if (payload.hubspot_deal_id && result.id) {
-      try {
-        await hubspot.logEmail(payload, result.id);
-      } catch (e) {
-        console.error('Failed to log to HubSpot:', e);
-      }
+    // If offline, queue in outbox
+    if (!connectivity.isOnline) {
+      const outboxId = cache.enqueueOutbox(payload);
+      return { queued: true, outboxId };
     }
-    return result;
+
+    try {
+      const result = await withOfflineAwareness(() => gmail.sendEmail(payload));
+      // Auto-log to HubSpot if deal ID provided
+      if (payload.hubspot_deal_id && result.id) {
+        try {
+          await hubspot.logEmail(payload, result.id);
+        } catch (e) {
+          console.error('Failed to log to HubSpot:', e);
+        }
+      }
+      return result;
+    } catch (e: any) {
+      // If network failure, queue in outbox
+      const msg = (e.message || '').toLowerCase();
+      if (msg.includes('enotfound') || msg.includes('enetunreach') ||
+          msg.includes('econnrefused') || msg.includes('etimedout')) {
+        const outboxId = cache.enqueueOutbox(payload);
+        return { queued: true, outboxId };
+      }
+      throw e;
+    }
   });
 
   ipcMain.handle(IPC.GMAIL_ARCHIVE, async (_event, threadId: string) => {
-    return gmail.archiveThread(threadId);
+    // Update cache immediately
+    cache.updateThreadLabels(threadId, [], ['INBOX']);
+
+    if (!connectivity.isOnline) {
+      cache.enqueuePendingAction('archive', threadId, {});
+      return;
+    }
+
+    try {
+      await withOfflineAwareness(() => gmail.archiveThread(threadId));
+    } catch (e: any) {
+      const msg = (e.message || '').toLowerCase();
+      if (msg.includes('enotfound') || msg.includes('enetunreach') ||
+          msg.includes('econnrefused') || msg.includes('etimedout')) {
+        cache.enqueuePendingAction('archive', threadId, {});
+      } else {
+        throw e;
+      }
+    }
   });
 
   ipcMain.handle(IPC.GMAIL_LABEL, async (_event, threadId: string, labelToAdd: string | null, labelToRemove: string | null) => {
-    return gmail.modifyLabels(threadId, labelToAdd, labelToRemove);
+    // Update cache immediately
+    const addLabels = labelToAdd ? [labelToAdd] : [];
+    const removeLabels = labelToRemove ? [labelToRemove] : [];
+    cache.updateThreadLabels(threadId, addLabels, removeLabels);
+
+    if (!connectivity.isOnline) {
+      cache.enqueuePendingAction('label', threadId, { add: labelToAdd, remove: labelToRemove });
+      return;
+    }
+
+    try {
+      await withOfflineAwareness(() => gmail.modifyLabels(threadId, labelToAdd, labelToRemove));
+    } catch (e: any) {
+      const msg = (e.message || '').toLowerCase();
+      if (msg.includes('enotfound') || msg.includes('enetunreach') ||
+          msg.includes('econnrefused') || msg.includes('etimedout')) {
+        cache.enqueuePendingAction('label', threadId, { add: labelToAdd, remove: labelToRemove });
+      } else {
+        throw e;
+      }
+    }
   });
 
   ipcMain.handle(IPC.GMAIL_MARK_READ, async (_event, threadId: string) => {
-    return gmail.markAsRead(threadId);
+    // Update cache immediately
+    cache.updateThreadLabels(threadId, [], ['UNREAD']);
+
+    if (!connectivity.isOnline) {
+      cache.enqueuePendingAction('mark_read', threadId, {});
+      return;
+    }
+
+    try {
+      await withOfflineAwareness(() => gmail.markAsRead(threadId));
+    } catch (e: any) {
+      const msg = (e.message || '').toLowerCase();
+      if (msg.includes('enotfound') || msg.includes('enetunreach') ||
+          msg.includes('econnrefused') || msg.includes('etimedout')) {
+        cache.enqueuePendingAction('mark_read', threadId, {});
+      } else {
+        throw e;
+      }
+    }
   });
 
   ipcMain.handle(IPC.GMAIL_DOWNLOAD_ATTACHMENT, async (_event, messageId: string, attachmentId: string, filename: string) => {
@@ -320,11 +584,114 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.APP_USER_EMAIL, async () => {
     return gmail.getUserEmail();
   });
+
+  // ── Connectivity ──
+  ipcMain.handle(IPC.CONNECTIVITY_STATUS, async () => {
+    return {
+      online: connectivity.isOnline,
+      pendingActions: cache.getPendingActionCount(),
+      outboxCount: cache.getOutboxCount(),
+    };
+  });
+
+  // ── Cache ──
+  ipcMain.handle(IPC.CACHE_GET_STATS, async () => {
+    return cache.getStats();
+  });
+
+  ipcMain.handle(IPC.CACHE_CLEAR, async () => {
+    cache.clearCache();
+  });
+
+  ipcMain.handle(IPC.CACHE_SEARCH_LOCAL, async (_event, query: string) => {
+    return cache.searchLocal(query, 50);
+  });
+
+  // ── Outbox ──
+  ipcMain.handle(IPC.OUTBOX_LIST, async () => {
+    return cache.getOutboxItems();
+  });
+
+  ipcMain.handle(IPC.OUTBOX_CANCEL, async (_event, id: number) => {
+    cache.cancelOutboxItem(id);
+  });
+
+  ipcMain.handle(IPC.OUTBOX_RETRY, async (_event, id: number) => {
+    // Re-queue the item by resetting its status
+    const items = cache.getOutboxItems();
+    const item = items.find(i => i.id === id);
+    if (item && connectivity.isOnline) {
+      try {
+        cache.markOutboxSending(id);
+        const result = await gmail.sendEmail(item.payload);
+        cache.markOutboxSent(id);
+        return result;
+      } catch (e: any) {
+        cache.markOutboxFailed(id, e.message);
+        throw e;
+      }
+    }
+  });
+}
+
+// ── Flush pending actions and outbox on reconnect ──
+
+function setupOfflineFlush() {
+  connectivity.on('online', async () => {
+    console.log('[Kenaz] Online — flushing pending actions and outbox...');
+
+    // Flush pending actions
+    const actions = cache.getPendingActions();
+    for (const action of actions) {
+      try {
+        switch (action.type) {
+          case 'archive':
+            await gmail.archiveThread(action.threadId);
+            break;
+          case 'label':
+            await gmail.modifyLabels(action.threadId, action.payload.add, action.payload.remove);
+            break;
+          case 'mark_read':
+            await gmail.markAsRead(action.threadId);
+            break;
+        }
+        cache.markActionSynced(action.id);
+      } catch (e: any) {
+        console.error(`[Kenaz] Failed to flush action ${action.id}:`, e.message);
+        cache.markActionFailed(action.id);
+      }
+    }
+
+    // Flush outbox
+    const outboxItems = cache.getOutboxItems();
+    for (const item of outboxItems) {
+      if (item.status !== 'queued' && item.status !== 'failed') continue;
+      try {
+        cache.markOutboxSending(item.id);
+        await gmail.sendEmail(item.payload);
+        cache.markOutboxSent(item.id);
+        console.log(`[Kenaz] Outbox item ${item.id} sent successfully`);
+
+        // Notify user
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          const to = item.payload.to.split(',')[0].trim();
+          mainWindow.webContents.send('outbox:sent', { id: item.id, to });
+        }
+      } catch (e: any) {
+        console.error(`[Kenaz] Failed to send outbox item ${item.id}:`, e.message);
+        cache.markOutboxFailed(item.id, e.message);
+      }
+    }
+
+    // Trigger sync to pick up any remote changes
+    syncEngine.sync();
+  });
 }
 
 app.whenReady().then(async () => {
   await initServices();
   registerIpcHandlers();
+  setupOfflineFlush();
   createWindow();
 
   app.on('activate', () => {
@@ -338,4 +705,10 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
+});
+
+app.on('before-quit', () => {
+  connectivity.stop();
+  syncEngine.stop();
+  cache.close();
 });

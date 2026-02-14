@@ -2,6 +2,66 @@ import React, { useState, useRef, useEffect } from 'react';
 import type { EmailThread, ViewType, View } from '@shared/types';
 import { formatRelativeDate } from '../lib/utils';
 
+// ── Nudge Detection ──────────────────────────────────────────
+// Gmail nudges re-add the INBOX label to a thread without adding new messages,
+// pushing it back to the top of the inbox. The sync engine detects this via the
+// History API and sets thread.nudgeType. This heuristic serves as a fallback
+// for threads loaded before the sync engine caught the event.
+
+interface NudgeInfo {
+  type: 'follow_up' | 'reply';
+  daysAgo: number;
+  label: string;
+}
+
+function detectNudge(thread: EmailThread, userEmail?: string, currentView?: string): NudgeInfo | null {
+  // Only detect nudges in inbox view — that's where Gmail surfaces them
+  if (currentView !== 'inbox') return null;
+  if (!userEmail) return null;
+
+  const lastMsg = thread.messages[thread.messages.length - 1];
+  if (!lastMsg) return null;
+
+  const msgDate = new Date(lastMsg.date);
+  if (isNaN(msgDate.getTime())) return null;
+
+  const now = new Date();
+  const daysAgo = Math.floor((now.getTime() - msgDate.getTime()) / (1000 * 60 * 60 * 24));
+  const dayStr = daysAgo === 1 ? 'day' : 'days';
+  const isFromMe = lastMsg.from.email.toLowerCase() === userEmail.toLowerCase();
+
+  // 1. Prefer the sync-engine–detected nudge (set via History API)
+  if (thread.nudgeType) {
+    if (thread.nudgeType === 'follow_up') {
+      return { type: 'follow_up', daysAgo, label: `Sent ${daysAgo} ${dayStr} ago. Follow up?` };
+    }
+    return { type: 'reply', daysAgo, label: `Received ${daysAgo} ${dayStr} ago. Reply?` };
+  }
+
+  // 2. Heuristic fallback: detect nudge-like patterns for threads
+  //    not yet flagged by the sync engine.
+
+  // "Sent X days ago. Follow up?" — you sent the last message, no reply yet
+  if (isFromMe && daysAgo >= 2) {
+    return {
+      type: 'follow_up',
+      daysAgo,
+      label: `Sent ${daysAgo} ${dayStr} ago. Follow up?`,
+    };
+  }
+
+  // "Received X days ago. Reply?" — someone wrote to you, you haven't replied
+  if (!isFromMe && daysAgo >= 5) {
+    return {
+      type: 'reply',
+      daysAgo,
+      label: `Received ${daysAgo} ${dayStr} ago. Reply?`,
+    };
+  }
+
+  return null;
+}
+
 // Clean snippet text: strip HTML tags, decode entities, collapse whitespace
 function cleanSnippet(text: string): string {
   // Strip HTML tags
@@ -261,6 +321,7 @@ export function EmailList({ threads, selectedId, selectedIds, loading, loadingMo
           onContextMenu={(e) => handleContextMenu(e, thread)}
           userEmail={userEmail}
           userDisplayName={userDisplayName}
+          currentView={currentView}
         />
       ))}
 
@@ -382,6 +443,7 @@ function EmailListItem({
   onContextMenu,
   userEmail,
   userDisplayName,
+  currentView,
 }: {
   thread: EmailThread;
   selected: boolean;
@@ -391,12 +453,14 @@ function EmailListItem({
   onContextMenu?: (e: React.MouseEvent) => void;
   userEmail?: string;
   userDisplayName?: string;
+  currentView?: string;
 }) {
   const isPending = thread.labels.includes('PENDING');
   const isTodo = thread.labels.includes('TODO');
   const isStarred = thread.labels.includes('STARRED');
   const hasAttachments = thread.messages.some((m) => m.hasAttachments);
   const role = getUserRole(thread, userEmail);
+  const nudge = detectNudge(thread, userEmail, currentView);
 
   return (
     <div
@@ -447,11 +511,23 @@ function EmailListItem({
         {cleanSnippet(thread.snippet)}
       </div>
 
-      {/* Labels */}
-      <div className="flex items-center gap-1 mt-1.5">
+      {/* Labels + Nudge */}
+      <div className="flex items-center gap-1.5 mt-1.5">
         {isPending && <span className="label-badge label-pending">Pending</span>}
         {isTodo && <span className="label-badge label-todo">Todo</span>}
         {isStarred && <span className="text-yellow-400 text-xs">★</span>}
+        {nudge && (
+          <span
+            className={`text-[10px] font-medium ${
+              nudge.type === 'follow_up' ? 'text-amber-500' : 'text-orange-400'
+            }`}
+            title={nudge.type === 'follow_up'
+              ? 'Gmail nudge: you sent the last message and haven\'t received a reply'
+              : 'Gmail nudge: you received this but haven\'t replied'}
+          >
+            {nudge.label}
+          </span>
+        )}
       </div>
     </div>
   );
