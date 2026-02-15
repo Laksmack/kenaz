@@ -78,7 +78,7 @@ export function RichTextEditor({ content, onChange, placeholder, autoFocus, onCm
         return false;
       },
       attributes: {
-        class: 'prose prose-invert max-w-none focus:outline-none min-h-[200px] px-4 py-3 text-sm text-text-primary',
+        class: 'max-w-none focus:outline-none min-h-[200px] px-4 py-3 text-sm text-text-primary',
       },
     },
   });

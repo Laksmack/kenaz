@@ -8,7 +8,7 @@ interface Props {
   prefillRule?: Partial<Rule>;
 }
 
-type SettingsTab = 'general' | 'views' | 'rules' | 'hubspot' | 'api' | 'signature' | 'cache';
+type SettingsTab = 'general' | 'views' | 'rules' | 'hubspot' | 'api' | 'signature' | 'auto-bcc' | 'cache' | 'calendar' | 'mcp';
 
 export function SettingsModal({ onClose, onViewsChanged, initialTab, prefillRule }: Props) {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -57,7 +57,10 @@ export function SettingsModal({ onClose, onViewsChanged, initialTab, prefillRule
     { id: 'hubspot', label: 'HubSpot', icon: '🔗' },
     { id: 'api', label: 'API', icon: '🔌' },
     { id: 'signature', label: 'Signature', icon: '✍️' },
+    { id: 'auto-bcc', label: 'Auto BCC', icon: '📋' },
     { id: 'cache', label: 'Cache', icon: '💾' },
+    { id: 'calendar', label: 'Calendar', icon: '📅' },
+    { id: 'mcp', label: 'MCP', icon: 'ᚲ' },
   ];
 
   return (
@@ -117,8 +120,17 @@ export function SettingsModal({ onClose, onViewsChanged, initialTab, prefillRule
           {activeTab === 'signature' && (
             <SignatureSettings config={config} onSave={handleSave} saving={saving} />
           )}
+          {activeTab === 'auto-bcc' && (
+            <AutoBccSettings config={config} onSave={handleSave} saving={saving} />
+          )}
           {activeTab === 'cache' && (
             <CacheSettings config={config} onSave={handleSave} saving={saving} />
+          )}
+          {activeTab === 'calendar' && (
+            <CalendarSettings config={config} onSave={handleSave} saving={saving} />
+          )}
+          {activeTab === 'mcp' && (
+            <McpSettings config={config} onSave={handleSave} saving={saving} />
           )}
         </div>
 
@@ -151,11 +163,6 @@ function GeneralSettings({ config, onSave, saving }: TabProps) {
   const [displayName, setDisplayName] = useState(config.displayName ?? '');
   const [archiveOnReply, setArchiveOnReply] = useState(config.archiveOnReply ?? false);
   const [composeMode, setComposeMode] = useState<'html' | 'markdown'>(config.composeMode ?? 'html');
-  const [autoBccEnabled, setAutoBccEnabled] = useState(config.autoBccEnabled);
-  const [autoBccAddress, setAutoBccAddress] = useState(config.autoBccAddress);
-  const [autoBccExcludedDomains, setAutoBccExcludedDomains] = useState(
-    config.autoBccExcludedDomains.join(', ')
-  );
 
   return (
     <div>
@@ -198,51 +205,11 @@ function GeneralSettings({ config, onSave, saving }: TabProps) {
           </select>
         </SettingsField>
 
-        <div className="border-t border-border-subtle pt-4">
-          <h4 className="text-xs font-semibold text-text-primary mb-3">Auto BCC</h4>
-
-          <div className="space-y-3">
-            <SettingsField label="Enable Auto BCC" description="Automatically BCC an address on all outgoing emails (useful for HubSpot CRM logging)">
-              <ToggleSwitch checked={autoBccEnabled} onChange={setAutoBccEnabled} />
-            </SettingsField>
-
-            {autoBccEnabled && (
-              <>
-                <SettingsField label="BCC Address" description="The email address to automatically BCC on outgoing mail">
-                  <input
-                    type="email"
-                    value={autoBccAddress}
-                    onChange={(e) => setAutoBccAddress(e.target.value)}
-                    className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary font-mono"
-                    placeholder="yourtoken@bcc.hubspot.com"
-                  />
-                </SettingsField>
-
-                <SettingsField
-                  label="Excluded Domains"
-                  description="Skip auto-BCC when ALL recipients are on these domains (comma-separated). E.g. internal mail that doesn't need CRM logging."
-                >
-                  <input
-                    type="text"
-                    value={autoBccExcludedDomains}
-                    onChange={(e) => setAutoBccExcludedDomains(e.target.value)}
-                    className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary font-mono"
-                    placeholder="compscience.com, yourdomain.com"
-                  />
-                </SettingsField>
-              </>
-            )}
-          </div>
-        </div>
-
         <SaveButton onClick={() => onSave({
           displayName: displayName.trim(),
           defaultView,
           archiveOnReply,
           composeMode,
-          autoBccEnabled,
-          autoBccAddress: autoBccAddress.trim(),
-          autoBccExcludedDomains: autoBccExcludedDomains.split(',').map(s => s.trim()).filter(Boolean),
         })} saving={saving} />
       </div>
     </div>
@@ -1104,6 +1071,67 @@ function RulesSettings({ prefillRule }: { prefillRule?: Partial<Rule> }) {
   );
 }
 
+// ── Auto BCC Settings ─────────────────────────────────────────
+
+function AutoBccSettings({ config, onSave, saving }: TabProps) {
+  const [autoBccEnabled, setAutoBccEnabled] = useState(config.autoBccEnabled);
+  const [autoBccAddress, setAutoBccAddress] = useState(config.autoBccAddress);
+  const [autoBccExcludedDomains, setAutoBccExcludedDomains] = useState(
+    config.autoBccExcludedDomains.join(', ')
+  );
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-text-primary mb-1">Auto BCC</h3>
+      <p className="text-xs text-text-muted mb-4">
+        Automatically BCC an address on all outgoing emails. Useful for CRM logging (e.g. HubSpot BCC address).
+      </p>
+
+      <div className="space-y-4">
+        <SettingsField label="Enable Auto BCC" description="When enabled, every outgoing email will BCC the address below. You can skip it per-email using the toggle in the compose bar.">
+          <div className="flex items-center gap-2">
+            <ToggleSwitch checked={autoBccEnabled} onChange={setAutoBccEnabled} />
+            <span className="text-xs text-text-muted">{autoBccEnabled ? 'Enabled' : 'Disabled'}</span>
+          </div>
+        </SettingsField>
+
+        {autoBccEnabled && (
+          <>
+            <SettingsField label="BCC Address" description="The email address to automatically BCC on outgoing mail.">
+              <input
+                type="email"
+                value={autoBccAddress}
+                onChange={(e) => setAutoBccAddress(e.target.value)}
+                className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary font-mono"
+                placeholder="yourtoken@bcc.hubspot.com"
+              />
+            </SettingsField>
+
+            <SettingsField
+              label="Excluded Domains"
+              description="Skip auto-BCC when ALL recipients are on these domains (comma-separated). Useful for internal emails that don't need CRM logging."
+            >
+              <input
+                type="text"
+                value={autoBccExcludedDomains}
+                onChange={(e) => setAutoBccExcludedDomains(e.target.value)}
+                className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary font-mono"
+                placeholder="compscience.com, yourdomain.com"
+              />
+            </SettingsField>
+          </>
+        )}
+
+        <SaveButton onClick={() => onSave({
+          autoBccEnabled,
+          autoBccAddress: autoBccAddress.trim(),
+          autoBccExcludedDomains: autoBccExcludedDomains.split(',').map(s => s.trim()).filter(Boolean),
+        })} saving={saving} />
+      </div>
+    </div>
+  );
+}
+
 // ── Cache Settings ────────────────────────────────────────────
 
 function CacheSettings({ config, onSave, saving }: TabProps) {
@@ -1231,6 +1259,190 @@ function CacheSettings({ config, onSave, saving }: TabProps) {
 }
 
 // ── Shared Components ─────────────────────────────────────────
+
+// ── Calendar Settings ──────────────────────────────────────────
+
+function CalendarSettings({ config, onSave, saving }: TabProps) {
+  const [calendars, setCalendars] = useState<Array<{ id: string; name: string; color: string }>>([]);
+  const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set(config.excludedCalendarIds || []));
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    window.kenaz.listCalendars()
+      .then((cals) => {
+        setCalendars(cals);
+        setLoading(false);
+      })
+      .catch((e) => {
+        setError('Failed to load calendars. Make sure you are signed in.');
+        setLoading(false);
+        console.error('Failed to load calendars:', e);
+      });
+  }, []);
+
+  const toggle = (id: string) => {
+    setExcludedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-text-primary mb-1">Calendar</h3>
+      <p className="text-xs text-text-muted mb-4">
+        Choose which Google Calendars appear in the sidebar widget. Unchecked calendars will be hidden.
+      </p>
+
+      <div className="space-y-4">
+        {loading && (
+          <div className="text-xs text-text-muted py-4 text-center">Loading calendars...</div>
+        )}
+
+        {error && (
+          <div className="px-3 py-2 rounded-lg bg-accent-danger/10 text-accent-danger text-xs font-medium">
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && calendars.length === 0 && (
+          <div className="text-xs text-text-muted py-4 text-center">No calendars found.</div>
+        )}
+
+        {!loading && !error && calendars.length > 0 && (
+          <div className="space-y-1">
+            {calendars.map((cal) => {
+              const isEnabled = !excludedIds.has(cal.id);
+              return (
+                <button
+                  key={cal.id}
+                  onClick={() => toggle(cal.id)}
+                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors text-left ${
+                    isEnabled
+                      ? 'bg-bg-primary border-border-subtle hover:border-accent-primary/30'
+                      : 'bg-bg-primary/50 border-border-subtle/50 opacity-60 hover:opacity-80'
+                  }`}
+                >
+                  <span
+                    className="w-3 h-3 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: cal.color }}
+                  />
+                  <span className="text-xs text-text-primary flex-1 truncate">{cal.name}</span>
+                  <ToggleSwitch checked={isEnabled} onChange={() => toggle(cal.id)} />
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <SaveButton onClick={() => onSave({
+          excludedCalendarIds: Array.from(excludedIds),
+        })} saving={saving} />
+      </div>
+    </div>
+  );
+}
+
+// ── MCP Settings ──────────────────────────────────────────────
+
+function McpSettings({ config, onSave, saving }: TabProps) {
+  const [enabled, setEnabled] = useState(config.mcpEnabled ?? false);
+  const [mcpStatus, setMcpStatus] = useState<any>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    window.kenaz.getMcpStatus().then(setMcpStatus);
+  }, [enabled]);
+
+  const claudeConfig = mcpStatus?.claudeDesktopConfig
+    ? JSON.stringify(mcpStatus.claudeDesktopConfig, null, 2)
+    : '';
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-text-primary mb-1">MCP Server</h3>
+      <p className="text-xs text-text-muted mb-4">
+        Expose Kenaz as a Model Context Protocol server for Claude Desktop.
+        Gives Claude native access to your email, HubSpot, calendar, and more.
+        Requires the API server to be enabled. Restart required after changes.
+      </p>
+      <div className="space-y-4">
+        {!config.apiEnabled && (
+          <div className="px-3 py-2 rounded-lg bg-accent-warning/10 text-accent-warning text-xs font-medium">
+            The API server must be enabled first (Settings → API).
+          </div>
+        )}
+
+        <SettingsField label="Enable MCP Server" description="Allow Claude Desktop to connect to Kenaz via MCP">
+          <ToggleSwitch
+            checked={enabled}
+            onChange={(v) => {
+              setEnabled(v);
+              onSave({ mcpEnabled: v });
+            }}
+          />
+        </SettingsField>
+
+        {enabled && config.apiEnabled && (
+          <>
+            <SettingsField label="Status">
+              <span className={`text-xs flex items-center gap-1.5 ${mcpStatus?.running ? 'text-accent-success' : 'text-text-muted'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${mcpStatus?.running ? 'bg-accent-success' : 'bg-text-muted'}`} />
+                {mcpStatus?.running ? 'Running' : 'Will start on next launch'}
+              </span>
+            </SettingsField>
+
+            <div className="p-3 rounded-lg bg-bg-primary border border-border-subtle">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-medium text-text-secondary">Claude Desktop Configuration</div>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(claudeConfig);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }}
+                  className="text-[10px] text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
+                >
+                  {copied ? (
+                    <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Copied!</>
+                  ) : (
+                    <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> Copy</>
+                  )}
+                </button>
+              </div>
+              <pre className="text-[10px] font-mono text-text-muted whitespace-pre overflow-x-auto">{claudeConfig}</pre>
+              <p className="text-[10px] text-text-muted mt-2">
+                Paste this into your <span className="font-mono">claude_desktop_config.json</span> file.
+                On macOS: <span className="font-mono">~/Library/Application Support/Claude/claude_desktop_config.json</span>
+              </p>
+            </div>
+
+            <div className="p-3 rounded-lg bg-bg-primary border border-border-subtle">
+              <div className="text-xs font-medium text-text-secondary mb-2">Available Tools (24)</div>
+              <div className="space-y-0.5 text-[10px] font-mono text-text-muted">
+                <div className="text-[9px] text-text-secondary font-semibold mt-1 mb-0.5 font-sans uppercase tracking-wider">Email</div>
+                <div>get_inbox, get_unread, search_emails, get_thread, get_thread_summary</div>
+                <div>draft_email, send_email, list_drafts, get_draft, delete_draft</div>
+                <div>archive_thread, trash_thread, modify_labels, batch_archive, list_labels</div>
+                <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">CRM & Context</div>
+                <div>get_contact_context, hubspot_lookup, hubspot_deals, hubspot_recent_activities</div>
+                <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Other</div>
+                <div>get_stats, suggest_contacts, calendar_events, calendar_rsvp, list_views, list_rules</div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function SettingsField({
   label,

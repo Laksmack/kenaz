@@ -118,7 +118,7 @@
 }
 
 .ProseMirror p {
-  margin: 0.4em 0;
+  margin: 0;
 }
 
 .ProseMirror h1 { font-size: 1.5em; font-weight: 700; margin: 0.6em 0 0.3em; }
@@ -197,4 +197,21 @@
 }
 .animate-slide-up {
   animation: slide-up 0.2s ease-out;
+}
+
+/* ── Snooze overlay animations ────────────────────────── */
+@keyframes fade-in {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to   { opacity: 1; transform: translate(-50%, 0); }
+}
+.animate-fade-in {
+  animation: fade-in 0.15s ease-out;
+}
+
+@keyframes snooze-countdown {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+.animate-snooze-countdown {
+  animation: snooze-countdown 5s linear forwards;
 }

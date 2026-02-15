@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, Notification } from 'electron';
 import type { GmailService } from './gmail';
 import type { CacheStore } from './cache-store';
 import type { ConnectivityMonitor } from './connectivity';
@@ -46,6 +46,9 @@ export class SyncEngine {
 
     // Initial sync
     await this.sync();
+
+    // Check for snoozes that expired while app was closed
+    await this.checkSnoozes();
 
     // Schedule periodic sync
     this.scheduleSyncPoll();
@@ -176,6 +179,14 @@ export class SyncEngine {
         }
       }
 
+      // ── Auto-wake snoozed threads on new reply ──────────
+      for (const threadId of newMessageThreadIds) {
+        if (this.cache.isSnoozed(threadId)) {
+          console.log(`[SyncEngine] New reply on snoozed thread ${threadId.slice(0, 8)} — waking`);
+          await this.wakeThread(threadId, 'new_reply');
+        }
+      }
+
       // ── Identify nudged threads ──────────────────────────
       // INBOX was added but NO new messages arrived → Gmail nudge
       const nudgeCandidateIds = new Set<string>();
@@ -277,7 +288,7 @@ export class SyncEngine {
       const historyId = profile.historyId;
 
       // Fetch recent threads from inbox and other key views
-      const queries = ['in:inbox', 'label:PENDING', 'label:TODO', 'is:starred', 'in:sent'];
+      const queries = ['in:inbox', 'label:PENDING', 'label:TODO', 'label:SNOOZED', 'is:starred', 'in:sent'];
 
       for (const query of queries) {
         try {
@@ -361,6 +372,8 @@ export class SyncEngine {
       if (this.connectivity.isOnline) {
         await this.sync();
       }
+      // Always check snoozes (local-only, no network needed)
+      await this.checkSnoozes();
       this.scheduleSyncPoll();
     }, 60000); // Every 60 seconds
   }
@@ -371,6 +384,69 @@ export class SyncEngine {
       await this.populateFullBodies();
       this.schedulePopulate();
     }, 120000); // Every 2 minutes
+  }
+
+  /**
+   * Check for expired snoozes and wake them up.
+   */
+  async checkSnoozes(): Promise<void> {
+    try {
+      const expired = this.cache.getExpiredSnoozes();
+      if (expired.length === 0) return;
+
+      console.log(`[SyncEngine] Waking ${expired.length} snoozed thread(s)`);
+
+      for (const snooze of expired) {
+        await this.wakeThread(snooze.threadId, 'expired');
+      }
+
+      this.notifyThreadsUpdated();
+    } catch (e) {
+      console.error('[SyncEngine] checkSnoozes failed:', e);
+    }
+  }
+
+  /**
+   * Wake a snoozed thread: remove SNOOZED label, add INBOX + UNREAD, remove from table, notify.
+   */
+  async wakeThread(threadId: string, reason: 'expired' | 'new_reply'): Promise<void> {
+    try {
+      // Remove from snoozed_threads table
+      this.cache.cancelSnooze(threadId);
+
+      // Update labels in cache
+      this.cache.updateThreadLabels(threadId, ['INBOX', 'UNREAD'], ['SNOOZED']);
+
+      // Update labels in Gmail
+      if (this.connectivity.isOnline) {
+        try {
+          await this.gmail.modifyLabels(threadId, 'INBOX', 'SNOOZED');
+          // Also mark unread so it surfaces
+          await this.gmail.modifyLabels(threadId, 'UNREAD', null);
+        } catch (e) {
+          console.error(`[SyncEngine] Failed to wake thread ${threadId} in Gmail:`, e);
+          this.cache.enqueuePendingAction('label', threadId, { add: 'INBOX', remove: 'SNOOZED' });
+        }
+      } else {
+        this.cache.enqueuePendingAction('label', threadId, { add: 'INBOX', remove: 'SNOOZED' });
+      }
+
+      // Desktop notification
+      const thread = this.cache.getThread(threadId);
+      const subject = thread?.subject || 'Snoozed thread';
+      const label = reason === 'new_reply' ? 'New reply' : 'Snooze expired';
+      try {
+        new Notification({
+          title: `${label}: ${subject}`,
+          body: thread?.snippet || '',
+          silent: false,
+        }).show();
+      } catch {}
+
+      console.log(`[SyncEngine] Woke thread "${subject.slice(0, 40)}" (${reason})`);
+    } catch (e) {
+      console.error(`[SyncEngine] wakeThread failed for ${threadId}:`, e);
+    }
   }
 
   private notifyThreadsUpdated(): void {

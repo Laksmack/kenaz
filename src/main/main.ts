@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell, Notification } from 'electron';
 import path from 'path';
+
 import { GmailService } from './gmail';
 import { HubSpotService } from './hubspot';
 import { CalendarService } from './calendar';
@@ -120,6 +121,36 @@ async function initServices() {
   if (appConfig.apiEnabled) {
     startApiServer(gmail, hubspot, appConfig.apiPort, viewStore, ruleStore, calendar);
   }
+
+}
+
+// ── MCP Server Config ────────────────────────────────────────
+// The MCP server is a standalone stdio process. It is NOT spawned by Kenaz.
+// Claude Desktop (or another MCP client) spawns it using the config below.
+
+function getMcpServerPath(): string {
+  // In packaged app: asar-unpacked so Node.js can execute it directly
+  // e.g. .../Resources/app.asar.unpacked/dist/mcp/mcp-server.js
+  // In dev: dist/mcp/mcp-server.js (getAppPath() returns project root)
+  const appPath = app.getAppPath();
+  const base = appPath.endsWith('.asar')
+    ? appPath.replace(/\.asar$/, '.asar.unpacked')
+    : appPath;
+  return path.join(base, 'dist', 'mcp', 'mcp-server.js');
+}
+
+function getMcpClaudeDesktopConfig(apiPort: number): object {
+  return {
+    mcpServers: {
+      kenaz: {
+        command: 'node',
+        args: [getMcpServerPath()],
+        env: {
+          KENAZ_API_PORT: String(apiPort),
+        },
+      },
+    },
+  };
 }
 
 // ── Helper: wrap an async Gmail call with offline awareness ──
@@ -198,6 +229,19 @@ function registerIpcHandlers() {
               cache.upsertMessages(thread.messages);
             }
           }
+
+          // Record contacts for autocomplete
+          const contacts: Array<{ name: string; email: string }> = [];
+          for (const thread of result.threads) {
+            contacts.push(thread.from);
+            if (thread.participants) contacts.push(...thread.participants);
+            for (const msg of thread.messages) {
+              contacts.push(msg.from);
+              contacts.push(...msg.to);
+              contacts.push(...msg.cc);
+            }
+          }
+          cache.recordContacts(contacts);
 
           // Merge nudge info from cache onto API-fetched threads
           // (The sync engine sets nudgeType via History API; the API fetch doesn't include it)
@@ -347,6 +391,14 @@ function registerIpcHandlers() {
           console.error('Failed to log to HubSpot:', e);
         }
       }
+      // Record recipients for autocomplete (boost=3 — sent-to contacts are high-signal)
+      try {
+        const sentTo: Array<{ name: string; email: string }> = [];
+        if (payload.to) sentTo.push(...payload.to.split(',').map(e => ({ name: '', email: e.trim() })));
+        if (payload.cc) sentTo.push(...payload.cc.split(',').map(e => ({ name: '', email: e.trim() })));
+        if (payload.bcc) sentTo.push(...payload.bcc.split(',').map(e => ({ name: '', email: e.trim() })));
+        cache.recordContacts(sentTo, 3);
+      } catch {}
       return result;
     } catch (e: any) {
       // If network failure, queue in outbox
@@ -499,11 +551,13 @@ function registerIpcHandlers() {
 
   // ── Calendar ──
   ipcMain.handle(IPC.CALENDAR_TODAY, async () => {
-    return calendar.getTodayEvents();
+    const appConfig = config.get();
+    return calendar.getTodayEvents(appConfig.excludedCalendarIds || []);
   });
 
   ipcMain.handle(IPC.CALENDAR_RANGE, async (_event, timeMin: string, timeMax: string) => {
-    return calendar.getEventsInRange(timeMin, timeMax);
+    const appConfig = config.get();
+    return calendar.getEventsInRange(timeMin, timeMax, appConfig.excludedCalendarIds || []);
   });
 
   ipcMain.handle(IPC.CALENDAR_RSVP, async (_event, eventId: string, response: 'accepted' | 'tentative' | 'declined', calendarId?: string) => {
@@ -512,6 +566,10 @@ function registerIpcHandlers() {
 
   ipcMain.handle(IPC.CALENDAR_FIND_EVENT, async (_event, iCalUID: string) => {
     return calendar.findEventByICalUID(iCalUID);
+  });
+
+  ipcMain.handle(IPC.CALENDAR_LIST, async () => {
+    return calendar.listCalendars();
   });
 
   // ── HubSpot ──
@@ -631,6 +689,67 @@ function registerIpcHandlers() {
         throw e;
       }
     }
+  });
+
+  // ── Contacts ──
+  ipcMain.handle(IPC.CONTACTS_SUGGEST, async (_event, prefix: string, limit?: number) => {
+    return cache.suggestContacts(prefix, limit);
+  });
+
+  // ── Snooze ──
+  ipcMain.handle(IPC.SNOOZE_THREAD, async (_event, threadId: string, days: number) => {
+    const snoozeUntil = new Date();
+    snoozeUntil.setDate(snoozeUntil.getDate() + days);
+    snoozeUntil.setHours(8, 0, 0, 0); // Wake at 8am local time
+    const snoozeUntilStr = snoozeUntil.toISOString();
+
+    // Get current labels before snoozing
+    const thread = cache.getThread(threadId);
+    const originalLabels = thread?.labels || [];
+
+    // Record in local DB
+    cache.snoozeThread(threadId, snoozeUntilStr, originalLabels);
+
+    // Apply Gmail label changes: add SNOOZED, remove INBOX
+    cache.updateThreadLabels(threadId, ['SNOOZED'], ['INBOX']);
+    try {
+      await gmail.modifyLabels(threadId, 'SNOOZED', 'INBOX');
+    } catch (e: any) {
+      // Queue for offline retry
+      cache.enqueuePendingAction('label', threadId, { add: 'SNOOZED', remove: 'INBOX' });
+    }
+
+    return { snoozeUntil: snoozeUntilStr };
+  });
+
+  ipcMain.handle(IPC.SNOOZE_CANCEL, async (_event, threadId: string) => {
+    const snoozeInfo = cache.getSnoozedThread(threadId);
+    if (!snoozeInfo) return;
+
+    // Remove snooze record
+    cache.cancelSnooze(threadId);
+
+    // Restore: remove SNOOZED, add INBOX
+    cache.updateThreadLabels(threadId, ['INBOX'], ['SNOOZED']);
+    try {
+      await gmail.modifyLabels(threadId, 'INBOX', 'SNOOZED');
+    } catch (e: any) {
+      cache.enqueuePendingAction('label', threadId, { add: 'INBOX', remove: 'SNOOZED' });
+    }
+  });
+
+  ipcMain.handle(IPC.SNOOZE_LIST, async () => {
+    return cache.getAllSnoozed();
+  });
+
+  // ── MCP ──
+  ipcMain.handle(IPC.MCP_STATUS, async () => {
+    const appConfig = config.get();
+    return {
+      enabled: appConfig.mcpEnabled,
+      claudeDesktopConfig: getMcpClaudeDesktopConfig(appConfig.apiPort),
+      serverPath: getMcpServerPath(),
+    };
   });
 }
 

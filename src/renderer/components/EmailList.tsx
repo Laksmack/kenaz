@@ -62,6 +62,19 @@ function detectNudge(thread: EmailThread, userEmail?: string, currentView?: stri
   return null;
 }
 
+// Format snooze date as a friendly relative string
+function formatSnoozeDate(isoDate: string): string {
+  const date = new Date(isoDate);
+  const now = new Date();
+  const diffMs = date.getTime() - now.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays <= 0) return 'waking up...';
+  if (diffDays === 1) return 'tomorrow';
+  if (diffDays <= 7) return `${diffDays} days`;
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 // Clean snippet text: strip HTML tags, decode entities, collapse whitespace
 function cleanSnippet(text: string): string {
   // Strip HTML tags
@@ -108,6 +121,22 @@ export function EmailList({ threads, selectedId, selectedIds, loading, loadingMo
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; thread: EmailThread } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const lastClickedIdRef = useRef<string | null>(null);
+  const [snoozeMap, setSnoozeMap] = useState<Map<string, string>>(new Map());
+
+  // Load snooze data when in snoozed view
+  useEffect(() => {
+    if (currentView !== 'snoozed') {
+      if (snoozeMap.size > 0) setSnoozeMap(new Map());
+      return;
+    }
+    window.kenaz.listSnoozed().then((items) => {
+      const map = new Map<string, string>();
+      for (const item of items) {
+        map.set(item.threadId, item.snoozeUntil);
+      }
+      setSnoozeMap(map);
+    }).catch(() => {});
+  }, [currentView, threads]);
 
   // Close context menu on click outside or Escape
   useEffect(() => {
@@ -322,6 +351,7 @@ export function EmailList({ threads, selectedId, selectedIds, loading, loadingMo
           userEmail={userEmail}
           userDisplayName={userDisplayName}
           currentView={currentView}
+          snoozeUntil={snoozeMap.get(thread.id)}
         />
       ))}
 
@@ -454,9 +484,11 @@ function EmailListItem({
   userEmail?: string;
   userDisplayName?: string;
   currentView?: string;
+  snoozeUntil?: string;
 }) {
   const isPending = thread.labels.includes('PENDING');
   const isTodo = thread.labels.includes('TODO');
+  const isSnoozed = thread.labels.includes('SNOOZED');
   const isStarred = thread.labels.includes('STARRED');
   const hasAttachments = thread.messages.some((m) => m.hasAttachments);
   const role = getUserRole(thread, userEmail);
@@ -515,6 +547,11 @@ function EmailListItem({
       <div className="flex items-center gap-1.5 mt-1.5">
         {isPending && <span className="label-badge label-pending">Pending</span>}
         {isTodo && <span className="label-badge label-todo">Todo</span>}
+        {isSnoozed && snoozeUntil && (
+          <span className="label-badge bg-blue-500/15 text-blue-400 border-blue-500/20" title={`Snoozed until ${new Date(snoozeUntil).toLocaleDateString()}`}>
+            ⏰ {formatSnoozeDate(snoozeUntil)}
+          </span>
+        )}
         {isStarred && <span className="text-yellow-400 text-xs">★</span>}
         {nudge && (
           <span

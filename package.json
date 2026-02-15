@@ -1,15 +1,19 @@
 {
   "name": "kenaz",
-  "version": "0.7.3",
+  "version": "0.10.0",
   "description": "Kenaz ᚲ — Personal Gmail client with HubSpot CRM, Google Calendar, and Claude API",
   "main": "dist/main/main/main.js",
+  "bin": {
+    "kenaz-mcp": "dist/mcp/mcp-server.js"
+  },
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
     "dev:main": "tsc -p tsconfig.main.json && electron .",
     "dev:renderer": "vite",
     "build:main": "tsc -p tsconfig.main.json",
+    "build:mcp": "esbuild src/main/mcp-server.ts --bundle --platform=node --target=node18 --format=cjs --outfile=dist/mcp/mcp-server.js",
     "build:renderer": "vite build",
-    "build": "npm run build:main && npm run build:renderer",
+    "build": "npm run build:main && npm run build:mcp && npm run build:renderer",
     "start": "electron .",
     "dev:electron": "NODE_ENV=development electron .",
     "dist": "npm run build && electron-builder --mac",
@@ -44,6 +48,9 @@
       ],
       "darkModeSupport": true
     },
+    "asarUnpack": [
+      "dist/mcp/**"
+    ],
     "npmRebuild": true,
     "dmg": {
       "title": "Kenaz",
@@ -90,6 +97,8 @@
     "@tiptap/react": "^3.19.0",
     "@tiptap/starter-kit": "^3.19.0",
     "better-sqlite3": "^12.6.2",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.22.0",
     "dotenv": "^17.2.4",
     "express": "^4.18.2",
     "googleapis": "^130.0.0",

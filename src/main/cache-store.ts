@@ -91,6 +91,29 @@ export class CacheStore {
       );
     `);
 
+    // Contacts table for recipient autocomplete
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS contacts (
+        email TEXT PRIMARY KEY,
+        name TEXT,
+        frequency INTEGER DEFAULT 1,
+        last_used TEXT,
+        source TEXT DEFAULT 'email'
+      );
+      CREATE INDEX IF NOT EXISTS idx_contacts_freq ON contacts(frequency DESC);
+    `);
+
+    // Snoozed threads table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS snoozed_threads (
+        thread_id TEXT PRIMARY KEY,
+        snooze_until TEXT NOT NULL,
+        snoozed_at TEXT NOT NULL,
+        original_labels TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_snoozed_until ON snoozed_threads(snooze_until);
+    `);
+
     // Migrate: add nudge_type column to threads if it doesn't exist
     try {
       this.db.exec(`ALTER TABLE threads ADD COLUMN nudge_type TEXT`);
@@ -403,6 +426,146 @@ export class CacheStore {
       for (const id of ids) stmt.run(id);
     });
     transaction(threadIds);
+  }
+
+  // ── Contacts (autocomplete) ────────────────────────────
+
+  /**
+   * Record email addresses seen in messages (from, to, cc, bcc).
+   * Increments frequency for existing contacts, inserts new ones.
+   * @param frequencyBoost — extra frequency weight (e.g. 3 for sent-to addresses)
+   */
+  recordContacts(addresses: EmailAddress[], frequencyBoost: number = 1): void {
+    if (addresses.length === 0) return;
+
+    const stmt = this.db.prepare(`
+      INSERT INTO contacts (email, name, frequency, last_used, source)
+      VALUES (?, ?, ?, ?, 'email')
+      ON CONFLICT(email) DO UPDATE SET
+        frequency = frequency + ?,
+        name = CASE
+          WHEN excluded.name != '' AND excluded.name != excluded.email THEN excluded.name
+          ELSE contacts.name
+        END,
+        last_used = excluded.last_used
+    `);
+
+    const now = new Date().toISOString();
+    const transaction = this.db.transaction((addrs: EmailAddress[]) => {
+      const seen = new Set<string>();
+      for (const addr of addrs) {
+        const email = addr.email.toLowerCase().trim();
+        if (!email || !email.includes('@') || seen.has(email)) continue;
+        seen.add(email);
+        const name = (addr.name || '').trim();
+        stmt.run(email, name, frequencyBoost, now, frequencyBoost);
+      }
+    });
+
+    transaction(addresses);
+  }
+
+  /**
+   * Search contacts for autocomplete suggestions.
+   * Prefix matches rank higher than substring matches; ordered by frequency.
+   */
+  suggestContacts(prefix: string, limit: number = 8): Array<{ email: string; name: string; frequency: number }> {
+    if (!prefix || prefix.trim().length === 0) return [];
+
+    const sanitized = prefix.trim().toLowerCase();
+    const prefixPattern = `${sanitized}%`;
+    const containsPattern = `%${sanitized}%`;
+
+    const rows = this.db.prepare(`
+      SELECT email, name, frequency FROM contacts
+      WHERE email LIKE ? OR name LIKE ?
+      ORDER BY
+        CASE WHEN email LIKE ? OR name LIKE ? THEN 0 ELSE 1 END,
+        frequency DESC
+      LIMIT ?
+    `).all(containsPattern, containsPattern, prefixPattern, prefixPattern, limit) as any[];
+
+    return rows.map(r => ({
+      email: r.email,
+      name: r.name || '',
+      frequency: r.frequency,
+    }));
+  }
+
+  // ── Snooze ─────────────────────────────────────────────
+
+  /**
+   * Snooze a thread — record it in the snoozed_threads table.
+   */
+  snoozeThread(threadId: string, snoozeUntil: string, originalLabels: string[]): void {
+    this.db.prepare(`
+      INSERT OR REPLACE INTO snoozed_threads (thread_id, snooze_until, snoozed_at, original_labels)
+      VALUES (?, ?, ?, ?)
+    `).run(threadId, snoozeUntil, new Date().toISOString(), JSON.stringify(originalLabels));
+  }
+
+  /**
+   * Get all snoozes that have expired (snooze_until <= now).
+   */
+  getExpiredSnoozes(): Array<{ threadId: string; snoozeUntil: string; snoozedAt: string; originalLabels: string[] }> {
+    const now = new Date().toISOString();
+    const rows = this.db.prepare(
+      `SELECT * FROM snoozed_threads WHERE snooze_until <= ? ORDER BY snooze_until ASC`
+    ).all(now) as any[];
+    return rows.map(r => ({
+      threadId: r.thread_id,
+      snoozeUntil: r.snooze_until,
+      snoozedAt: r.snoozed_at,
+      originalLabels: JSON.parse(r.original_labels || '[]'),
+    }));
+  }
+
+  /**
+   * Get snooze info for a specific thread (or null if not snoozed).
+   */
+  getSnoozedThread(threadId: string): { threadId: string; snoozeUntil: string; snoozedAt: string; originalLabels: string[] } | null {
+    const row = this.db.prepare(
+      `SELECT * FROM snoozed_threads WHERE thread_id = ?`
+    ).get(threadId) as any;
+    if (!row) return null;
+    return {
+      threadId: row.thread_id,
+      snoozeUntil: row.snooze_until,
+      snoozedAt: row.snoozed_at,
+      originalLabels: JSON.parse(row.original_labels || '[]'),
+    };
+  }
+
+  /**
+   * Cancel a snooze (remove from snoozed_threads).
+   */
+  cancelSnooze(threadId: string): void {
+    this.db.prepare('DELETE FROM snoozed_threads WHERE thread_id = ?').run(threadId);
+  }
+
+  /**
+   * Get all currently snoozed threads with their wake-up times.
+   */
+  getAllSnoozed(): Array<{ threadId: string; snoozeUntil: string; snoozedAt: string; originalLabels: string[] }> {
+    const rows = this.db.prepare(
+      `SELECT * FROM snoozed_threads ORDER BY snooze_until ASC`
+    ).all() as any[];
+    return rows.map(r => ({
+      threadId: r.thread_id,
+      snoozeUntil: r.snooze_until,
+      snoozedAt: r.snoozed_at,
+      originalLabels: JSON.parse(r.original_labels || '[]'),
+    }));
+  }
+
+  /**
+   * Check if a thread is currently snoozed.
+   */
+  isSnoozed(threadId: string): boolean {
+    const row = this.db.prepare(
+      'SELECT 1 FROM snoozed_threads WHERE thread_id = ?'
+    ).get(threadId);
+    return !!row;
   }
 
   // ── Sync metadata ───────────────────────────────────────

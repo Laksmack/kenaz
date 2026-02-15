@@ -226,6 +226,7 @@ function ShortcutsHelp() {
         <ShortcutRow keys="C" label="Compose" />
         <ShortcutRow keys="R" label="Reply" />
         <ShortcutRow keys="J/K" label="Navigate" />
+        <ShortcutRow keys="Z+N" label="Snooze N days" />
         <ShortcutRow keys="/" label="Adv. Search" />
         <ShortcutRow keys="Esc" label="Back" />
       </div>

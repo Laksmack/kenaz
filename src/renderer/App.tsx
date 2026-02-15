@@ -31,6 +31,7 @@ export default function App() {
   const [views, setViews] = useState<View[]>([]);
   const [undoActions, setUndoActions] = useState<import('./components/UndoToast').UndoAction[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [snoozeMode, setSnoozeMode] = useState(false);
   const pendingSendsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Connectivity / offline state
@@ -471,6 +472,37 @@ export default function App() {
     refresh();
   }, [selectedThread, labelThread, refresh]);
 
+  const handleSnooze = useCallback(async (days: number) => {
+    if (!selectedThread) return;
+
+    const threadId = selectedThread.id;
+    const subject = selectedThread.subject;
+
+    // Move to next thread
+    const idx = threads.findIndex((t) => t.id === threadId);
+    const next = findNextThread(idx, [threadId]);
+    pendingSelectIdRef.current = next?.id ?? null;
+    setSelectedThread(next);
+
+    try {
+      const result = await window.kenaz.snoozeThread(threadId, days);
+      const wakeDate = new Date(result.snoozeUntil);
+      const label = days === 1 ? 'tomorrow' : `${days} days`;
+
+      addUndo(
+        `"${subject.slice(0, 35)}${subject.length > 35 ? '…' : ''}" snoozed until ${label}`,
+        async () => {
+          await window.kenaz.cancelSnooze(threadId);
+          setTimeout(() => refresh(), 500);
+        }
+      );
+    } catch (e) {
+      console.error('Failed to snooze:', e);
+    }
+
+    setTimeout(() => refresh(), 500);
+  }, [selectedThread, threads, findNextThread, addUndo, refresh]);
+
   const handleCompose = useCallback((data?: Partial<ComposeData>) => {
     setComposeData(data || {});
     setComposeOpen(true);
@@ -757,6 +789,8 @@ export default function App() {
       else if (composeOpen) { /* handled by ComposeBar */ }
       else setSelectedThread(null);
     },
+    onSnooze: handleSnooze,
+    onSnoozeMode: setSnoozeMode,
     onRefresh: refresh,
     onSettings: () => setSettingsOpen(!settingsOpen),
     enabled: !composeOpen && !advancedSearchOpen || settingsOpen,
@@ -914,6 +948,31 @@ export default function App() {
           />
         </div>
       </div>
+
+      {/* Snooze Mode Overlay */}
+      {snoozeMode && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 animate-fade-in">
+          <div className="bg-bg-secondary border border-border-subtle rounded-xl px-6 py-4 shadow-2xl flex flex-col items-center gap-2">
+            <div className="text-sm font-semibold text-text-primary">Snooze</div>
+            <div className="text-xs text-text-secondary">Press <kbd className="px-1.5 py-0.5 bg-bg-hover rounded text-text-primary font-mono">1</kbd>–<kbd className="px-1.5 py-0.5 bg-bg-hover rounded text-text-primary font-mono">9</kbd> for days</div>
+            <div className="flex gap-1 mt-1">
+              {[1,2,3,4,5,6,7].map(n => (
+                <button
+                  key={n}
+                  onClick={() => { setSnoozeMode(false); handleSnooze(n); }}
+                  className="w-7 h-7 rounded-md bg-bg-hover hover:bg-accent-primary/20 text-text-primary text-xs font-semibold transition-colors"
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <div className="text-[10px] text-text-muted mt-1">Esc to cancel • 5s timeout</div>
+            <div className="w-full h-0.5 bg-bg-hover rounded-full overflow-hidden mt-1">
+              <div className="h-full bg-accent-primary rounded-full animate-snooze-countdown" />
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Undo Toast */}
       <UndoToast actions={undoActions} onExpire={removeUndo} />

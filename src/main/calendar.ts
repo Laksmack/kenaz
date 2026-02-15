@@ -15,15 +15,27 @@ export class CalendarService {
     return this.calendar !== null;
   }
 
-  async getTodayEvents(): Promise<CalendarEvent[]> {
+  async getTodayEvents(excludedIds: string[] = []): Promise<CalendarEvent[]> {
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
-    return this.getEventsInRange(startOfDay.toISOString(), endOfDay.toISOString());
+    return this.getEventsInRange(startOfDay.toISOString(), endOfDay.toISOString(), excludedIds);
   }
 
-  async getEventsInRange(timeMin: string, timeMax: string): Promise<CalendarEvent[]> {
+  async listCalendars(): Promise<Array<{ id: string; name: string; color: string }>> {
+    if (!this.calendar) throw new Error('Calendar not authenticated');
+    const calList = await this.calendar.calendarList.list({ minAccessRole: 'reader' });
+    return (calList.data.items || [])
+      .filter((cal) => !cal.hidden && cal.selected !== false)
+      .map((cal) => ({
+        id: cal.id || '',
+        name: cal.summary || cal.id || '',
+        color: cal.backgroundColor || '#4361ee',
+      }));
+  }
+
+  async getEventsInRange(timeMin: string, timeMax: string, excludedIds: string[] = []): Promise<CalendarEvent[]> {
     if (!this.calendar) throw new Error('Calendar not authenticated');
 
     try {
@@ -37,7 +49,7 @@ export class CalendarService {
 
       // Fetch events from each calendar in parallel
       const eventPromises = calendars
-        .filter((cal) => !cal.hidden && cal.selected !== false)
+        .filter((cal) => !cal.hidden && cal.selected !== false && !excludedIds.includes(cal.id!))
         .map(async (cal) => {
           try {
             const res = await this.calendar!.events.list({

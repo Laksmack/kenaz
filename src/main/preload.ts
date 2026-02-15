@@ -17,6 +17,7 @@ const IPC = {
   CALENDAR_RANGE: 'calendar:range',
   CALENDAR_RSVP: 'calendar:rsvp',
   CALENDAR_FIND_EVENT: 'calendar:find-event',
+  CALENDAR_LIST: 'calendar:list',
   HUBSPOT_LOOKUP: 'hubspot:lookup',
   HUBSPOT_LOG: 'hubspot:log',
   HUBSPOT_LOG_THREAD: 'hubspot:log-thread',
@@ -44,6 +45,11 @@ const IPC = {
   OUTBOX_LIST: 'outbox:list',
   OUTBOX_CANCEL: 'outbox:cancel',
   OUTBOX_RETRY: 'outbox:retry',
+  CONTACTS_SUGGEST: 'contacts:suggest',
+  SNOOZE_THREAD: 'snooze:thread',
+  SNOOZE_CANCEL: 'snooze:cancel',
+  SNOOZE_LIST: 'snooze:list',
+  MCP_STATUS: 'mcp:status',
 } as const;
 
 const api = {
@@ -93,6 +99,7 @@ const api = {
     ipcRenderer.invoke(IPC.CALENDAR_RSVP, eventId, response, calendarId),
   calendarFindEvent: (iCalUID: string) =>
     ipcRenderer.invoke(IPC.CALENDAR_FIND_EVENT, iCalUID),
+  listCalendars: () => ipcRenderer.invoke(IPC.CALENDAR_LIST),
 
   // HubSpot
   hubspotLookup: (email: string) =>
@@ -142,6 +149,17 @@ const api = {
   listOutbox: () => ipcRenderer.invoke(IPC.OUTBOX_LIST),
   cancelOutbox: (id: number) => ipcRenderer.invoke(IPC.OUTBOX_CANCEL, id),
   retryOutbox: (id: number) => ipcRenderer.invoke(IPC.OUTBOX_RETRY, id),
+
+  // Contacts
+  suggestContacts: (prefix: string, limit?: number) => ipcRenderer.invoke(IPC.CONTACTS_SUGGEST, prefix, limit),
+
+  // Snooze
+  snoozeThread: (threadId: string, days: number) => ipcRenderer.invoke(IPC.SNOOZE_THREAD, threadId, days),
+  cancelSnooze: (threadId: string) => ipcRenderer.invoke(IPC.SNOOZE_CANCEL, threadId),
+  listSnoozed: () => ipcRenderer.invoke(IPC.SNOOZE_LIST),
+
+  // MCP
+  getMcpStatus: () => ipcRenderer.invoke(IPC.MCP_STATUS),
 
   // Push event listeners
   onThreadsUpdated: (callback: (data: any) => void) => {

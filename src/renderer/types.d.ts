@@ -20,6 +20,7 @@ declare global {
       calendarRange: (timeMin: string, timeMax: string) => Promise<any>;
       calendarRsvp: (eventId: string, response: 'accepted' | 'tentative' | 'declined', calendarId?: string) => Promise<{ success: boolean; status: string }>;
       calendarFindEvent: (iCalUID: string) => Promise<string | null>;
+      listCalendars: () => Promise<Array<{ id: string; name: string; color: string }>>;
       hubspotLookup: (email: string) => Promise<any>;
       hubspotLog: (payload: any) => Promise<any>;
       hubspotLogThread: (dealId: string, subject: string, body: string, senderEmail: string, recipientEmail: string) => Promise<{ success: boolean; error?: string }>;
@@ -52,6 +53,16 @@ declare global {
       cancelOutbox: (id: number) => Promise<void>;
       retryOutbox: (id: number) => Promise<void>;
 
+      // Contacts
+      suggestContacts: (prefix: string, limit?: number) => Promise<Array<{ email: string; name: string; frequency: number }>>;
+
+      // Snooze
+      snoozeThread: (threadId: string, days: number) => Promise<{ snoozeUntil: string }>;
+      cancelSnooze: (threadId: string) => Promise<void>;
+      listSnoozed: () => Promise<Array<{ threadId: string; snoozeUntil: string; snoozedAt: string }>>;
+
+      // MCP
+      getMcpStatus: () => Promise<{ enabled: boolean; claudeDesktopConfig: any; serverPath: string }>;
       // Push events
       onThreadsUpdated: (callback: (data: any) => void) => () => void;
       onThreadUpdated: (callback: (data: any) => void) => () => void;

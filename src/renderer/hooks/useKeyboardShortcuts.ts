@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 
 interface ShortcutHandlers {
   onArchive: () => void;
@@ -14,10 +14,24 @@ interface ShortcutHandlers {
   onEscape: () => void;
   onRefresh: () => void;
   onSettings: () => void;
+  onSnooze?: (days: number) => void;
+  onSnoozeMode?: (active: boolean) => void;
   enabled: boolean;
 }
 
 export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
+  const snoozeModeRef = useRef(false);
+  const snoozeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const exitSnoozeMode = useCallback(() => {
+    snoozeModeRef.current = false;
+    if (snoozeTimerRef.current) {
+      clearTimeout(snoozeTimerRef.current);
+      snoozeTimerRef.current = null;
+    }
+    handlers.onSnoozeMode?.(false);
+  }, [handlers]);
+
   useEffect(() => {
     if (!handlers.enabled) return;
 
@@ -28,6 +42,27 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         if (e.key === 'Escape') {
           handlers.onEscape();
         }
+        return;
+      }
+
+      // ── Snooze mode: waiting for digit ──
+      if (snoozeModeRef.current) {
+        e.preventDefault();
+
+        if (e.key === 'Escape') {
+          exitSnoozeMode();
+          return;
+        }
+
+        const digit = parseInt(e.key, 10);
+        if (digit >= 1 && digit <= 9) {
+          exitSnoozeMode();
+          handlers.onSnooze?.(digit);
+          return;
+        }
+
+        // Any other key cancels snooze mode
+        exitSnoozeMode();
         return;
       }
 
@@ -98,6 +133,17 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
           e.preventDefault();
           handlers.onSearch();
           break;
+        case 'z':
+          e.preventDefault();
+          if (handlers.onSnooze) {
+            snoozeModeRef.current = true;
+            handlers.onSnoozeMode?.(true);
+            // 5 second timeout
+            snoozeTimerRef.current = setTimeout(() => {
+              exitSnoozeMode();
+            }, 5000);
+          }
+          break;
         case 'escape':
           e.preventDefault();
           handlers.onEscape();
@@ -106,6 +152,12 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handlers]);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      // Clean up snooze timer on unmount
+      if (snoozeTimerRef.current) {
+        clearTimeout(snoozeTimerRef.current);
+      }
+    };
+  }, [handlers, exitSnoozeMode]);
 }

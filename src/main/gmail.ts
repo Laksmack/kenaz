@@ -227,9 +227,10 @@ export class GmailService {
           this.labelCache.set(label.name, label.id);
         }
       }
-      // Ensure PENDING and TODO labels exist
+      // Ensure PENDING, TODO, and SNOOZED labels exist
       await this.ensureLabel('PENDING');
       await this.ensureLabel('TODO');
+      await this.ensureLabel('SNOOZED');
     } catch (e) {
       console.error('Failed to cache labels:', e);
     }

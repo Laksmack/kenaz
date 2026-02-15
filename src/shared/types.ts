@@ -63,6 +63,7 @@ export const DEFAULT_VIEWS: View[] = [
   { id: 'inbox', name: 'Inbox', icon: '📥', query: 'in:inbox', shortcut: 'gi' },
   { id: 'pending', name: 'Pending', icon: '⏳', query: 'label:PENDING', shortcut: 'gp' },
   { id: 'todo', name: 'Todo', icon: '✓', query: 'label:TODO', shortcut: 'gt' },
+  { id: 'snoozed', name: 'Snoozed', icon: '⏰', query: 'label:SNOOZED' },
   { id: 'starred', name: 'Starred', icon: '⭐', query: 'is:starred', shortcut: 'gs' },
   { id: 'sent', name: 'Sent', icon: '📤', query: 'in:sent' },
   { id: 'drafts', name: 'Drafts', icon: '📝', query: 'in:drafts', shortcut: 'gd' },
@@ -223,6 +224,7 @@ export const IPC = {
   CALENDAR_RANGE: 'calendar:range',
   CALENDAR_RSVP: 'calendar:rsvp',
   CALENDAR_FIND_EVENT: 'calendar:find-event',
+  CALENDAR_LIST: 'calendar:list',
 
   // HubSpot
   HUBSPOT_LOOKUP: 'hubspot:lookup',
@@ -268,6 +270,17 @@ export const IPC = {
   OUTBOX_LIST: 'outbox:list',
   OUTBOX_CANCEL: 'outbox:cancel',
   OUTBOX_RETRY: 'outbox:retry',
+
+  // Contacts
+  CONTACTS_SUGGEST: 'contacts:suggest',
+
+  // Snooze
+  SNOOZE_THREAD: 'snooze:thread',
+  SNOOZE_CANCEL: 'snooze:cancel',
+  SNOOZE_LIST: 'snooze:list',
+
+  // MCP
+  MCP_STATUS: 'mcp:status',
 } as const;
 
 // ── Config ───────────────────────────────────────────────────
@@ -288,6 +301,8 @@ export interface AppConfig {
   composeMode: 'html' | 'markdown'; // Editor mode for compose window
   cacheEnabled: boolean; // Enable local SQLite email cache
   cacheMaxSizeMB: number; // Max cache size in MB (default 500)
+  mcpEnabled: boolean; // Enable MCP server for Claude Desktop integration
+  excludedCalendarIds: string[]; // Calendar IDs to hide from the widget
 }
 
 // ── Cache / Offline Types ───────────────────────────────────
@@ -326,4 +341,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   composeMode: 'html',
   cacheEnabled: true,
   cacheMaxSizeMB: 500,
+  mcpEnabled: false,
+  excludedCalendarIds: [],
 };

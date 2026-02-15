@@ -2,14 +2,20 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import type { ComposeData, SendEmailPayload, EmailAttachment } from '@shared/types';
 import { RichTextEditor } from './RichTextEditor';
 
-// ── Email Chip Input ────────────────────────────────────────
-// Renders emails as removable chips. Type and press Enter/Tab/comma to add.
+// ── Email Chip Input with Autocomplete ──────────────────────
+// Renders emails as removable chips. Autocompletes from local contact cache.
 
 function parseEmails(raw: string): string[] {
   return raw
     .split(/[,;\s]+/)
     .map((s) => s.trim().replace(/^<|>$/g, ''))
     .filter((s) => s.includes('@'));
+}
+
+interface ContactSuggestion {
+  email: string;
+  name: string;
+  frequency: number;
 }
 
 function EmailChipInput({
@@ -24,8 +30,14 @@ function EmailChipInput({
   inputRef?: React.RefObject<HTMLInputElement>;
 }) {
   const [input, setInput] = useState('');
+  const [suggestions, setSuggestions] = useState<ContactSuggestion[]>([]);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const internalRef = useRef<HTMLInputElement>(null);
   const ref = inputRef || internalRef;
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
 
   const addEmails = useCallback((raw: string) => {
     const newEmails = parseEmails(raw);
@@ -39,16 +51,86 @@ function EmailChipInput({
       onChange(merged);
     }
     setInput('');
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setSelectedIdx(0);
   }, [emails, onChange]);
+
+  const selectSuggestion = useCallback((suggestion: ContactSuggestion) => {
+    const email = suggestion.email;
+    if (!emails.some((e) => e.toLowerCase() === email.toLowerCase())) {
+      onChange([...emails, email]);
+    }
+    setInput('');
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setSelectedIdx(0);
+    // Re-focus input after selection
+    setTimeout(() => (ref as React.RefObject<HTMLInputElement>).current?.focus(), 0);
+  }, [emails, onChange, ref]);
 
   const removeEmail = useCallback((idx: number) => {
     onChange(emails.filter((_, i) => i !== idx));
   }, [emails, onChange]);
 
+  // Fetch suggestions when input changes (debounced)
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+
+    if (input.trim().length < 2) {
+      setSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const results = await window.kenaz.suggestContacts(input.trim(), 8);
+        // Filter out emails already added as chips
+        const existing = new Set(emails.map((e) => e.toLowerCase()));
+        const filtered = results.filter((r) => !existing.has(r.email.toLowerCase()));
+        setSuggestions(filtered);
+        setShowSuggestions(filtered.length > 0);
+        setSelectedIdx(0);
+      } catch {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 150);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [input, emails]);
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Autocomplete navigation
+    if (showSuggestions && suggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIdx((prev) => (prev + 1) % suggestions.length);
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIdx((prev) => (prev - 1 + suggestions.length) % suggestions.length);
+        return;
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        selectSuggestion(suggestions[selectedIdx]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowSuggestions(false);
+        return;
+      }
+    }
+
+    // Normal chip behavior
     if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
       if (input.trim()) {
-        // For Tab, tokenize but let default behavior advance focus to next field
         if (e.key !== 'Tab') {
           e.preventDefault();
         }
@@ -57,7 +139,7 @@ function EmailChipInput({
     } else if (e.key === 'Backspace' && !input && emails.length > 0) {
       removeEmail(emails.length - 1);
     }
-  }, [input, emails, addEmails, removeEmail]);
+  }, [input, emails, addEmails, removeEmail, showSuggestions, suggestions, selectedIdx, selectSuggestion]);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     e.preventDefault();
@@ -66,40 +148,108 @@ function EmailChipInput({
   }, [addEmails]);
 
   const handleBlur = useCallback(() => {
-    if (input.trim()) addEmails(input);
+    // Delay to allow click on suggestion to fire first
+    setTimeout(() => {
+      if (input.trim()) addEmails(input);
+      setShowSuggestions(false);
+    }, 150);
   }, [input, addEmails]);
 
+  const handleFocus = useCallback(() => {
+    // Re-show suggestions if we have them and input is long enough
+    if (suggestions.length > 0 && input.trim().length >= 2) {
+      setShowSuggestions(true);
+    }
+  }, [suggestions, input]);
+
+  // Highlight matching portion in a string
+  const highlightMatch = (text: string, query: string) => {
+    if (!text || !query) return text;
+    const idx = text.toLowerCase().indexOf(query.toLowerCase());
+    if (idx === -1) return text;
+    return (
+      <>
+        {text.slice(0, idx)}
+        <span className="text-accent-primary font-semibold">{text.slice(idx, idx + query.length)}</span>
+        {text.slice(idx + query.length)}
+      </>
+    );
+  };
+
   return (
-    <div
-      className="flex-1 flex flex-wrap items-center gap-1 bg-bg-primary border border-border-subtle rounded px-2 py-1 min-h-[28px] cursor-text focus-within:border-accent-primary"
-      onClick={() => (ref as React.RefObject<HTMLInputElement>).current?.focus()}
-    >
-      {emails.map((email, i) => (
-        <span
-          key={`${email}-${i}`}
-          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent-primary/15 text-accent-primary text-[11px] font-medium max-w-[200px]"
-        >
-          <span className="truncate">{email}</span>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); removeEmail(i); }}
-            className="flex-shrink-0 hover:text-accent-danger transition-colors"
+    <div className="flex-1 relative" ref={containerRef}>
+      <div
+        className="flex flex-wrap items-center gap-1 bg-bg-primary border border-border-subtle rounded px-2 py-1 min-h-[28px] cursor-text focus-within:border-accent-primary"
+        onClick={() => (ref as React.RefObject<HTMLInputElement>).current?.focus()}
+      >
+        {emails.map((email, i) => (
+          <span
+            key={`${email}-${i}`}
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent-primary/15 text-accent-primary text-[11px] font-medium max-w-[200px]"
           >
-            ×
-          </button>
-        </span>
-      ))}
-      <input
-        ref={ref as React.RefObject<HTMLInputElement>}
-        type="text"
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onPaste={handlePaste}
-        onBlur={handleBlur}
-        className="flex-1 min-w-[120px] bg-transparent text-xs text-text-primary outline-none"
-        placeholder={emails.length === 0 ? placeholder : ''}
-      />
+            <span className="truncate">{email}</span>
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); removeEmail(i); }}
+              className="flex-shrink-0 hover:text-accent-danger transition-colors"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          ref={ref as React.RefObject<HTMLInputElement>}
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          onBlur={handleBlur}
+          onFocus={handleFocus}
+          className="flex-1 min-w-[120px] bg-transparent text-xs text-text-primary outline-none"
+          placeholder={emails.length === 0 ? placeholder : ''}
+          autoComplete="off"
+        />
+      </div>
+
+      {/* Autocomplete dropdown */}
+      {showSuggestions && suggestions.length > 0 && (
+        <div
+          ref={suggestionsRef}
+          className="absolute z-50 left-0 right-0 mt-1 bg-bg-tertiary border border-border-subtle rounded-lg shadow-xl overflow-hidden"
+        >
+          {suggestions.map((s, i) => (
+            <div
+              key={s.email}
+              className={`px-3 py-2 cursor-pointer transition-colors ${
+                i === selectedIdx
+                  ? 'bg-accent-primary/15'
+                  : 'hover:bg-bg-hover'
+              }`}
+              onMouseDown={(e) => {
+                e.preventDefault(); // Prevent blur from firing before click
+                selectSuggestion(s);
+              }}
+              onMouseEnter={() => setSelectedIdx(i)}
+            >
+              {s.name && s.name !== s.email ? (
+                <>
+                  <div className="text-xs text-text-primary leading-tight">
+                    {highlightMatch(s.name, input.trim())}
+                  </div>
+                  <div className="text-[11px] text-text-muted leading-tight">
+                    {highlightMatch(s.email, input.trim())}
+                  </div>
+                </>
+              ) : (
+                <div className="text-xs text-text-primary leading-tight">
+                  {highlightMatch(s.email, input.trim())}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
