@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Raidō ᚱ</title>
+    <style>
+      /* Drag region for macOS title bar */
+      .titlebar-drag {
+        -webkit-app-region: drag;
+      }
+      .titlebar-no-drag {
+        -webkit-app-region: no-drag;
+      }
+      /* Hide scrollbars but keep scrolling */
+      .scrollbar-hide::-webkit-scrollbar {
+        width: 6px;
+      }
+      .scrollbar-hide::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .scrollbar-hide::-webkit-scrollbar-thumb {
+        background: var(--scrollbar-thumb);
+        border-radius: 3px;
+      }
+      .scrollbar-hide::-webkit-scrollbar-thumb:hover {
+        background: var(--scrollbar-thumb-hover);
+      }
+    </style>
+  </head>
+  <body class="bg-bg-primary text-text-primary overflow-hidden">
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

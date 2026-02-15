@@ -1,0 +1,64 @@
+@import '@futhark/core/styles/theme.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* Raidō earth-tone accent overrides */
+  :root, [data-theme='dark'] {
+    --accent-deep: 139 94 60;
+    --accent-primary: 194 136 90;
+    --accent-warm: 212 165 116;
+    --border-active: 194 136 90;
+  }
+
+  [data-theme='light'] {
+    --accent-deep: 120 78 45;
+    --accent-primary: 160 114 78;
+    --accent-warm: 180 140 100;
+    --border-active: 160 114 78;
+  }
+}
+
+/* ── Raidō-specific component styles ─────────────────── */
+@layer components {
+  .task-item {
+    @apply flex items-start gap-3 px-4 py-3 border-b border-border-subtle cursor-pointer transition-colors duration-100;
+  }
+
+  .task-item:hover {
+    @apply bg-bg-hover;
+  }
+
+  .task-item.active {
+    @apply bg-bg-tertiary;
+    border-left: 2px solid rgb(var(--accent-primary));
+  }
+
+  .priority-high {
+    color: rgb(var(--accent-danger));
+  }
+  .priority-medium {
+    color: rgb(var(--accent-warning));
+  }
+  .priority-low {
+    color: rgb(var(--accent-primary));
+  }
+
+  .brand-gradient {
+    background: linear-gradient(135deg, rgb(var(--accent-deep)), rgb(var(--accent-warm)));
+  }
+
+  .sidebar-item {
+    @apply flex items-center gap-3 px-4 py-2 rounded-lg cursor-pointer transition-colors duration-100 text-sm;
+  }
+
+  .sidebar-item:hover {
+    @apply bg-bg-hover;
+  }
+
+  .sidebar-item.active {
+    @apply bg-bg-tertiary font-semibold;
+  }
+}
