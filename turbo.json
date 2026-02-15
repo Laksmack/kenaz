@@ -1,0 +1,11 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "tasks": {
+    "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
+    "build:main": { "dependsOn": ["^build"], "outputs": ["dist/main/**"] },
+    "build:mcp": { "dependsOn": ["^build"], "outputs": ["dist/mcp/**"] },
+    "build:renderer": { "dependsOn": ["^build"], "outputs": ["dist/renderer/**"] },
+    "dev": { "cache": false, "persistent": true },
+    "lint": {}
+  }
+}
