@@ -18,7 +18,7 @@
   },
   "build": {
     "appId": "com.futhark.raido",
-    "productName": "Raidō",
+    "productName": "Raido",
     "electronVersion": "39.6.0",
     "directories": { "output": "release" },
     "files": [
