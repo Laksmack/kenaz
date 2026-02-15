@@ -5,6 +5,7 @@
   "author": "Martin Stenkilde",
   "license": "UNLICENSED",
   "private": true,
+  "packageManager": "npm@10.9.2",
   "workspaces": ["packages/*"],
   "devDependencies": {
     "turbo": "^2.8.9"
