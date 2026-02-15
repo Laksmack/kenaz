@@ -5,6 +5,7 @@
     "build:main": { "dependsOn": ["^build"], "outputs": ["dist/main/**"] },
     "build:mcp": { "dependsOn": ["^build"], "outputs": ["dist/mcp/**"] },
     "build:renderer": { "dependsOn": ["^build"], "outputs": ["dist/renderer/**"] },
+    "dist:dir": { "dependsOn": ["^build"], "outputs": ["release/**"], "cache": false },
     "dev": { "cache": false, "persistent": true },
     "lint": {}
   }
