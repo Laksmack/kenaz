@@ -6,7 +6,8 @@
     </linearGradient>
   </defs>
   <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#bg)"/>
-  <line x1="192" y1="112" x2="192" y2="400" stroke="#FFF8F0" stroke-width="36" stroke-linecap="round"/>
-  <polyline points="192,112 320,176 192,256" stroke="#FFF8F0" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <line x1="192" y1="256" x2="320" y2="400" stroke="#FFF8F0" stroke-width="36" stroke-linecap="round"/>
+  <!-- Raidō ᚱ rune: vertical stave, triangular flag top half, diagonal leg from mid to lower-right -->
+  <path d="M190 399.4L190 112.6" stroke="#FFF8F0" stroke-width="35.84" stroke-linecap="round" fill="none"/>
+  <path d="M190 112.6L330 210L190 307.4" stroke="#FFF8F0" stroke-width="35.84" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M190 307.4L330 399.4" stroke="#FFF8F0" stroke-width="35.84" stroke-linecap="round" fill="none"/>
 </svg>

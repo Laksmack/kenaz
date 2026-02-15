@@ -5,12 +5,10 @@
       <stop offset="1" stop-color="#D4A574"/>
     </linearGradient>
   </defs>
-  <!-- Icon -->
   <rect x="3.2" y="3.2" width="57.6" height="57.6" rx="12.8" fill="url(#bg)"/>
-  <!-- RaidM rune (scaled to 64px) -->
-  <line x1="24" y1="14" x2="24" y2="50" stroke="#FFF8F0" stroke-width="4.5" stroke-linecap="round"/>
-  <polyline points="24,14 40,22 24,32" stroke="#FFF8F0" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-  <line x1="24" y1="32" x2="40" y2="50" stroke="#FFF8F0" stroke-width="4.5" stroke-linecap="round"/>
-  <!-- Text -->
-  <text x="78" y="43" font-family="Outfit, -apple-system, sans-serif" font-weight="600" font-size="36" fill="#f0e6da" letter-spacing="-0.5">raidM</text>
+  <!-- Raidō rune (scaled to 64px, matching kenaz.app geometry) -->
+  <path d="M23.7 49.9L23.7 14.1" stroke="#FFF8F0" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+  <path d="M23.7 14.1L41.3 26.3L23.7 38.4" stroke="#FFF8F0" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M23.7 38.4L41.3 49.9" stroke="#FFF8F0" stroke-width="4.5" stroke-linecap="round" fill="none"/>
+  <text x="78" y="43" font-family="Outfit, -apple-system, sans-serif" font-weight="600" font-size="36" fill="#f0e6da" letter-spacing="-0.5">raidō</text>
 </svg>

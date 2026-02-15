@@ -106,9 +106,9 @@ export function Sidebar({ currentView, onViewChange, stats, projects, selectedPr
             </linearGradient>
           </defs>
           <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#raido-rune)"/>
-          <line x1="192" y1="112" x2="192" y2="400" stroke="#FFF8F0" strokeWidth="36" strokeLinecap="round"/>
-          <polyline points="192,112 320,176 192,256" stroke="#FFF8F0" strokeWidth="36" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-          <line x1="192" y1="256" x2="320" y2="400" stroke="#FFF8F0" strokeWidth="36" strokeLinecap="round"/>
+          <path d="M190 399.4L190 112.6" stroke="#FFF8F0" strokeWidth="35.84" strokeLinecap="round" fill="none"/>
+          <path d="M190 112.6L330 210L190 307.4" stroke="#FFF8F0" strokeWidth="35.84" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+          <path d="M190 307.4L330 399.4" stroke="#FFF8F0" strokeWidth="35.84" strokeLinecap="round" fill="none"/>
         </svg>
         <span className="text-xs text-text-muted font-medium">Raidō</span>
       </div>
