@@ -25,6 +25,7 @@
   "build": {
     "appId": "com.kenaz.mail",
     "productName": "Kenaz",
+    "electronVersion": "39.6.0",
     "directories": {
       "output": "release"
     },
