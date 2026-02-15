@@ -1,105 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+@import '@futhark/core/styles/theme.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-@layer base {
-  /* ── Theme colors as RGB channel triplets ────────────────
-     Defined as "R G B" so Tailwind can compose: rgb(var(--x) / alpha)
-     ─────────────────────────────────────────────────────── */
-
-  /* Default: dark theme */
-  :root,
-  [data-theme='dark'] {
-    --bg-primary: 10 10 10;
-    --bg-secondary: 17 17 17;
-    --bg-tertiary: 26 26 26;
-    --bg-hover: 26 26 26;
-    --text-primary: 240 230 218;
-    --text-secondary: 153 153 153;
-    --text-muted: 85 85 85;
-    --border-subtle: 26 26 26;
-    --border-active: 232 87 31;
-    --accent-deep: 196 62 12;
-    --accent-primary: 232 87 31;
-    --accent-warm: 247 169 75;
-    --accent-light: 255 248 240;
-    --accent-pending: 242 201 76;
-    --accent-todo: 242 140 56;
-    --accent-success: 76 175 80;
-    --accent-danger: 239 68 68;
-    --accent-warning: 242 201 76;
-    --scrollbar-thumb: rgba(255, 255, 255, 0.1);
-    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.2);
-    color-scheme: dark;
-  }
-
-  /* Light theme */
-  [data-theme='light'] {
-    --bg-primary: 255 255 255;
-    --bg-secondary: 245 245 244;
-    --bg-tertiary: 231 229 228;
-    --bg-hover: 240 238 236;
-    --text-primary: 28 25 23;
-    --text-secondary: 87 83 78;
-    --text-muted: 168 162 158;
-    --border-subtle: 231 229 228;
-    --border-active: 232 87 31;
-    --accent-deep: 196 62 12;
-    --accent-primary: 232 87 31;
-    --accent-warm: 247 169 75;
-    --accent-light: 255 248 240;
-    --accent-pending: 212 160 23;
-    --accent-todo: 217 119 6;
-    --accent-success: 22 163 74;
-    --accent-danger: 220 38 38;
-    --accent-warning: 212 160 23;
-    --scrollbar-thumb: rgba(0, 0, 0, 0.12);
-    --scrollbar-thumb-hover: rgba(0, 0, 0, 0.24);
-    color-scheme: light;
-  }
-
-  /* Legacy aliases (used by ProseMirror / custom styles) — wrapped in rgb() */
-  :root {
-    --color-deep: rgb(var(--accent-deep));
-    --color-primary: rgb(var(--accent-primary));
-    --color-warm: rgb(var(--accent-warm));
-    --color-light: rgb(var(--accent-light));
-    --color-bg: rgb(var(--bg-primary));
-    --color-surface: rgb(var(--bg-secondary));
-    --color-surface-raised: rgb(var(--bg-tertiary));
-    --color-text: rgb(var(--text-primary));
-    --color-text-primary: rgb(var(--text-primary));
-    --color-text-secondary: rgb(var(--text-secondary));
-    --color-text-muted: rgb(var(--text-muted));
-    --color-border: rgb(var(--border-subtle));
-    --color-border-subtle: rgb(var(--border-subtle));
-    --color-bg-tertiary: rgb(var(--bg-tertiary));
-    --color-pending: rgb(var(--accent-pending));
-    --color-todo: rgb(var(--accent-todo));
-    --color-done: rgb(var(--accent-success));
-    --gradient-brand: linear-gradient(135deg, rgb(var(--accent-deep)), rgb(var(--accent-warm)));
-  }
-
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-
-  body {
-    font-family: 'Outfit', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    user-select: none;
-  }
-
-  .selectable {
-    user-select: text;
-  }
-}
-
+/* ── Kenaz-specific component styles ──────────────────── */
 @layer components {
   .email-item {
     @apply flex flex-col px-4 py-3 border-b border-border-subtle cursor-pointer transition-colors duration-100;
@@ -249,37 +154,11 @@
   height: 0;
 }
 
-/* ── Undo toast animation ──────────────────────────────── */
-@keyframes slide-up {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.animate-slide-up {
-  animation: slide-up 0.2s ease-out;
-}
-
-/* ── Snooze overlay animations ────────────────────────── */
-@keyframes fade-in {
-  from { opacity: 0; transform: translate(-50%, 8px); }
-  to   { opacity: 1; transform: translate(-50%, 0); }
-}
-.animate-fade-in {
-  animation: fade-in 0.15s ease-out;
-}
-
+/* ── Snooze animation (Kenaz-specific) ─────────────────── */
 @keyframes snooze-countdown {
   from { width: 100%; }
   to   { width: 0%; }
 }
 .animate-snooze-countdown {
   animation: snooze-countdown 5s linear forwards;
-}
-
-/* ── Settings tab fade ───────────────────────────────── */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.animate-fadeIn {
-  animation: fadeIn 150ms ease-out;
 }

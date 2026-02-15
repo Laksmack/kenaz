@@ -1,0 +1,17 @@
+{
+  "name": "@futhark/core",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.ts",
+  "exports": {
+    "./styles/*": "./styles/*",
+    "./components/*": "./components/*",
+    "./hooks/*": "./hooks/*",
+    "./lib/*": "./lib/*",
+    "./types": "./types/index.ts",
+    "./tailwind.preset": "./tailwind.preset.js"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0"
+  }
+}

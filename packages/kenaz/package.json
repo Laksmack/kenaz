@@ -88,6 +88,7 @@
     "vite": "^5.0.12"
   },
   "dependencies": {
+    "@futhark/core": "*",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@tiptap/extension-color": "^3.19.0",
     "@tiptap/extension-image": "^3.19.0",
