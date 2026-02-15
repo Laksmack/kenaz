@@ -77,7 +77,7 @@ export function SettingsModal({ onClose }: Props) {
           ))}
           <div className="flex-1" />
           <div className="px-3 py-2 text-[10px] text-text-muted">
-            <kbd className="inline-flex items-center justify-center w-6 h-6 text-xs font-mono rounded bg-bg-tertiary text-text-secondary border border-border-subtle text-[9px]">⌥ ,</kbd> to toggle
+            <kbd className="inline-flex items-center justify-center w-6 h-6 text-xs font-mono rounded bg-bg-tertiary text-text-secondary border border-border-subtle text-[9px]">⌘ ,</kbd> to toggle
           </div>
         </div>
 

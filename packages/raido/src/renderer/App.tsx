@@ -40,6 +40,11 @@ export default function App() {
     }
   }, [appConfig?.theme]);
 
+  const openQuickAdd = useCallback(() => {
+    setQuickAddOpen(true);
+    setTimeout(() => quickAddRef.current?.focus(), 50);
+  }, []);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -54,64 +59,87 @@ export default function App() {
         return;
       }
 
-      if (e.key === 'n' && !e.metaKey && !e.ctrlKey) {
-        e.preventDefault();
-        setQuickAddOpen(true);
-        setTimeout(() => quickAddRef.current?.focus(), 50);
-        return;
-      }
+      // ── Modifier shortcuts (processed before guard) ────────
 
-      if (e.key === '1') setCurrentView('today');
-      if (e.key === '2') setCurrentView('inbox');
-      if (e.key === '3') setCurrentView('upcoming');
-      if (e.key === '4') setCurrentView('logbook');
-
-      if (e.key === 'j' || e.key === 'ArrowDown') {
-        e.preventDefault();
-        const idx = selectedTask ? tasks.findIndex(t => t.id === selectedTask.id) : -1;
-        const next = tasks[idx + 1];
-        if (next) setSelectedTask(next);
-      }
-      if (e.key === 'k' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        const idx = selectedTask ? tasks.findIndex(t => t.id === selectedTask.id) : tasks.length;
-        const prev = tasks[idx - 1];
-        if (prev) setSelectedTask(prev);
-      }
-
-      if (e.key === 'x' && selectedTask) {
-        handleComplete(selectedTask.id);
-      }
-
-      if (e.key === 'r' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
-        e.preventDefault();
-        refresh();
-      }
-
-      if (e.key === '/' || (e.key === 'f' && (e.metaKey || e.ctrlKey))) {
-        e.preventDefault();
-        setCurrentView('search');
-      }
-
-      if (e.key === ',' && e.altKey) {
+      // Cmd+, or Option+, = Settings (macOS convention)
+      if (e.key === ',' && (e.metaKey || e.altKey)) {
         e.preventDefault();
         setSettingsOpen(prev => !prev);
         return;
       }
 
-      if (e.key === 'Escape') {
-        if (settingsOpen) { setSettingsOpen(false); return; }
-        setSelectedTask(null);
-        if (quickAddOpen) {
-          setQuickAddOpen(false);
-          setQuickAddTitle('');
+      // Cmd+Shift+R = Refresh
+      if (e.key === 'r' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
+        e.preventDefault();
+        refresh();
+        return;
+      }
+
+      // Cmd+F = Search
+      if (e.key === 'f' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setCurrentView('search');
+        return;
+      }
+
+      // Don't intercept single-key shortcuts when modifiers are held
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      // ── Single-key shortcuts ───────────────────────────────
+
+      switch (e.key.toLowerCase()) {
+        case 'c':
+          e.preventDefault();
+          openQuickAdd();
+          break;
+        case 'n':
+          e.preventDefault();
+          openQuickAdd();
+          break;
+        case '/':
+          e.preventDefault();
+          setCurrentView('search');
+          break;
+        case 'j':
+        case 'arrowdown': {
+          e.preventDefault();
+          const idx = selectedTask ? tasks.findIndex(t => t.id === selectedTask.id) : -1;
+          const next = tasks[idx + 1];
+          if (next) setSelectedTask(next);
+          break;
         }
+        case 'k':
+        case 'arrowup': {
+          e.preventDefault();
+          const idx = selectedTask ? tasks.findIndex(t => t.id === selectedTask.id) : tasks.length;
+          const prev = tasks[idx - 1];
+          if (prev) setSelectedTask(prev);
+          break;
+        }
+        case 'x':
+          if (selectedTask) {
+            e.preventDefault();
+            handleComplete(selectedTask.id);
+          }
+          break;
+        case '1': setCurrentView('today'); break;
+        case '2': setCurrentView('inbox'); break;
+        case '3': setCurrentView('upcoming'); break;
+        case '4': setCurrentView('logbook'); break;
+        case 'escape':
+          if (settingsOpen) { setSettingsOpen(false); break; }
+          setSelectedTask(null);
+          if (quickAddOpen) {
+            setQuickAddOpen(false);
+            setQuickAddTitle('');
+          }
+          break;
       }
     };
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedTask, tasks, quickAddOpen, settingsOpen, refresh]);
+  }, [selectedTask, tasks, quickAddOpen, settingsOpen, refresh, openQuickAdd, handleComplete]);
 
   const handleViewChange = useCallback((view: string) => {
     setCurrentView(view as ViewType);
@@ -207,7 +235,7 @@ export default function App() {
                 setTimeout(() => quickAddRef.current?.focus(), 50);
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors text-white hover:opacity-90 shadow-sm brand-gradient"
-              title="New Task (N)"
+              title="New Task (C)"
             >
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
@@ -249,7 +277,7 @@ export default function App() {
             <button
               onClick={() => setSettingsOpen(true)}
               className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
-              title="Settings (⌥,)"
+              title="Settings (⌘,)"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
