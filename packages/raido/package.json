@@ -1,6 +1,6 @@
 {
   "name": "@futhark/raido",
-  "version": "0.3.2",
+  "version": "0.4.0",
   "description": "Raidō ᚱ — Personal task manager",
   "main": "dist/main/main/main.js",
   "private": true,
@@ -14,7 +14,6 @@
     "build": "npm run build:main && npm run build:mcp && npm run build:renderer",
     "start": "electron .",
     "render-icons": "node scripts/render-icons.js",
-    "generate-badges": "node scripts/generate-badges.js",
     "dist": "npm run build && electron-builder --mac",
     "dist:dir": "npm run build && electron-builder --mac --dir"
   },
@@ -27,7 +26,6 @@
     },
     "files": [
       "dist/**/*",
-      "branding/badges/**/*",
       "node_modules/**/*",
       "!node_modules/**/*.map",
       "!node_modules/**/*.md"
@@ -46,8 +44,7 @@
       "darkModeSupport": true
     },
     "asarUnpack": [
-      "dist/mcp/**",
-      "branding/badges/**"
+      "dist/mcp/**"
     ],
     "npmRebuild": true
   },

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { AppConfig, NumeralStyle } from '../../shared/types';
+import type { AppConfig } from '../../shared/types';
 
 interface Props {
   onClose: () => void;
@@ -123,7 +123,6 @@ interface TabProps {
 
 function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(config.theme ?? 'dark');
-  const [numeralStyle, setNumeralStyle] = useState<NumeralStyle>(config.numeralStyle ?? 'arabic');
 
   return (
     <div>
@@ -139,62 +138,6 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
             <option value="light">Light</option>
             <option value="system">System</option>
           </select>
-        </SettingsField>
-
-        <SettingsField label="Dock Badge Number Style" description="Choose how numbers are displayed in the dock badge. Changes take effect immediately.">
-          <div className="flex gap-3">
-            <button
-              onClick={() => {
-                setNumeralStyle('arabic');
-                onSave({ numeralStyle: 'arabic' });
-              }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-colors ${
-                numeralStyle === 'arabic'
-                  ? 'border-accent-primary bg-accent-primary/5'
-                  : 'border-border-subtle hover:border-border-active bg-bg-primary'
-              }`}
-            >
-              {/* Arabic preview badge */}
-              <svg width="36" height="36" viewBox="0 0 36 36">
-                <circle cx="18" cy="18" r="17" fill="#C2885A" />
-                <text x="18" y="19" textAnchor="middle" dominantBaseline="central"
-                  fill="#FFFFFF" fontFamily="system-ui" fontWeight="bold" fontSize="20">7</text>
-              </svg>
-              <div className="text-left">
-                <div className="text-xs font-medium text-text-primary">Arabic</div>
-                <div className="text-[10px] text-text-muted">1, 2, 3 ...</div>
-              </div>
-            </button>
-
-            <button
-              onClick={() => {
-                setNumeralStyle('runic');
-                onSave({ numeralStyle: 'runic' });
-              }}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-colors ${
-                numeralStyle === 'runic'
-                  ? 'border-accent-primary bg-accent-primary/5'
-                  : 'border-border-subtle hover:border-border-active bg-bg-primary'
-              }`}
-            >
-              {/* Runic preview badge: pentadic 7 = stav + bow + 2 ticks */}
-              <svg width="36" height="36" viewBox="0 0 36 36">
-                <circle cx="18" cy="18" r="17" fill="#C2885A" />
-                {/* Stav */}
-                <line x1="16" y1="7" x2="16" y2="29" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" />
-                {/* Bow (right) at top */}
-                <path d="M16 9 Q24 14 16 19" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" fill="none" />
-                {/* Tick 1 */}
-                <line x1="16" y1="22" x2="24" y2="22" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" />
-                {/* Tick 2 */}
-                <line x1="16" y1="26" x2="24" y2="26" stroke="#FFFFFF" strokeWidth="2.5" strokeLinecap="round" />
-              </svg>
-              <div className="text-left">
-                <div className="text-xs font-medium text-text-primary">Runic</div>
-                <div className="text-[10px] text-text-muted">Pentadic numerals</div>
-              </div>
-            </button>
-          </div>
         </SettingsField>
 
         <SaveButton onClick={() => onSave({ theme })} saving={saving} saved={saved} />

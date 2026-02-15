@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, Notification, nativeImage } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Notification } from 'electron';
 import path from 'path';
 
 import { startApiServer } from './api-server';
@@ -101,52 +101,12 @@ function getMcpClaudeDesktopConfig(apiPort: number): object {
   };
 }
 
-// ── Badge Management (Pre-Rendered PNGs) ─────────────────────
+// ── Badge Management ─────────────────────────────────────────
 
-function getBadgesDir(): string {
-  if (isDev) {
-    return path.join(__dirname, '../../..', 'branding', 'badges');
-  }
-  // Badges are in asarUnpack, so use the unpacked path
-  const appPath = app.getAppPath();
-  const base = appPath.endsWith('.asar')
-    ? appPath.replace(/\.asar$/, '.asar.unpacked')
-    : appPath;
-  return path.join(base, 'branding', 'badges');
-}
-
-function getBadgePath(count: number): string {
-  const appConfig = config.get();
-  const style = appConfig.numeralStyle || 'arabic';
-  const dir = getBadgesDir();
-
-  if (count <= 0) {
-    return path.join(dir, 'badge-none.png');
-  } else if (count > 19) {
-    return path.join(dir, style, 'badge-19plus.png');
-  } else {
-    return path.join(dir, style, `badge-${count}.png`);
-  }
-}
-
-async function updateDockBadge() {
+function updateDockBadge() {
   if (process.platform !== 'darwin' || !app.dock) return;
-
   const count = store.getOverdueCount();
-
-  try {
-    const badgePath = getBadgePath(count);
-    const icon = nativeImage.createFromPath(badgePath);
-    if (!icon.isEmpty()) {
-      app.dock.setIcon(icon);
-    }
-  } catch (e) {
-    // Silently fail — badge PNGs may not exist in dev
-    console.error('[Raidō] Failed to set dock badge:', e);
-  }
-
-  // Clear text badge since we use the icon itself
-  app.dock.setBadge('');
+  app.dock.setBadge(count > 0 ? count.toString() : '');
 }
 
 function startBadgeMonitor() {
@@ -234,12 +194,7 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.APP_GET_CONFIG, async () => config.get());
 
   ipcMain.handle(IPC.APP_SET_CONFIG, async (_event, updates: any) => {
-    const updated = config.update(updates);
-    // If numeral style changed, refresh the dock badge immediately
-    if ('numeralStyle' in updates) {
-      updateDockBadge();
-    }
-    return updated;
+    return config.update(updates);
   });
 
   ipcMain.handle(IPC.APP_SET_BADGE, async (_event, count: number) => {

@@ -100,14 +100,11 @@ export const IPC = {
 
 // ── Config ──────────────────────────────────────────────────
 
-export type NumeralStyle = 'arabic' | 'runic';
-
 export interface AppConfig {
   apiEnabled: boolean;
   apiPort: number;
   mcpEnabled: boolean;
   theme: 'dark' | 'light' | 'system';
-  numeralStyle: NumeralStyle;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -115,7 +112,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   apiPort: 3142,
   mcpEnabled: true,
   theme: 'dark',
-  numeralStyle: 'arabic',
 };
 
 // ── Sidebar Views ───────────────────────────────────────────
