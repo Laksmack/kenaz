@@ -9,7 +9,7 @@
     "./hooks/*": "./hooks/*",
     "./lib/*": "./lib/*",
     "./types": "./types/index.ts",
-    "./tailwind.preset": "./tailwind.preset.js"
+    "./tailwind.preset": "./tailwind.preset.mjs"
   },
   "peerDependencies": {
     "react": "^18.2.0"
