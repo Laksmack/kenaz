@@ -1,6 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
-// IPC channel names - inlined to avoid import issues in preload context
 const IPC = {
   TASKS_TODAY: 'tasks:today',
   TASKS_INBOX: 'tasks:inbox',
@@ -14,12 +13,8 @@ const IPC = {
   TASKS_LOGBOOK: 'tasks:logbook',
   TASKS_STATS: 'tasks:stats',
   TASKS_TAGGED: 'tasks:tagged',
-  PROJECTS_LIST: 'projects:list',
-  PROJECT_GET: 'project:get',
-  PROJECT_CREATE: 'project:create',
-  PROJECT_UPDATE: 'project:update',
-  PROJECT_COMPLETE: 'project:complete',
-  AREAS_LIST: 'areas:list',
+  GROUPS_LIST: 'groups:list',
+  GROUP_GET: 'group:get',
   TAGS_LIST: 'tags:list',
   APP_GET_CONFIG: 'app:get-config',
   APP_SET_CONFIG: 'app:set-config',
@@ -43,15 +38,9 @@ const api = {
   getStats: () => ipcRenderer.invoke(IPC.TASKS_STATS),
   getTaggedTasks: (tagName: string) => ipcRenderer.invoke(IPC.TASKS_TAGGED, tagName),
 
-  // Projects
-  getProjects: () => ipcRenderer.invoke(IPC.PROJECTS_LIST),
-  getProject: (id: string) => ipcRenderer.invoke(IPC.PROJECT_GET, id),
-  createProject: (data: any) => ipcRenderer.invoke(IPC.PROJECT_CREATE, data),
-  updateProject: (id: string, updates: any) => ipcRenderer.invoke(IPC.PROJECT_UPDATE, id, updates),
-  completeProject: (id: string) => ipcRenderer.invoke(IPC.PROJECT_COMPLETE, id),
-
-  // Areas
-  getAreas: () => ipcRenderer.invoke(IPC.AREAS_LIST),
+  // Groups
+  getGroups: () => ipcRenderer.invoke(IPC.GROUPS_LIST),
+  getGroup: (name: string) => ipcRenderer.invoke(IPC.GROUP_GET, name),
 
   // Tags
   getTags: () => ipcRenderer.invoke(IPC.TAGS_LIST),

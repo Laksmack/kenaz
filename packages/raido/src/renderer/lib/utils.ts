@@ -12,8 +12,9 @@ export function formatDate(dateStr: string | null): string {
   if (date.getTime() === tomorrow.getTime()) return 'Tomorrow';
 
   const diffDays = Math.floor((date.getTime() - today.getTime()) / 86400000);
-  if (diffDays < 0) return `${Math.abs(diffDays)}d overdue`;
-  if (diffDays <= 7) return date.toLocaleDateString('en-US', { weekday: 'short' });
+  if (diffDays > 0 && diffDays <= 7) {
+    return date.toLocaleDateString('en-US', { weekday: 'short' });
+  }
 
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }

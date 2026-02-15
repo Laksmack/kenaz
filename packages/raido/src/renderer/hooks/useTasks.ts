@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Task, TaskStats } from '../../shared/types';
+import type { Task, TaskStats, TaskGroup } from '../../shared/types';
 
-type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'search';
+type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'group' | 'search';
 
-export function useTasks(view: ViewType | string, searchQuery?: string) {
+export function useTasks(view: ViewType | string, query?: string) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<TaskStats>({ overdue: 0, today: 0, inbox: 0, total_open: 0 });
+  const [groups, setGroups] = useState<TaskGroup[]>([]);
 
   const fetchTasks = useCallback(async () => {
     setLoading(true);
@@ -25,8 +26,11 @@ export function useTasks(view: ViewType | string, searchQuery?: string) {
         case 'logbook':
           result = await window.raido.getLogbook(30);
           break;
+        case 'group':
+          result = query ? await window.raido.getGroup(query) : [];
+          break;
         case 'search':
-          result = searchQuery ? await window.raido.searchTasks(searchQuery) : [];
+          result = query ? await window.raido.searchTasks(query) : [];
           break;
         default:
           result = [];
@@ -37,41 +41,43 @@ export function useTasks(view: ViewType | string, searchQuery?: string) {
     } finally {
       setLoading(false);
     }
-  }, [view, searchQuery]);
+  }, [view, query]);
 
-  const fetchStats = useCallback(async () => {
+  const fetchMeta = useCallback(async () => {
     try {
-      const s = await window.raido.getStats();
+      const [s, g] = await Promise.all([
+        window.raido.getStats(),
+        window.raido.getGroups(),
+      ]);
       setStats(s);
+      setGroups(g);
     } catch (e) {
-      console.error('Failed to fetch stats:', e);
+      console.error('Failed to fetch stats/groups:', e);
     }
   }, []);
 
   useEffect(() => {
     fetchTasks();
-    fetchStats();
-  }, [fetchTasks, fetchStats]);
+    fetchMeta();
+  }, [fetchTasks, fetchMeta]);
 
-  // Listen for task changes from main process
   useEffect(() => {
     const cleanup = window.raido.onTasksChanged(() => {
       fetchTasks();
-      fetchStats();
+      fetchMeta();
     });
     return cleanup;
-  }, [fetchTasks, fetchStats]);
+  }, [fetchTasks, fetchMeta]);
 
-  // Poll stats every 30 seconds for badge updates
   useEffect(() => {
-    const interval = setInterval(fetchStats, 30000);
+    const interval = setInterval(fetchMeta, 30000);
     return () => clearInterval(interval);
-  }, [fetchStats]);
+  }, [fetchMeta]);
 
   const refresh = useCallback(() => {
     fetchTasks();
-    fetchStats();
-  }, [fetchTasks, fetchStats]);
+    fetchMeta();
+  }, [fetchTasks, fetchMeta]);
 
-  return { tasks, loading, stats, refresh };
+  return { tasks, loading, stats, groups, refresh };
 }

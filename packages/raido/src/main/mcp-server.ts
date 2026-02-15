@@ -58,7 +58,7 @@ server.tool(
 
 server.tool(
   'get_inbox',
-  'Get unprocessed tasks (no due date, no project)',
+  'Get unprocessed tasks (no due date)',
   {},
   async () => {
     const data = await api('/api/inbox');
@@ -77,22 +77,22 @@ server.tool(
 );
 
 server.tool(
-  'get_projects',
-  'Get all open projects with task counts',
+  'get_groups',
+  'Get all bracket groups with open task counts. Groups are derived from [BracketPrefix] in task titles.',
   {},
   async () => {
-    const data = await api('/api/projects');
-    return { content: [{ type: 'text', text: JSON.stringify(data.projects, null, 2) }] };
+    const data = await api('/api/groups');
+    return { content: [{ type: 'text', text: JSON.stringify(data.groups, null, 2) }] };
   }
 );
 
 server.tool(
-  'get_project',
-  'Get a project with all its tasks grouped by heading',
-  { project_id: z.string().describe('Project ID') },
-  async ({ project_id }) => {
-    const data = await api(`/api/project/${project_id}`);
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  'get_group',
+  'Get all open tasks in a bracket group',
+  { name: z.string().describe('Group name (without brackets), e.g. "Conagra"') },
+  async ({ name }) => {
+    const data = await api(`/api/group/${encodeURIComponent(name)}`);
+    return { content: [{ type: 'text', text: JSON.stringify(data.tasks, null, 2) }] };
   }
 );
 
@@ -100,15 +100,13 @@ server.tool(
 
 server.tool(
   'add_todo',
-  'Create a new task',
+  'Create a new task. To assign to a group, include [GroupName] prefix in the title.',
   {
-    title: z.string().describe('Task title'),
+    title: z.string().describe('Task title. Use [GroupName] prefix for group assignment, e.g. "[Conagra] Review cameras"'),
     notes: z.string().optional().describe('Markdown notes'),
     due_date: z.string().optional().describe('Due date (YYYY-MM-DD). Tasks without a due date go to Inbox.'),
-    project_id: z.string().optional().describe('Project to assign to'),
     tags: z.array(z.string()).optional().describe('Tags to apply'),
     priority: z.number().min(0).max(3).optional().describe('Priority: 0=none, 1=low, 2=medium, 3=high'),
-    heading: z.string().optional().describe('Heading within project'),
     kenaz_thread_id: z.string().optional().describe('Linked Kenaz email thread ID'),
     hubspot_deal_id: z.string().optional().describe('Linked HubSpot deal ID'),
     vault_path: z.string().optional().describe('Linked Obsidian vault path'),
@@ -151,50 +149,6 @@ server.tool(
   }
 );
 
-server.tool(
-  'add_project',
-  'Create a new project',
-  {
-    title: z.string().describe('Project title'),
-    notes: z.string().optional().describe('Project notes'),
-    area_id: z.string().optional().describe('Area to assign to'),
-    tags: z.array(z.string()).optional().describe('Tags'),
-  },
-  async (args) => {
-    const data = await api('/api/project', {
-      method: 'POST',
-      body: JSON.stringify(args),
-    });
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-  }
-);
-
-server.tool(
-  'update_project',
-  'Update an existing project',
-  {
-    id: z.string().describe('Project ID'),
-    title: z.string().optional().describe('New title'),
-    notes: z.string().optional().describe('New notes'),
-    completed: z.boolean().optional().describe('Mark as completed'),
-    canceled: z.boolean().optional().describe('Mark as canceled'),
-  },
-  async ({ id, completed, canceled, ...updates }) => {
-    if (completed) {
-      const data = await api(`/api/project/${id}/complete`, { method: 'POST' });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-    }
-    if (canceled) {
-      (updates as any).status = 'canceled';
-    }
-    const data = await api(`/api/project/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(updates),
-    });
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-  }
-);
-
 // ── Tools: Search & Stats ───────────────────────────────────
 
 server.tool(
@@ -217,7 +171,6 @@ server.tool(
     canceled: z.boolean().optional().describe('Include canceled tasks'),
   },
   async ({ query }) => {
-    // For now, routes through the same search endpoint
     const data = await api(`/api/search?q=${encodeURIComponent(query)}`);
     return { content: [{ type: 'text', text: JSON.stringify(data.tasks, null, 2) }] };
   }
@@ -260,16 +213,6 @@ server.tool(
   async ({ tag_name }) => {
     const data = await api(`/api/tagged/${encodeURIComponent(tag_name)}`);
     return { content: [{ type: 'text', text: JSON.stringify(data.tasks, null, 2) }] };
-  }
-);
-
-server.tool(
-  'get_areas',
-  'Get all areas with their projects',
-  {},
-  async () => {
-    const data = await api('/api/areas');
-    return { content: [{ type: 'text', text: JSON.stringify(data.areas, null, 2) }] };
   }
 );
 

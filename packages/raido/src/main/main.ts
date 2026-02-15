@@ -26,7 +26,7 @@ function createWindow() {
     minHeight: 600,
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 16 },
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#12100e',
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -43,7 +43,6 @@ function createWindow() {
     mainWindow.loadFile(htmlPath);
   }
 
-  // Allow toggling DevTools with Cmd+Shift+I in production
   mainWindow.webContents.on('before-input-event', (_event, input) => {
     if (input.meta && input.shift && input.key.toLowerCase() === 'i') {
       mainWindow?.webContents.toggleDevTools();
@@ -54,7 +53,6 @@ function createWindow() {
     console.error('[Raidō] Failed to load:', errorCode, errorDescription);
   });
 
-  // Open external links in browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: 'deny' };
@@ -70,8 +68,6 @@ async function initServices() {
   store = new TaskStore();
 
   const appConfig = config.get();
-
-  // Start the local API server
   if (appConfig.apiEnabled) {
     startApiServer(store, appConfig.apiPort);
   }
@@ -110,10 +106,7 @@ function updateDockBadge() {
 }
 
 function startBadgeMonitor() {
-  // Initial check
   updateDockBadge();
-
-  // Check every 60 seconds
   badgeInterval = setInterval(updateDockBadge, 60000);
 }
 
@@ -123,7 +116,6 @@ function notifyTasksChanged() {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('tasks:changed');
   }
-  // Also update badge immediately
   updateDockBadge();
 }
 
@@ -162,30 +154,9 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.TASKS_STATS, async () => store.getStats());
   ipcMain.handle(IPC.TASKS_TAGGED, async (_event, tagName: string) => store.getTaggedTasks(tagName));
 
-  // Projects
-  ipcMain.handle(IPC.PROJECTS_LIST, async () => store.getProjects());
-  ipcMain.handle(IPC.PROJECT_GET, async (_event, id: string) => store.getProject(id));
-
-  ipcMain.handle(IPC.PROJECT_CREATE, async (_event, data: any) => {
-    const project = store.createProject(data);
-    notifyTasksChanged();
-    return project;
-  });
-
-  ipcMain.handle(IPC.PROJECT_UPDATE, async (_event, id: string, updates: any) => {
-    const project = store.updateProject(id, updates);
-    notifyTasksChanged();
-    return project;
-  });
-
-  ipcMain.handle(IPC.PROJECT_COMPLETE, async (_event, id: string) => {
-    const project = store.completeProject(id);
-    notifyTasksChanged();
-    return project;
-  });
-
-  // Areas
-  ipcMain.handle(IPC.AREAS_LIST, async () => store.getAreas());
+  // Groups
+  ipcMain.handle(IPC.GROUPS_LIST, async () => store.getGroups());
+  ipcMain.handle(IPC.GROUP_GET, async (_event, name: string) => store.getGroup(name));
 
   // Tags
   ipcMain.handle(IPC.TAGS_LIST, async () => store.getTags());

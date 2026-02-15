@@ -5,12 +5,21 @@
 @tailwind utilities;
 
 @layer base {
-  /* Raidō earth-tone accent overrides */
+  /* Raidō warm dark theme — "dark walnut desk" not "OLED void" */
   :root, [data-theme='dark'] {
+    --bg-primary: 18 16 14;
+    --bg-secondary: 24 20 16;
+    --bg-tertiary: 32 28 22;
+    --bg-hover: 30 26 20;
+    --text-primary: 232 224 216;
+    --text-secondary: 168 152 136;
+    --text-muted: 107 96 88;
+    --border-subtle: 42 36 32;
+    --border-active: 194 136 90;
     --accent-deep: 139 94 60;
     --accent-primary: 194 136 90;
     --accent-warm: 212 165 116;
-    --border-active: 194 136 90;
+    --accent-light: 255 248 240;
   }
 
   [data-theme='light'] {
@@ -24,26 +33,17 @@
 /* ── Raidō-specific component styles ─────────────────── */
 @layer components {
   .task-item {
-    @apply flex items-start gap-3 px-4 py-3 border-b border-border-subtle cursor-pointer transition-colors duration-100;
+    @apply flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-colors duration-100;
+    border-bottom: 1px solid rgb(var(--border-subtle));
   }
 
   .task-item:hover {
-    @apply bg-bg-hover;
+    background: rgb(var(--bg-hover));
   }
 
   .task-item.active {
-    @apply bg-bg-tertiary;
+    background: rgb(var(--bg-tertiary));
     border-left: 2px solid rgb(var(--accent-primary));
-  }
-
-  .priority-high {
-    color: rgb(var(--accent-danger));
-  }
-  .priority-medium {
-    color: rgb(var(--accent-warning));
-  }
-  .priority-low {
-    color: rgb(var(--accent-primary));
   }
 
   .brand-gradient {
@@ -60,5 +60,27 @@
 
   .sidebar-item.active {
     @apply bg-bg-tertiary font-semibold;
+  }
+
+  .tag-pill {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgb(var(--border-subtle));
+    color: rgb(var(--text-secondary));
+    white-space: nowrap;
+  }
+
+  .tag-filter-btn {
+    @apply text-xs px-2.5 py-1 rounded-md transition-colors;
+    color: rgb(var(--text-muted));
+  }
+  .tag-filter-btn:hover {
+    color: rgb(var(--text-secondary));
+    background: rgb(var(--bg-hover));
+  }
+  .tag-filter-btn.active {
+    color: rgb(var(--accent-primary));
+    background: rgb(var(--accent-primary) / 0.1);
   }
 }

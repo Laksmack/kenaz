@@ -1,14 +1,14 @@
 import React from 'react';
-import type { Project, TaskStats } from '../../shared/types';
+import type { TaskStats, TaskGroup } from '../../shared/types';
 import { cn } from '../lib/utils';
 
 interface SidebarProps {
   currentView: string;
   onViewChange: (view: string) => void;
   stats: TaskStats;
-  projects: Project[];
-  selectedProjectId: string | null;
-  onSelectProject: (id: string) => void;
+  groups: TaskGroup[];
+  selectedGroup: string | null;
+  onSelectGroup: (name: string) => void;
 }
 
 const NAV_ITEMS = [
@@ -18,7 +18,9 @@ const NAV_ITEMS = [
   { id: 'logbook', name: 'Logbook', icon: '📖' },
 ];
 
-export function Sidebar({ currentView, onViewChange, stats, projects, selectedProjectId, onSelectProject }: SidebarProps) {
+export function Sidebar({ currentView, onViewChange, stats, groups, selectedGroup, onSelectGroup }: SidebarProps) {
+  const activeGroups = groups.filter(g => g.count > 0);
+
   return (
     <div className="flex flex-col h-full bg-bg-secondary">
       {/* Traffic light spacer */}
@@ -54,46 +56,38 @@ export function Sidebar({ currentView, onViewChange, stats, projects, selectedPr
       </nav>
 
       {/* Divider */}
-      <div className="mx-4 my-3 border-t border-border-subtle" />
+      {activeGroups.length > 0 && (
+        <>
+          <div className="mx-4 my-3 border-t border-border-subtle" />
 
-      {/* Projects */}
-      <div className="px-4 mb-2 flex items-center justify-between">
-        <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Projects</span>
-        <button
-          onClick={() => onViewChange('new-project')}
-          className="text-text-muted hover:text-text-primary transition-colors"
-          title="New Project"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-          </svg>
-        </button>
-      </div>
+          {/* Groups */}
+          <div className="px-4 mb-2">
+            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Groups</span>
+          </div>
 
-      <nav className="px-3 space-y-0.5 overflow-y-auto flex-1 scrollbar-hide">
-        {projects.map((project) => {
-          const isActive = currentView === 'project' && selectedProjectId === project.id;
-          return (
-            <button
-              key={project.id}
-              onClick={() => onSelectProject(project.id)}
-              className={cn(
-                'sidebar-item w-full',
-                isActive && 'active'
-              )}
-            >
-              <span className="text-base w-6 text-center">📁</span>
-              <span className="flex-1 text-left truncate">{project.title}</span>
-              {project.open_task_count !== undefined && project.open_task_count > 0 && (
-                <span className="text-xs text-text-muted">{project.open_task_count}</span>
-              )}
-            </button>
-          );
-        })}
-        {projects.length === 0 && (
-          <div className="px-4 py-2 text-xs text-text-muted">No projects yet</div>
-        )}
-      </nav>
+          <nav className="px-3 space-y-0.5 overflow-y-auto flex-1 scrollbar-hide">
+            {activeGroups.map((group) => {
+              const isActive = currentView === 'group' && selectedGroup === group.name;
+              return (
+                <button
+                  key={group.name}
+                  onClick={() => onSelectGroup(group.name)}
+                  className={cn(
+                    'sidebar-item w-full',
+                    isActive && 'active'
+                  )}
+                >
+                  <span className="text-base w-6 text-center opacity-60">⌐</span>
+                  <span className="flex-1 text-left truncate">{group.name}</span>
+                  <span className="text-xs text-text-muted">{group.count}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </>
+      )}
+
+      {activeGroups.length === 0 && <div className="flex-1" />}
 
       {/* Raidō rune footer */}
       <div className="px-4 py-3 border-t border-border-subtle flex items-center gap-2">

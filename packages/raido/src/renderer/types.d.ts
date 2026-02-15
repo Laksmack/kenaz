@@ -1,4 +1,4 @@
-import type { Task, Project, Area, Tag, TaskStats, AppConfig } from '../shared/types';
+import type { Task, TaskGroup, Tag, TaskStats, AppConfig } from '../shared/types';
 
 declare global {
   interface Window {
@@ -7,7 +7,6 @@ declare global {
       getToday: () => Promise<Task[]>;
       getInbox: () => Promise<Task[]>;
       getUpcoming: () => Promise<Task[]>;
-      getSomeday: () => Promise<Task[]>;
       getTask: (id: string) => Promise<Task | null>;
       createTask: (data: Partial<Task>) => Promise<Task>;
       updateTask: (id: string, updates: Partial<Task>) => Promise<Task | null>;
@@ -18,15 +17,9 @@ declare global {
       getStats: () => Promise<TaskStats>;
       getTaggedTasks: (tagName: string) => Promise<Task[]>;
 
-      // Projects
-      getProjects: () => Promise<Project[]>;
-      getProject: (id: string) => Promise<(Project & { tasks: Task[] }) | null>;
-      createProject: (data: Partial<Project>) => Promise<Project>;
-      updateProject: (id: string, updates: Partial<Project>) => Promise<Project | null>;
-      completeProject: (id: string) => Promise<Project | null>;
-
-      // Areas
-      getAreas: () => Promise<Area[]>;
+      // Groups
+      getGroups: () => Promise<TaskGroup[]>;
+      getGroup: (name: string) => Promise<Task[]>;
 
       // Tags
       getTags: () => Promise<Tag[]>;

@@ -5,42 +5,22 @@ export interface Task {
   title: string;
   notes: string;
   status: 'open' | 'completed' | 'canceled';
-  priority: 0 | 1 | 2 | 3; // 0=none, 1=low, 2=medium, 3=high
+  priority: 0 | 1 | 2 | 3;
   due_date: string | null;
   completed_at: string | null;
-  project_id: string | null;
-  heading: string | null;
   sort_order: number;
   created_at: string;
   updated_at: string;
-  // Cross-app linking
   kenaz_thread_id: string | null;
   hubspot_deal_id: string | null;
   vault_path: string | null;
   calendar_event_id: string | null;
-  // Joined data
   tags?: string[];
 }
 
-export interface Project {
-  id: string;
-  title: string;
-  notes: string;
-  status: 'open' | 'completed' | 'canceled';
-  area_id: string | null;
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
-  // Computed
-  task_count?: number;
-  open_task_count?: number;
-}
-
-export interface Area {
-  id: string;
-  title: string;
-  sort_order: number;
-  projects?: Project[];
+export interface TaskGroup {
+  name: string;
+  count: number;
 }
 
 export interface Tag {
@@ -75,15 +55,9 @@ export const IPC = {
   TASKS_STATS: 'tasks:stats',
   TASKS_TAGGED: 'tasks:tagged',
 
-  // Projects
-  PROJECTS_LIST: 'projects:list',
-  PROJECT_GET: 'project:get',
-  PROJECT_CREATE: 'project:create',
-  PROJECT_UPDATE: 'project:update',
-  PROJECT_COMPLETE: 'project:complete',
-
-  // Areas
-  AREAS_LIST: 'areas:list',
+  // Groups
+  GROUPS_LIST: 'groups:list',
+  GROUP_GET: 'group:get',
 
   // Tags
   TAGS_LIST: 'tags:list',
@@ -116,7 +90,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 
 // ── Sidebar Views ───────────────────────────────────────────
 
-export type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'project' | 'search';
+export type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'group' | 'search';
 
 export interface SidebarItem {
   id: ViewType | string;
@@ -131,3 +105,10 @@ export const SIDEBAR_ITEMS: SidebarItem[] = [
   { id: 'upcoming', name: 'Upcoming', icon: '📅' },
   { id: 'logbook', name: 'Logbook', icon: '📖' },
 ];
+
+// ── Helpers ─────────────────────────────────────────────────
+
+export function extractGroup(title: string): string | null {
+  const match = title.match(/^\[([^\]]+)\]/);
+  return match ? match[1] : null;
+}

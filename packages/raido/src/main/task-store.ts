@@ -2,7 +2,8 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { app } from 'electron';
 import crypto from 'crypto';
-import type { Task, Project, Area, Tag, TaskStats } from '../shared/types';
+import type { Task, TaskGroup, Tag, TaskStats } from '../shared/types';
+import { extractGroup } from '../shared/types';
 
 export class TaskStore {
   private db: Database.Database;
@@ -17,24 +18,6 @@ export class TaskStore {
 
   private init(): void {
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS areas (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        sort_order REAL DEFAULT 0
-      );
-
-      CREATE TABLE IF NOT EXISTS projects (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL,
-        notes TEXT DEFAULT '',
-        status TEXT DEFAULT 'open' CHECK(status IN ('open', 'completed', 'canceled')),
-        area_id TEXT,
-        sort_order REAL DEFAULT 0,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (area_id) REFERENCES areas(id) ON DELETE SET NULL
-      );
-
       CREATE TABLE IF NOT EXISTS tasks (
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
@@ -43,16 +26,13 @@ export class TaskStore {
         priority INTEGER DEFAULT 0 CHECK(priority BETWEEN 0 AND 3),
         due_date TEXT,
         completed_at TEXT,
-        project_id TEXT,
-        heading TEXT,
         sort_order REAL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         kenaz_thread_id TEXT,
         hubspot_deal_id TEXT,
         vault_path TEXT,
-        calendar_event_id TEXT,
-        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+        calendar_event_id TEXT
       );
 
       CREATE TABLE IF NOT EXISTS tags (
@@ -70,19 +50,43 @@ export class TaskStore {
 
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
-      CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
     `);
 
-    // Migration: drop when_date column if it still exists
-    this.migrateDropWhenDate();
+    this.migrateDropProjects();
   }
 
-  private migrateDropWhenDate(): void {
+  private migrateDropProjects(): void {
     const columns = this.db.pragma('table_info(tasks)') as { name: string }[];
-    const hasWhenDate = columns.some(c => c.name === 'when_date');
-    if (!hasWhenDate) return;
+    const hasProjectId = columns.some(c => c.name === 'project_id');
+    if (!hasProjectId) return;
 
-    console.log('[Raidō] Migrating: dropping when_date column from tasks');
+    console.log('[Raidō] Migrating: removing projects/areas, converting to bracket groups');
+
+    // Check if projects table exists
+    const projectsExist = this.db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='projects'"
+    ).get();
+
+    if (projectsExist) {
+      // Prepend [ProjectName] to task titles where project_id is set
+      // and the title doesn't already have a bracket prefix
+      const tasksWithProjects = this.db.prepare(`
+        SELECT t.id, t.title, p.title as project_title
+        FROM tasks t
+        JOIN projects p ON t.project_id = p.id
+        WHERE t.project_id IS NOT NULL
+      `).all() as { id: string; title: string; project_title: string }[];
+
+      for (const task of tasksWithProjects) {
+        if (!task.title.startsWith('[')) {
+          const newTitle = `[${task.project_title}] ${task.title}`;
+          this.db.prepare('UPDATE tasks SET title = ? WHERE id = ?').run(newTitle, task.id);
+        }
+      }
+      console.log(`[Raidō] Converted ${tasksWithProjects.filter(t => !t.title.startsWith('[')).length} tasks to bracket groups`);
+    }
+
+    // Recreate tasks table without project_id and heading
     this.db.exec(`
       CREATE TABLE tasks_new (
         id TEXT PRIMARY KEY,
@@ -92,23 +96,18 @@ export class TaskStore {
         priority INTEGER DEFAULT 0 CHECK(priority BETWEEN 0 AND 3),
         due_date TEXT,
         completed_at TEXT,
-        project_id TEXT,
-        heading TEXT,
         sort_order REAL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now')),
         kenaz_thread_id TEXT,
         hubspot_deal_id TEXT,
         vault_path TEXT,
-        calendar_event_id TEXT,
-        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+        calendar_event_id TEXT
       );
 
       INSERT INTO tasks_new
-        SELECT id, title, notes, status, priority,
-               COALESCE(due_date, when_date) as due_date,
-               completed_at, project_id, heading, sort_order,
-               created_at, updated_at,
+        SELECT id, title, notes, status, priority, due_date,
+               completed_at, sort_order, created_at, updated_at,
                kenaz_thread_id, hubspot_deal_id, vault_path, calendar_event_id
         FROM tasks;
 
@@ -117,9 +116,21 @@ export class TaskStore {
 
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
-      CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
     `);
-    console.log('[Raidō] Migration complete: when_date removed');
+
+    // Drop projects and areas tables
+    const tables = ['projects', 'areas'];
+    for (const table of tables) {
+      const exists = this.db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?"
+      ).get(table);
+      if (exists) {
+        this.db.exec(`DROP TABLE ${table}`);
+        console.log(`[Raidō] Dropped table: ${table}`);
+      }
+    }
+
+    console.log('[Raidō] Migration complete: projects removed, bracket groups active');
   }
 
   private genId(): string {
@@ -147,11 +158,9 @@ export class TaskStore {
   }
 
   private setTaskTags(taskId: string, tagNames: string[]): void {
-    // Remove existing tags
     this.db.prepare('DELETE FROM task_tags WHERE task_id = ?').run(taskId);
 
     for (const name of tagNames) {
-      // Upsert the tag
       let tag = this.db.prepare('SELECT id FROM tags WHERE name = ?').get(name) as { id: string } | undefined;
       if (!tag) {
         const tagId = this.genId();
@@ -181,7 +190,6 @@ export class TaskStore {
       SELECT * FROM tasks
       WHERE status = 'open'
         AND due_date IS NULL
-        AND project_id IS NULL
       ORDER BY created_at DESC
     `).all() as any[];
     return rows.map(r => this.enrichTask(r));
@@ -209,10 +217,8 @@ export class TaskStore {
     title: string;
     notes?: string;
     due_date?: string;
-    project_id?: string;
     priority?: number;
     tags?: string[];
-    heading?: string;
     kenaz_thread_id?: string;
     hubspot_deal_id?: string;
     vault_path?: string;
@@ -221,18 +227,16 @@ export class TaskStore {
     const id = this.genId();
     const now = this.now();
     this.db.prepare(`
-      INSERT INTO tasks (id, title, notes, due_date, project_id, priority, heading,
+      INSERT INTO tasks (id, title, notes, due_date, priority,
                          kenaz_thread_id, hubspot_deal_id, vault_path, calendar_event_id,
                          created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       data.title,
       data.notes || '',
       data.due_date || null,
-      data.project_id || null,
       data.priority || 0,
-      data.heading || null,
       data.kenaz_thread_id || null,
       data.hubspot_deal_id || null,
       data.vault_path || null,
@@ -252,10 +256,8 @@ export class TaskStore {
     title: string;
     notes: string;
     due_date: string | null;
-    project_id: string | null;
     priority: number;
     status: string;
-    heading: string | null;
     sort_order: number;
     tags: string[];
     kenaz_thread_id: string | null;
@@ -267,8 +269,8 @@ export class TaskStore {
     const values: any[] = [];
 
     const allowedFields = [
-      'title', 'notes', 'due_date', 'project_id',
-      'priority', 'status', 'heading', 'sort_order',
+      'title', 'notes', 'due_date',
+      'priority', 'status', 'sort_order',
       'kenaz_thread_id', 'hubspot_deal_id', 'vault_path', 'calendar_event_id',
     ];
 
@@ -347,7 +349,7 @@ export class TaskStore {
 
     const inbox = (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks
-      WHERE due_date IS NULL AND project_id IS NULL AND status = 'open'
+      WHERE due_date IS NULL AND status = 'open'
     `).get() as any).c;
 
     const total_open = (this.db.prepare(`
@@ -365,83 +367,34 @@ export class TaskStore {
     `).get(today) as any).c;
   }
 
-  // ── Project Queries ───────────────────────────────────────
+  // ── Group Queries (bracket prefix) ─────────────────────────
 
-  getProjects(): Project[] {
+  getGroups(): TaskGroup[] {
     const rows = this.db.prepare(`
-      SELECT p.*,
-        (SELECT COUNT(*) FROM tasks WHERE project_id = p.id) as task_count,
-        (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status = 'open') as open_task_count
-      FROM projects p
-      WHERE p.status = 'open'
-      ORDER BY p.sort_order, p.title
-    `).all() as any[];
-    return rows;
-  }
+      SELECT title FROM tasks WHERE status = 'open'
+    `).all() as { title: string }[];
 
-  getProject(id: string): (Project & { tasks: Task[] }) | null {
-    const project = this.db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as any;
-    if (!project) return null;
-
-    const tasks = this.db.prepare(`
-      SELECT * FROM tasks WHERE project_id = ? ORDER BY heading, sort_order, created_at
-    `).all(id) as any[];
-
-    return {
-      ...project,
-      tasks: tasks.map(t => this.enrichTask(t)),
-    };
-  }
-
-  createProject(data: { title: string; notes?: string; area_id?: string; tags?: string[] }): Project {
-    const id = this.genId();
-    const now = this.now();
-    this.db.prepare(`
-      INSERT INTO projects (id, title, notes, area_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(id, data.title, data.notes || '', data.area_id || null, now, now);
-    return this.db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as Project;
-  }
-
-  updateProject(id: string, updates: Partial<{ title: string; notes: string; area_id: string | null; status: string; sort_order: number }>): Project | null {
-    const fields: string[] = [];
-    const values: any[] = [];
-
-    for (const [key, value] of Object.entries(updates)) {
-      if (['title', 'notes', 'area_id', 'status', 'sort_order'].includes(key)) {
-        fields.push(`${key} = ?`);
-        values.push(value);
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const group = extractGroup(row.title);
+      if (group) {
+        counts.set(group, (counts.get(group) || 0) + 1);
       }
     }
 
-    if (fields.length > 0) {
-      fields.push('updated_at = ?');
-      values.push(this.now());
-      values.push(id);
-      this.db.prepare(`UPDATE projects SET ${fields.join(', ')} WHERE id = ?`).run(...values);
-    }
-
-    return this.db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as Project | null;
+    return Array.from(counts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  completeProject(id: string): Project | null {
-    this.db.prepare(`UPDATE projects SET status = 'completed', updated_at = ? WHERE id = ?`).run(this.now(), id);
-    return this.db.prepare('SELECT * FROM projects WHERE id = ?').get(id) as Project | null;
-  }
-
-  // ── Area Queries ──────────────────────────────────────────
-
-  getAreas(): Area[] {
-    const areas = this.db.prepare('SELECT * FROM areas ORDER BY sort_order, title').all() as Area[];
-    for (const area of areas) {
-      area.projects = this.db.prepare(`
-        SELECT p.*,
-          (SELECT COUNT(*) FROM tasks WHERE project_id = p.id AND status = 'open') as open_task_count
-        FROM projects p WHERE p.area_id = ? AND p.status = 'open'
-        ORDER BY p.sort_order, p.title
-      `).all(area.id) as Project[];
-    }
-    return areas;
+  getGroup(name: string): Task[] {
+    const prefix = `[${name}]`;
+    const rows = this.db.prepare(`
+      SELECT * FROM tasks
+      WHERE title LIKE ? AND status = 'open'
+      ORDER BY due_date ASC, priority DESC, sort_order ASC
+    `).all(`${prefix}%`) as any[];
+    return rows.map(r => this.enrichTask(r));
   }
 
   // ── Tag Queries ───────────────────────────────────────────

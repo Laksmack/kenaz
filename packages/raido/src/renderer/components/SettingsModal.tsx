@@ -34,7 +34,6 @@ export function SettingsModal({ onClose }: Props) {
 
   useEffect(() => { setSaved(false); }, [activeTab]);
 
-  // Close on Escape
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -57,12 +56,9 @@ export function SettingsModal({ onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal */}
       <div className="relative bg-bg-secondary rounded-xl border border-border-subtle shadow-2xl w-[640px] h-[540px] flex overflow-hidden">
-        {/* Sidebar tabs */}
         <div className="w-44 bg-bg-primary border-r border-border-subtle p-3 flex flex-col gap-1">
           <h2 className="text-sm font-semibold text-text-primary px-3 py-2 mb-1">Settings</h2>
           {tabs.map((tab) => (
@@ -85,7 +81,6 @@ export function SettingsModal({ onClose }: Props) {
           </div>
         </div>
 
-        {/* Content */}
         <div key={activeTab} className="flex-1 p-6 overflow-y-auto animate-fadeIn">
           {activeTab === 'general' && (
             <GeneralSettings config={config} onSave={handleSave} saving={saving} saved={saved} />
@@ -98,7 +93,6 @@ export function SettingsModal({ onClose }: Props) {
           )}
         </div>
 
-        {/* Close button */}
         <button
           onClick={onClose}
           className="absolute top-3 right-3 p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-text-primary transition-colors"
@@ -159,6 +153,9 @@ function APISettings({ config, onSave, saving, saved }: TabProps) {
 #
 # Date Model: Every task has one date field — due_date.
 # Tasks with a due_date are scheduled. Tasks without one live in Inbox.
+#
+# Groups: Tasks self-organize via [BracketPrefix] in their titles.
+# e.g. "[Conagra] Review cameras" belongs to the "Conagra" group.
 
 
 # ═══════════════════════════════════════════════════════
@@ -167,18 +164,27 @@ function APISettings({ config, onSave, saving, saved }: TabProps) {
 
 GET ${base}/api/today
 # Tasks due today or overdue (due_date <= today, status = open)
-# Response: { "tasks": [...] }
 
 GET ${base}/api/inbox
-# Tasks with no due_date and no project (status = open)
-# Response: { "tasks": [...] }
+# Tasks with no due_date (status = open)
 
 GET ${base}/api/upcoming
 # Tasks with future due dates (due_date > today, status = open)
-# Response: { "tasks": [...] }
 
 GET ${base}/api/logbook?days=7
 # Recently completed tasks (default: last 7 days)
+
+
+# ═══════════════════════════════════════════════════════
+# GROUPS (Bracket Prefix)
+# ═══════════════════════════════════════════════════════
+
+GET ${base}/api/groups
+# All bracket groups with open task counts
+# Response: { "groups": [{ "name": "Conagra", "count": 3 }] }
+
+GET ${base}/api/group/:name
+# All open tasks in a bracket group
 # Response: { "tasks": [...] }
 
 
@@ -187,61 +193,27 @@ GET ${base}/api/logbook?days=7
 # ═══════════════════════════════════════════════════════
 
 GET ${base}/api/task/:id
-# Get a single task with tags
-# Response: { "id": "...", "title": "...", "notes": "...", "status": "open", "priority": 2, ... }
 
 POST ${base}/api/task
-# Create a new task. Omit due_date to send to Inbox.
+# Create a new task. Use [GroupName] prefix for group assignment.
 # Payload:
 # {
-#   "title": "Buy groceries",              (required)
-#   "notes": "Milk, eggs, bread",           (optional)
-#   "due_date": "2026-02-20",               (optional, YYYY-MM-DD — omit for Inbox)
-#   "project_id": "uuid",                   (optional)
-#   "priority": 2,                          (optional, 0-3)
-#   "tags": ["errands", "personal"],         (optional)
-#   "heading": "Morning tasks",             (optional, group within project)
-#   "kenaz_thread_id": "gmail_thread_id",   (optional, cross-link to email)
-#   "hubspot_deal_id": "deal_id",           (optional, cross-link to deal)
-#   "vault_path": "notes/project.md",       (optional, cross-link to vault)
-#   "calendar_event_id": "event_id"         (optional, cross-link to calendar)
+#   "title": "[Conagra] Review cameras",    (required, bracket prefix optional)
+#   "notes": "Check all angles",             (optional)
+#   "due_date": "2026-02-20",               (optional, YYYY-MM-DD)
+#   "tags": ["internal", "review"],          (optional)
+#   "kenaz_thread_id": "...",               (optional)
+#   "hubspot_deal_id": "...",               (optional)
+#   "vault_path": "...",                    (optional)
+#   "calendar_event_id": "..."             (optional)
 # }
-# Response: { "id": "...", "title": "...", ... }
 
 PUT ${base}/api/task/:id
 # Update task fields (partial update)
-# Payload: { "title": "Updated title", "priority": 3 }
-# Response: { "id": "...", ... }
 
 DELETE ${base}/api/task/:id
-# Delete a task permanently
-# Response: { "success": true }
 
 POST ${base}/api/task/:id/complete
-# Mark task as completed (sets completed_at timestamp)
-# Response: { "id": "...", "status": "completed", "completed_at": "...", ... }
-
-
-# ═══════════════════════════════════════════════════════
-# PROJECTS
-# ═══════════════════════════════════════════════════════
-
-GET ${base}/api/projects
-# All open projects with task counts
-# Response: { "projects": [{ "id": "...", "title": "...", "task_count": 5, "open_task_count": 3 }] }
-
-GET ${base}/api/project/:id
-# Project detail with all tasks grouped by heading
-# Response: { "id": "...", "title": "...", "tasks": [...] }
-
-POST ${base}/api/project
-# Create project. Payload: { "title": "New Project", "notes": "...", "area_id": "..." }
-
-PUT ${base}/api/project/:id
-# Update project. Payload: { "title": "Updated", "notes": "..." }
-
-POST ${base}/api/project/:id/complete
-# Complete a project
 
 
 # ═══════════════════════════════════════════════════════
@@ -249,45 +221,9 @@ POST ${base}/api/project/:id/complete
 # ═══════════════════════════════════════════════════════
 
 GET ${base}/api/search?q=<query>
-# Full-text search across task titles and notes
-# Response: { "tasks": [...] }
-
-GET ${base}/api/tags
-# All tags with usage counts
-# Response: { "tags": [{ "id": "...", "name": "errands", "count": 5 }] }
-
-GET ${base}/api/tagged/:tagName
-# All tasks with a specific tag
-# Response: { "tasks": [...] }
-
 GET ${base}/api/stats
-# Quick counts for badge and daily briefing
-# Response: { "overdue": 2, "today": 5, "inbox": 3, "total_open": 42 }
-
-GET ${base}/api/areas
-# All areas with their projects
-# Response: { "areas": [{ "id": "...", "title": "Work", "projects": [...] }] }
-
-
-# ═══════════════════════════════════════════════════════
-# EXAMPLE WORKFLOWS
-# ═══════════════════════════════════════════════════════
-
-# Quick add from terminal:
-# curl -X POST ${base}/api/task -H "Content-Type: application/json" \\
-#   -d '{"title":"Review PR #42","when_date":"2026-02-15","priority":2}'
-
-# Check today's tasks:
-# curl ${base}/api/today
-
-# Get stats for daily briefing:
-# curl ${base}/api/stats
-
-# Complete a task:
-# curl -X POST ${base}/api/task/TASK_ID/complete
-
-# Search for tasks:
-# curl "${base}/api/search?q=meeting"
+GET ${base}/api/tags
+GET ${base}/api/tagged/:tagName
 `;
 
   return (
@@ -339,24 +275,20 @@ GET ${base}/api/areas
                 <div><span className="text-accent-success">GET</span>  /api/inbox</div>
                 <div><span className="text-accent-success">GET</span>  /api/upcoming</div>
                 <div><span className="text-accent-success">GET</span>  /api/logbook?days=7</div>
+                <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Groups</div>
+                <div><span className="text-accent-success">GET</span>  /api/groups</div>
+                <div><span className="text-accent-success">GET</span>  /api/group/:name</div>
                 <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Tasks</div>
                 <div><span className="text-accent-success">GET</span>  /api/task/:id</div>
                 <div><span className="text-accent-primary">POST</span> /api/task</div>
                 <div><span className="text-accent-warning">PUT</span>  /api/task/:id</div>
                 <div><span className="text-accent-danger">DEL</span>  /api/task/:id</div>
                 <div><span className="text-accent-primary">POST</span> /api/task/:id/complete</div>
-                <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Projects</div>
-                <div><span className="text-accent-success">GET</span>  /api/projects</div>
-                <div><span className="text-accent-success">GET</span>  /api/project/:id</div>
-                <div><span className="text-accent-primary">POST</span> /api/project</div>
-                <div><span className="text-accent-warning">PUT</span>  /api/project/:id</div>
-                <div><span className="text-accent-primary">POST</span> /api/project/:id/complete</div>
                 <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Search & Meta</div>
                 <div><span className="text-accent-success">GET</span>  /api/search?q=...</div>
                 <div><span className="text-accent-success">GET</span>  /api/stats</div>
                 <div><span className="text-accent-success">GET</span>  /api/tags</div>
                 <div><span className="text-accent-success">GET</span>  /api/tagged/:tag</div>
-                <div><span className="text-accent-success">GET</span>  /api/areas</div>
               </div>
             </div>
 
@@ -386,7 +318,7 @@ function McpSettings({ config, onSave, saving, saved }: TabProps) {
       <h3 className="text-sm font-semibold text-text-primary mb-1">MCP Server</h3>
       <p className="text-xs text-text-muted mb-4">
         Expose Raidō as a Model Context Protocol server for Claude Desktop.
-        Gives Claude native access to your tasks, projects, and more.
+        Gives Claude native access to your tasks, groups, and more.
         Requires the API server to be enabled. Restart required after changes.
       </p>
       <div className="space-y-4">
@@ -434,17 +366,16 @@ function McpSettings({ config, onSave, saving, saved }: TabProps) {
             </div>
 
             <div className="p-3 rounded-lg bg-bg-primary border border-border-subtle">
-              <div className="text-xs font-medium text-text-secondary mb-2">Available Tools (16)</div>
+              <div className="text-xs font-medium text-text-secondary mb-2">Available Tools (13)</div>
               <div className="space-y-0.5 text-[10px] font-mono text-text-muted">
                 <div className="text-[9px] text-text-secondary font-semibold mt-1 mb-0.5 font-sans uppercase tracking-wider">Read</div>
                 <div>get_today, get_inbox, get_upcoming</div>
-                <div>get_projects, get_project</div>
+                <div>get_groups, get_group</div>
                 <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Write</div>
                 <div>add_todo, update_todo</div>
-                <div>add_project, update_project</div>
                 <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Search & Stats</div>
                 <div>search_todos, search_advanced, get_logbook</div>
-                <div>get_stats, get_tags, get_tagged_items, get_areas</div>
+                <div>get_stats, get_tags, get_tagged_items</div>
               </div>
             </div>
           </>

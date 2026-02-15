@@ -38,51 +38,21 @@ export function startApiServer(store: TaskStore, port: number) {
     }
   });
 
-  // ── Projects ──────────────────────────────────────────────
+  // ── Groups (bracket prefix) ───────────────────────────────
 
-  app.get('/api/projects', (_req, res) => {
+  app.get('/api/groups', (_req, res) => {
     try {
-      const projects = store.getProjects();
-      res.json({ projects });
+      const groups = store.getGroups();
+      res.json({ groups });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
 
-  app.get('/api/project/:id', (req, res) => {
+  app.get('/api/group/:name', (req, res) => {
     try {
-      const project = store.getProject(req.params.id);
-      if (!project) return res.status(404).json({ error: 'Project not found' });
-      res.json(project);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post('/api/project', (req, res) => {
-    try {
-      const project = store.createProject(req.body);
-      res.json(project);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.put('/api/project/:id', (req, res) => {
-    try {
-      const project = store.updateProject(req.params.id, req.body);
-      if (!project) return res.status(404).json({ error: 'Project not found' });
-      res.json(project);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  app.post('/api/project/:id/complete', (req, res) => {
-    try {
-      const project = store.completeProject(req.params.id);
-      if (!project) return res.status(404).json({ error: 'Project not found' });
-      res.json(project);
+      const tasks = store.getGroup(req.params.name);
+      res.json({ tasks });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -188,17 +158,6 @@ export function startApiServer(store: TaskStore, port: number) {
     try {
       const stats = store.getStats();
       res.json(stats);
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
-  // ── Areas ─────────────────────────────────────────────────
-
-  app.get('/api/areas', (_req, res) => {
-    try {
-      const areas = store.getAreas();
-      res.json({ areas });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

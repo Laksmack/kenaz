@@ -4,13 +4,12 @@ import { TaskList } from './components/TaskList';
 import { TaskDetail } from './components/TaskDetail';
 import { SettingsModal } from './components/SettingsModal';
 import { useTasks } from './hooks/useTasks';
-import { useProjects } from './hooks/useProjects';
 import type { Task, AppConfig, ViewType } from '../shared/types';
 
 export default function App() {
   const [currentView, setCurrentView] = useState<ViewType | string>('today');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -18,18 +17,13 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const quickAddRef = useRef<HTMLInputElement>(null);
 
-  const { tasks, loading, stats, refresh } = useTasks(
-    currentView as any,
-    currentView === 'search' ? searchQuery : undefined
-  );
-  const { projects } = useProjects();
+  const viewQuery = currentView === 'search' ? searchQuery : currentView === 'group' ? selectedGroup || undefined : undefined;
+  const { tasks, loading, stats, groups, refresh } = useTasks(currentView as any, viewQuery);
 
-  // Load config on mount
   useEffect(() => {
     window.raido.getConfig().then(setAppConfig);
   }, []);
 
-  // Apply theme
   useEffect(() => {
     const themePref = appConfig?.theme || 'dark';
     const apply = (resolved: 'dark' | 'light') => {
@@ -46,10 +40,8 @@ export default function App() {
     }
   }, [appConfig?.theme]);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Don't capture when typing in inputs
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
         if (e.key === 'Escape') {
@@ -62,7 +54,6 @@ export default function App() {
         return;
       }
 
-      // Quick add
       if (e.key === 'n' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         setQuickAddOpen(true);
@@ -70,13 +61,11 @@ export default function App() {
         return;
       }
 
-      // Navigate views
       if (e.key === '1') setCurrentView('today');
       if (e.key === '2') setCurrentView('inbox');
       if (e.key === '3') setCurrentView('upcoming');
       if (e.key === '4') setCurrentView('logbook');
 
-      // Navigate tasks
       if (e.key === 'j' || e.key === 'ArrowDown') {
         e.preventDefault();
         const idx = selectedTask ? tasks.findIndex(t => t.id === selectedTask.id) : -1;
@@ -90,32 +79,26 @@ export default function App() {
         if (prev) setSelectedTask(prev);
       }
 
-      // Complete task
       if (e.key === 'x' && selectedTask) {
         handleComplete(selectedTask.id);
       }
 
-      // Refresh
       if (e.key === 'r' && (e.metaKey || e.ctrlKey) && e.shiftKey) {
         e.preventDefault();
         refresh();
       }
 
-      // Search
       if (e.key === '/' || (e.key === 'f' && (e.metaKey || e.ctrlKey))) {
         e.preventDefault();
         setCurrentView('search');
-        // Focus will be on search input
       }
 
-      // Settings (Option+,)
       if (e.key === ',' && e.altKey) {
         e.preventDefault();
         setSettingsOpen(prev => !prev);
         return;
       }
 
-      // Escape
       if (e.key === 'Escape') {
         if (settingsOpen) { setSettingsOpen(false); return; }
         setSelectedTask(null);
@@ -133,12 +116,12 @@ export default function App() {
   const handleViewChange = useCallback((view: string) => {
     setCurrentView(view as ViewType);
     setSelectedTask(null);
-    setSelectedProjectId(null);
+    setSelectedGroup(null);
   }, []);
 
-  const handleSelectProject = useCallback((id: string) => {
-    setCurrentView('project');
-    setSelectedProjectId(id);
+  const handleSelectGroup = useCallback((name: string) => {
+    setCurrentView('group');
+    setSelectedGroup(name);
     setSelectedTask(null);
   }, []);
 
@@ -150,7 +133,6 @@ export default function App() {
 
   const handleUpdate = useCallback(async (id: string, updates: Partial<Task>) => {
     await window.raido.updateTask(id, updates);
-    // Refresh the selected task
     const updated = await window.raido.getTask(id);
     if (updated) {
       setSelectedTask(prev => prev?.id === id ? updated : prev);
@@ -166,21 +148,24 @@ export default function App() {
 
   const handleQuickAdd = useCallback(async () => {
     if (!quickAddTitle.trim()) return;
-    const data: any = { title: quickAddTitle.trim() };
+    let titleText = quickAddTitle.trim();
 
-    // Smart defaults based on current view
+    // Auto-prepend group prefix when viewing a group
+    if (currentView === 'group' && selectedGroup && !titleText.startsWith('[')) {
+      titleText = `[${selectedGroup}] ${titleText}`;
+    }
+
+    const data: any = { title: titleText };
+
     if (currentView === 'today') {
       data.due_date = new Date().toISOString().split('T')[0];
-    }
-    if (currentView === 'project' && selectedProjectId) {
-      data.project_id = selectedProjectId;
     }
 
     await window.raido.createTask(data);
     setQuickAddTitle('');
     setQuickAddOpen(false);
     refresh();
-  }, [quickAddTitle, currentView, selectedProjectId, refresh]);
+  }, [quickAddTitle, currentView, selectedGroup, refresh]);
 
   const viewTitle = (() => {
     switch (currentView) {
@@ -189,10 +174,7 @@ export default function App() {
       case 'upcoming': return 'Upcoming';
       case 'logbook': return 'Logbook';
       case 'search': return 'Search';
-      case 'project': {
-        const p = projects.find(p => p.id === selectedProjectId);
-        return p?.title || 'Project';
-      }
+      case 'group': return selectedGroup || 'Group';
       default: return '';
     }
   })();
@@ -206,9 +188,9 @@ export default function App() {
             currentView={currentView}
             onViewChange={handleViewChange}
             stats={stats}
-            projects={projects}
-            selectedProjectId={selectedProjectId}
-            onSelectProject={handleSelectProject}
+            groups={groups}
+            selectedGroup={selectedGroup}
+            onSelectGroup={handleSelectGroup}
           />
         </div>
       </div>
@@ -219,7 +201,6 @@ export default function App() {
         <div className="titlebar-drag h-12 flex items-center px-4 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
           <div className="flex-1" />
           <div className="titlebar-no-drag flex items-center gap-2">
-            {/* Quick add button */}
             <button
               onClick={() => {
                 setQuickAddOpen(true);
@@ -234,7 +215,6 @@ export default function App() {
               New Task
             </button>
 
-            {/* Search */}
             {currentView === 'search' ? (
               <input
                 type="text"
@@ -256,7 +236,6 @@ export default function App() {
               </button>
             )}
 
-            {/* Refresh */}
             <button
               onClick={refresh}
               className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
@@ -267,7 +246,6 @@ export default function App() {
               </svg>
             </button>
 
-            {/* Settings */}
             <button
               onClick={() => setSettingsOpen(true)}
               className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
@@ -297,7 +275,9 @@ export default function App() {
                     setQuickAddTitle('');
                   }
                 }}
-                placeholder="What needs to be done?"
+                placeholder={currentView === 'group' && selectedGroup
+                  ? `New task in [${selectedGroup}]...`
+                  : 'What needs to be done?'}
                 className="flex-1 bg-transparent border-none outline-none text-sm text-text-primary placeholder-text-muted"
                 autoFocus
               />
@@ -319,7 +299,6 @@ export default function App() {
 
         {/* Content area */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Task list */}
           <div className="w-2/5 min-w-[300px] max-w-[500px] border-r border-border-subtle">
             <TaskList
               tasks={tasks}
@@ -331,10 +310,8 @@ export default function App() {
             />
           </div>
 
-          {/* Task detail */}
           <TaskDetail
             task={selectedTask}
-            projects={projects}
             onUpdate={handleUpdate}
             onComplete={handleComplete}
             onDelete={handleDelete}
@@ -342,7 +319,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* Settings Modal */}
       {settingsOpen && (
         <SettingsModal onClose={() => setSettingsOpen(false)} />
       )}
