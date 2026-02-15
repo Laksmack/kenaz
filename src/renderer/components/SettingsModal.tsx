@@ -35,6 +35,9 @@ export function SettingsModal({ onClose, onViewsChanged, initialTab, prefillRule
     }
   }, []);
 
+  // Reset saved indicator when switching tabs
+  useEffect(() => { setSaved(false); }, [activeTab]);
+
   // Close on Escape
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
@@ -69,7 +72,7 @@ export function SettingsModal({ onClose, onViewsChanged, initialTab, prefillRule
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative bg-bg-secondary rounded-xl border border-border-subtle shadow-2xl w-[640px] max-h-[600px] flex overflow-hidden">
+      <div className="relative bg-bg-secondary rounded-xl border border-border-subtle shadow-2xl w-[640px] h-[600px] flex overflow-hidden">
         {/* Sidebar tabs */}
         <div className="w-44 bg-bg-primary border-r border-border-subtle p-3 flex flex-col gap-1">
           <h2 className="text-sm font-semibold text-text-primary px-3 py-2 mb-1">Settings</h2>
@@ -79,8 +82,8 @@ export function SettingsModal({ onClose, onViewsChanged, initialTab, prefillRule
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors text-left ${
                 activeTab === tab.id
-                  ? 'bg-accent-primary/15 text-accent-primary'
-                  : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'
+                  ? 'bg-accent-primary/10 text-accent-primary border-l-2 border-accent-primary'
+                  : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover border-l-2 border-transparent'
               }`}
             >
               <span>{tab.icon}</span>
@@ -94,16 +97,9 @@ export function SettingsModal({ onClose, onViewsChanged, initialTab, prefillRule
         </div>
 
         {/* Content */}
-        <div className="flex-1 p-6 overflow-y-auto">
-          {/* Save indicator */}
-          {saved && (
-            <div className="mb-4 px-3 py-2 rounded-lg bg-accent-success/10 text-accent-success text-xs font-medium">
-              Settings saved
-            </div>
-          )}
-
+        <div key={activeTab} className="flex-1 p-6 overflow-y-auto animate-fadeIn">
           {activeTab === 'general' && (
-            <GeneralSettings config={config} onSave={handleSave} saving={saving} />
+            <GeneralSettings config={config} onSave={handleSave} saving={saving} saved={saved} />
           )}
           {activeTab === 'views' && (
             <ViewsSettings onViewsChanged={onViewsChanged} />
@@ -112,25 +108,25 @@ export function SettingsModal({ onClose, onViewsChanged, initialTab, prefillRule
             <RulesSettings prefillRule={prefillRule} />
           )}
           {activeTab === 'hubspot' && (
-            <HubSpotSettings config={config} onSave={handleSave} saving={saving} />
+            <HubSpotSettings config={config} onSave={handleSave} saving={saving} saved={saved} />
           )}
           {activeTab === 'api' && (
-            <APISettings config={config} onSave={handleSave} saving={saving} />
+            <APISettings config={config} onSave={handleSave} saving={saving} saved={saved} />
           )}
           {activeTab === 'signature' && (
-            <SignatureSettings config={config} onSave={handleSave} saving={saving} />
+            <SignatureSettings config={config} onSave={handleSave} saving={saving} saved={saved} />
           )}
           {activeTab === 'auto-bcc' && (
-            <AutoBccSettings config={config} onSave={handleSave} saving={saving} />
+            <AutoBccSettings config={config} onSave={handleSave} saving={saving} saved={saved} />
           )}
           {activeTab === 'cache' && (
-            <CacheSettings config={config} onSave={handleSave} saving={saving} />
+            <CacheSettings config={config} onSave={handleSave} saving={saving} saved={saved} />
           )}
           {activeTab === 'calendar' && (
-            <CalendarSettings config={config} onSave={handleSave} saving={saving} />
+            <CalendarSettings config={config} onSave={handleSave} saving={saving} saved={saved} />
           )}
           {activeTab === 'mcp' && (
-            <McpSettings config={config} onSave={handleSave} saving={saving} />
+            <McpSettings config={config} onSave={handleSave} saving={saving} saved={saved} />
           )}
         </div>
 
@@ -154,15 +150,17 @@ interface TabProps {
   config: AppConfig;
   onSave: (updates: Partial<AppConfig>) => void;
   saving: boolean;
+  saved?: boolean;
 }
 
-function GeneralSettings({ config, onSave, saving }: TabProps) {
+function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
   const [defaultView, setDefaultView] = useState(config.defaultView);
   const [viewOptions, setViewOptions] = useState<View[]>([]);
   useEffect(() => { window.kenaz.listViews().then(setViewOptions); }, []);
   const [displayName, setDisplayName] = useState(config.displayName ?? '');
   const [archiveOnReply, setArchiveOnReply] = useState(config.archiveOnReply ?? false);
   const [composeMode, setComposeMode] = useState<'html' | 'markdown'>(config.composeMode ?? 'html');
+  const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(config.theme ?? 'dark');
 
   return (
     <div>
@@ -205,18 +203,31 @@ function GeneralSettings({ config, onSave, saving }: TabProps) {
           </select>
         </SettingsField>
 
+        <SettingsField label="Theme" description="Choose the app color theme. System will follow your macOS appearance. Restart required after changes.">
+          <select
+            value={theme}
+            onChange={(e) => setTheme(e.target.value as 'dark' | 'light' | 'system')}
+            className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary"
+          >
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+            <option value="system">System</option>
+          </select>
+        </SettingsField>
+
         <SaveButton onClick={() => onSave({
           displayName: displayName.trim(),
           defaultView,
           archiveOnReply,
           composeMode,
-        })} saving={saving} />
+          theme,
+        })} saving={saving} saved={saved} />
       </div>
     </div>
   );
 }
 
-function HubSpotSettings({ config, onSave, saving }: TabProps) {
+function HubSpotSettings({ config, onSave, saving, saved }: TabProps) {
   const [enabled, setEnabled] = useState(config.hubspotEnabled);
   const [token, setToken] = useState(config.hubspotToken);
   const [portalId, setPortalId] = useState(config.hubspotPortalId || '');
@@ -262,7 +273,7 @@ function HubSpotSettings({ config, onSave, saving }: TabProps) {
             </SettingsField>
 
             <div className="flex items-center gap-3">
-              <SaveButton onClick={() => onSave({ hubspotToken: token, hubspotPortalId: portalId })} saving={saving} />
+              <SaveButton onClick={() => onSave({ hubspotToken: token, hubspotPortalId: portalId })} saving={saving} saved={saved} />
               {config.hubspotToken && (
                 <span className="text-xs text-accent-success flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-accent-success" />
@@ -277,7 +288,7 @@ function HubSpotSettings({ config, onSave, saving }: TabProps) {
   );
 }
 
-function APISettings({ config, onSave, saving }: TabProps) {
+function APISettings({ config, onSave, saving, saved }: TabProps) {
   const [enabled, setEnabled] = useState(config.apiEnabled);
   const [port, setPort] = useState(config.apiPort);
   const [copiedEndpoints, setCopiedEndpoints] = useState(false);
@@ -684,7 +695,7 @@ DELETE ${base}/api/rules/:id
               </div>
             </div>
 
-            <SaveButton onClick={() => onSave({ apiPort: port })} saving={saving} />
+            <SaveButton onClick={() => onSave({ apiPort: port })} saving={saving} saved={saved} />
           </>
         )}
       </div>
@@ -692,7 +703,7 @@ DELETE ${base}/api/rules/:id
   );
 }
 
-function SignatureSettings({ config, onSave, saving }: TabProps) {
+function SignatureSettings({ config, onSave, saving, saved }: TabProps) {
   const [signature, setSignature] = useState(config.signature);
 
   return (
@@ -720,7 +731,7 @@ function SignatureSettings({ config, onSave, saving }: TabProps) {
           />
         </div>
 
-        <SaveButton onClick={() => onSave({ signature })} saving={saving} />
+        <SaveButton onClick={() => onSave({ signature })} saving={saving} saved={saved} />
       </div>
     </div>
   );
@@ -1073,7 +1084,7 @@ function RulesSettings({ prefillRule }: { prefillRule?: Partial<Rule> }) {
 
 // ── Auto BCC Settings ─────────────────────────────────────────
 
-function AutoBccSettings({ config, onSave, saving }: TabProps) {
+function AutoBccSettings({ config, onSave, saving, saved }: TabProps) {
   const [autoBccEnabled, setAutoBccEnabled] = useState(config.autoBccEnabled);
   const [autoBccAddress, setAutoBccAddress] = useState(config.autoBccAddress);
   const [autoBccExcludedDomains, setAutoBccExcludedDomains] = useState(
@@ -1126,7 +1137,7 @@ function AutoBccSettings({ config, onSave, saving }: TabProps) {
           autoBccEnabled,
           autoBccAddress: autoBccAddress.trim(),
           autoBccExcludedDomains: autoBccExcludedDomains.split(',').map(s => s.trim()).filter(Boolean),
-        })} saving={saving} />
+        })} saving={saving} saved={saved} />
       </div>
     </div>
   );
@@ -1134,7 +1145,7 @@ function AutoBccSettings({ config, onSave, saving }: TabProps) {
 
 // ── Cache Settings ────────────────────────────────────────────
 
-function CacheSettings({ config, onSave, saving }: TabProps) {
+function CacheSettings({ config, onSave, saving, saved }: TabProps) {
   const [cacheEnabled, setCacheEnabled] = useState(config.cacheEnabled ?? true);
   const [cacheMaxSizeMB, setCacheMaxSizeMB] = useState(config.cacheMaxSizeMB ?? 500);
   const [stats, setStats] = useState<{ sizeBytes: number; threadCount: number; messageCount: number; lastSyncedAt: string | null; pendingActions: number; outboxCount: number } | null>(null);
@@ -1240,7 +1251,7 @@ function CacheSettings({ config, onSave, saving }: TabProps) {
         )}
 
         <div className="flex gap-2">
-          <SaveButton onClick={() => onSave({ cacheEnabled, cacheMaxSizeMB })} saving={saving} />
+          <SaveButton onClick={() => onSave({ cacheEnabled, cacheMaxSizeMB })} saving={saving} saved={saved} />
           <button
             onClick={handleClear}
             disabled={clearing}
@@ -1262,7 +1273,7 @@ function CacheSettings({ config, onSave, saving }: TabProps) {
 
 // ── Calendar Settings ──────────────────────────────────────────
 
-function CalendarSettings({ config, onSave, saving }: TabProps) {
+function CalendarSettings({ config, onSave, saving, saved }: TabProps) {
   const [calendars, setCalendars] = useState<Array<{ id: string; name: string; color: string }>>([]);
   const [excludedIds, setExcludedIds] = useState<Set<string>>(new Set(config.excludedCalendarIds || []));
   const [loading, setLoading] = useState(true);
@@ -1344,7 +1355,7 @@ function CalendarSettings({ config, onSave, saving }: TabProps) {
 
         <SaveButton onClick={() => onSave({
           excludedCalendarIds: Array.from(excludedIds),
-        })} saving={saving} />
+        })} saving={saving} saved={saved} />
       </div>
     </div>
   );
@@ -1352,7 +1363,7 @@ function CalendarSettings({ config, onSave, saving }: TabProps) {
 
 // ── MCP Settings ──────────────────────────────────────────────
 
-function McpSettings({ config, onSave, saving }: TabProps) {
+function McpSettings({ config, onSave, saving, saved }: TabProps) {
   const [enabled, setEnabled] = useState(config.mcpEnabled ?? false);
   const [mcpStatus, setMcpStatus] = useState<any>(null);
   const [copied, setCopied] = useState(false);
@@ -1481,14 +1492,18 @@ function ToggleSwitch({ checked, onChange }: { checked: boolean; onChange: (v: b
   );
 }
 
-function SaveButton({ onClick, saving }: { onClick: () => void; saving: boolean }) {
+function SaveButton({ onClick, saving, saved }: { onClick: () => void; saving: boolean; saved?: boolean }) {
   return (
     <button
       onClick={onClick}
       disabled={saving}
-      className="px-4 py-1.5 bg-accent-primary hover:bg-accent-deep disabled:opacity-50 text-white text-xs rounded-lg font-medium transition-colors"
+      className={`px-4 py-1.5 text-xs rounded-lg font-medium transition-colors ${
+        saved
+          ? 'bg-accent-success/15 text-accent-success'
+          : 'bg-accent-primary hover:bg-accent-deep disabled:opacity-50 text-white'
+      }`}
     >
-      {saving ? 'Saving...' : 'Save'}
+      {saving ? 'Saving...' : saved ? 'Saved \u2713' : 'Save'}
     </button>
   );
 }

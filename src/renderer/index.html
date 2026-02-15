@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -20,15 +20,15 @@
         background: transparent;
       }
       .scrollbar-hide::-webkit-scrollbar-thumb {
-        background: rgba(255, 255, 255, 0.1);
+        background: var(--scrollbar-thumb);
         border-radius: 3px;
       }
       .scrollbar-hide::-webkit-scrollbar-thumb:hover {
-        background: rgba(255, 255, 255, 0.2);
+        background: var(--scrollbar-thumb-hover);
       }
     </style>
   </head>
-  <body class="bg-bg-primary text-text-primary overflow-hidden" style="background:#0a0a0a">
+  <body class="bg-bg-primary text-text-primary overflow-hidden">
     <div id="root"></div>
     <script type="module" src="./main.tsx"></script>
   </body>

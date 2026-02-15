@@ -624,6 +624,16 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
   // Newest message shows everything by default; older messages collapse quotes
   const [showQuoted, setShowQuoted] = useState(isNewest);
 
+  // Track theme so iframe re-renders when it changes
+  const [currentTheme, setCurrentTheme] = useState(document.documentElement.dataset.theme || 'dark');
+  useEffect(() => {
+    const observer = new MutationObserver(() => {
+      setCurrentTheme(document.documentElement.dataset.theme || 'dark');
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => observer.disconnect();
+  }, []);
+
   useEffect(() => {
     if (!iframeRef.current) return;
 
@@ -640,6 +650,39 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
       return `url(${quote}https://`;
     });
 
+    const isDark = document.documentElement.dataset.theme !== 'light';
+
+    const darkStyles = `
+          html { color-scheme: dark; }
+          html, body { color: #e2e8f0 !important; background: transparent !important; }
+          * { color: inherit !important; border-color: #334155 !important; }
+          div, td, th, table, tr, tbody, thead,
+          p, span, li, ul, ol, h1, h2, h3, h4, h5, h6,
+          section, article, header, footer, main, aside, nav {
+            background-color: transparent !important;
+            background-image: none !important;
+          }
+          a, a * { color: #5b8def !important; }
+          a[style*="background"], a[style*="padding"],
+          td[style*="background-color"] a {
+            background-color: #1e293b !important;
+            color: #5b8def !important;
+            border-radius: 4px;
+          }
+          blockquote { border-left: 3px solid #334155 !important; color: #94a3b8 !important; }
+          pre, code { background: #1e293b !important; }
+          hr { border-color: #334155 !important; }
+    `;
+
+    const lightStyles = `
+          html { color-scheme: light; }
+          html, body { color: #1c1917 !important; background: transparent !important; }
+          a, a * { color: #2563eb !important; }
+          blockquote { border-left: 3px solid #d6d3d1 !important; color: #57534e !important; }
+          pre, code { background: #f5f5f4 !important; }
+          hr { border-color: #e7e5e4 !important; }
+    `;
+
     doc.open();
     doc.write(`
       <!DOCTYPE html>
@@ -647,67 +690,24 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
       <head>
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data: https: http: cid:; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src data: https://fonts.gstatic.com https://fonts.googleapis.com;">
         <style>
-          html {
-            color-scheme: dark;
-          }
           html, body {
             font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
             font-size: 14px;
             line-height: 1.5;
-            color: #e2e8f0 !important;
-            background: transparent !important;
             margin: 0;
             padding: 0;
             word-wrap: break-word;
             overflow-wrap: break-word;
             overflow: hidden;
           }
-          img {
-            max-width: 100%;
-            height: auto;
-          }
-          /* Force dark-friendly colors on all elements */
-          * {
-            color: inherit !important;
-            border-color: #334155 !important;
-          }
-          /* Kill white/light backgrounds everywhere */
-          div, td, th, table, tr, tbody, thead,
-          p, span, li, ul, ol, h1, h2, h3, h4, h5, h6,
-          section, article, header, footer, main, aside, nav {
-            background-color: transparent !important;
-            background-image: none !important;
-          }
-          /* Keep images visible */
           img { max-width: 100%; height: auto; }
-          /* Links stay blue */
-          a, a * { color: #5b8def !important; }
-          /* Buttons and styled elements get a subtle dark treatment */
-          a[style*="background"], a[style*="padding"],
-          td[style*="background-color"] a {
-            background-color: #1e293b !important;
-            color: #5b8def !important;
-            border-radius: 4px;
-          }
           table { max-width: 100% !important; width: auto !important; }
           div, td, th { max-width: 100% !important; }
-          blockquote {
-            border-left: 3px solid #334155 !important;
-            margin: 8px 0;
-            padding-left: 12px;
-            color: #94a3b8 !important;
-          }
-          pre, code {
-            background: #1e293b !important;
-            border-radius: 4px;
-            padding: 2px 4px;
-            font-size: 13px;
-          }
+          blockquote { margin: 8px 0; padding-left: 12px; }
+          pre, code { border-radius: 4px; padding: 2px 4px; font-size: 13px; }
           pre { padding: 12px; overflow-x: auto; }
-          /* Horizontal rules */
-          hr { border-color: #334155 !important; }
-          /* Quoted content toggle */
           .kenaz-quoted { display: ${showQuoted ? 'block' : 'none'}; }
+          ${isDark ? darkStyles : lightStyles}
         </style>
       </head>
       <body>${bodyHtml}</body>
@@ -830,7 +830,7 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
       clearTimeout(t3);
       if (resizeObserver) resizeObserver.disconnect();
     };
-  }, [message.body, showQuoted]);
+  }, [message.body, showQuoted, currentTheme]);
 
   // Detect if this message has quoted content (for showing the toggle)
   const hasQuotedContent = /gmail_quote|gmail_extra|blockquote.*?type="cite"|Forwarded message|On .+ wrote:/i.test(message.body);

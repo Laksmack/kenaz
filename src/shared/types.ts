@@ -303,6 +303,7 @@ export interface AppConfig {
   cacheMaxSizeMB: number; // Max cache size in MB (default 500)
   mcpEnabled: boolean; // Enable MCP server for Claude Desktop integration
   excludedCalendarIds: string[]; // Calendar IDs to hide from the widget
+  theme: 'dark' | 'light' | 'system'; // App color theme
 }
 
 // ── Cache / Offline Types ───────────────────────────────────
@@ -343,4 +344,5 @@ export const DEFAULT_CONFIG: AppConfig = {
   cacheMaxSizeMB: 500,
   mcpEnabled: false,
   excludedCalendarIds: [],
+  theme: 'dark',
 };

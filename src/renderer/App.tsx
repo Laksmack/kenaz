@@ -12,6 +12,7 @@ import { UndoToast } from './components/UndoToast';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useEmails } from './hooks/useEmails';
 import { useConnectivity } from './hooks/useConnectivity';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import type { ViewType, ComposeData, SendEmailPayload, EmailThread, AppConfig, View, Rule } from '@shared/types';
 
 export default function App() {
@@ -50,6 +51,25 @@ export default function App() {
     window.kenaz.getConfig().then(setAppConfig);
     window.kenaz.listViews().then(setViews);
   }, []);
+
+  // ── Theme: apply data-theme attribute based on config ──
+  useEffect(() => {
+    const themePref = appConfig?.theme || 'dark';
+
+    const apply = (resolved: 'dark' | 'light') => {
+      document.documentElement.dataset.theme = resolved;
+    };
+
+    if (themePref === 'system') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      apply(mq.matches ? 'dark' : 'light');
+      const handler = (e: MediaQueryListEvent) => apply(e.matches ? 'dark' : 'light');
+      mq.addEventListener('change', handler);
+      return () => mq.removeEventListener('change', handler);
+    } else {
+      apply(themePref);
+    }
+  }, [appConfig?.theme]);
 
   const {
     threads,
@@ -810,6 +830,7 @@ export default function App() {
   }
 
   return (
+    <ErrorBoundary>
     <div className="h-screen flex flex-col bg-bg-primary">
       {/* Title bar drag region */}
       <div className="titlebar-drag h-12 flex items-center pl-20 pr-3 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
@@ -995,5 +1016,6 @@ export default function App() {
         />
       )}
     </div>
+    </ErrorBoundary>
   );
 }
