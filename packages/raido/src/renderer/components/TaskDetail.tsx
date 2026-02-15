@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { Task, Project } from '../../shared/types';
-import { cn, formatDate, isOverdue } from '../lib/utils';
+import { cn, isOverdue, isToday } from '../lib/utils';
 
 interface TaskDetailProps {
   task: Task | null;
@@ -138,20 +138,14 @@ export function TaskDetail({ task, projects, onUpdate, onComplete, onDelete }: T
               onChange={(e) => onUpdate(task.id, { due_date: e.target.value || null })}
               className={cn(
                 'bg-bg-tertiary border border-border-subtle rounded px-2 py-1 outline-none',
-                isOverdue(task.due_date) ? 'text-accent-danger' : 'text-text-secondary'
+                isOverdue(task.due_date) && 'text-accent-danger',
+                !isOverdue(task.due_date) && isToday(task.due_date) && 'text-accent-primary',
+                !isOverdue(task.due_date) && !isToday(task.due_date) && 'text-text-secondary',
               )}
             />
-          </div>
-
-          {/* When date */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-text-muted">When:</span>
-            <input
-              type="date"
-              value={task.when_date || ''}
-              onChange={(e) => onUpdate(task.id, { when_date: e.target.value || null })}
-              className="bg-bg-tertiary border border-border-subtle rounded px-2 py-1 text-text-secondary outline-none"
-            />
+            {!task.due_date && (
+              <span className="text-[10px] text-text-muted italic">No date — task is in Inbox</span>
+            )}
           </div>
 
           {/* Project */}

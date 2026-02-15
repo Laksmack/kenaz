@@ -7,7 +7,6 @@ export interface Task {
   status: 'open' | 'completed' | 'canceled';
   priority: 0 | 1 | 2 | 3; // 0=none, 1=low, 2=medium, 3=high
   due_date: string | null;
-  when_date: string | null;
   completed_at: string | null;
   project_id: string | null;
   heading: string | null;
@@ -66,7 +65,6 @@ export const IPC = {
   TASKS_TODAY: 'tasks:today',
   TASKS_INBOX: 'tasks:inbox',
   TASKS_UPCOMING: 'tasks:upcoming',
-  TASKS_SOMEDAY: 'tasks:someday',
   TASK_GET: 'task:get',
   TASK_CREATE: 'task:create',
   TASK_UPDATE: 'task:update',
@@ -102,11 +100,14 @@ export const IPC = {
 
 // ── Config ──────────────────────────────────────────────────
 
+export type NumeralStyle = 'arabic' | 'runic';
+
 export interface AppConfig {
   apiEnabled: boolean;
   apiPort: number;
   mcpEnabled: boolean;
   theme: 'dark' | 'light' | 'system';
+  numeralStyle: NumeralStyle;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -114,11 +115,12 @@ export const DEFAULT_CONFIG: AppConfig = {
   apiPort: 3142,
   mcpEnabled: true,
   theme: 'dark',
+  numeralStyle: 'arabic',
 };
 
 // ── Sidebar Views ───────────────────────────────────────────
 
-export type ViewType = 'today' | 'inbox' | 'upcoming' | 'someday' | 'logbook' | 'project' | 'search';
+export type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'project' | 'search';
 
 export interface SidebarItem {
   id: ViewType | string;
@@ -131,6 +133,5 @@ export const SIDEBAR_ITEMS: SidebarItem[] = [
   { id: 'today', name: 'Today', icon: '☀️' },
   { id: 'inbox', name: 'Inbox', icon: '📥' },
   { id: 'upcoming', name: 'Upcoming', icon: '📅' },
-  { id: 'someday', name: 'Someday', icon: '💭' },
   { id: 'logbook', name: 'Logbook', icon: '📖' },
 ];

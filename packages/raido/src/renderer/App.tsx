@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { TaskList } from './components/TaskList';
 import { TaskDetail } from './components/TaskDetail';
+import { SettingsModal } from './components/SettingsModal';
 import { useTasks } from './hooks/useTasks';
 import { useProjects } from './hooks/useProjects';
 import type { Task, AppConfig, ViewType } from '../shared/types';
@@ -14,6 +15,7 @@ export default function App() {
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddTitle, setQuickAddTitle] = useState('');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const quickAddRef = useRef<HTMLInputElement>(null);
 
   const { tasks, loading, stats, refresh } = useTasks(
@@ -44,11 +46,6 @@ export default function App() {
     }
   }, [appConfig?.theme]);
 
-  // Update dock badge
-  useEffect(() => {
-    window.raido.setBadge(stats.overdue);
-  }, [stats.overdue]);
-
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -77,8 +74,7 @@ export default function App() {
       if (e.key === '1') setCurrentView('today');
       if (e.key === '2') setCurrentView('inbox');
       if (e.key === '3') setCurrentView('upcoming');
-      if (e.key === '4') setCurrentView('someday');
-      if (e.key === '5') setCurrentView('logbook');
+      if (e.key === '4') setCurrentView('logbook');
 
       // Navigate tasks
       if (e.key === 'j' || e.key === 'ArrowDown') {
@@ -112,8 +108,16 @@ export default function App() {
         // Focus will be on search input
       }
 
+      // Settings (Option+,)
+      if (e.key === ',' && e.altKey) {
+        e.preventDefault();
+        setSettingsOpen(prev => !prev);
+        return;
+      }
+
       // Escape
       if (e.key === 'Escape') {
+        if (settingsOpen) { setSettingsOpen(false); return; }
         setSelectedTask(null);
         if (quickAddOpen) {
           setQuickAddOpen(false);
@@ -124,7 +128,7 @@ export default function App() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedTask, tasks, quickAddOpen, refresh]);
+  }, [selectedTask, tasks, quickAddOpen, settingsOpen, refresh]);
 
   const handleViewChange = useCallback((view: string) => {
     setCurrentView(view as ViewType);
@@ -166,7 +170,7 @@ export default function App() {
 
     // Smart defaults based on current view
     if (currentView === 'today') {
-      data.when_date = new Date().toISOString().split('T')[0];
+      data.due_date = new Date().toISOString().split('T')[0];
     }
     if (currentView === 'project' && selectedProjectId) {
       data.project_id = selectedProjectId;
@@ -183,7 +187,6 @@ export default function App() {
       case 'today': return 'Today';
       case 'inbox': return 'Inbox';
       case 'upcoming': return 'Upcoming';
-      case 'someday': return 'Someday';
       case 'logbook': return 'Logbook';
       case 'search': return 'Search';
       case 'project': {
@@ -263,6 +266,18 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
+
+            {/* Settings */}
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
+              title="Settings (⌥,)"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -326,6 +341,11 @@ export default function App() {
           />
         </div>
       </div>
+
+      {/* Settings Modal */}
+      {settingsOpen && (
+        <SettingsModal onClose={() => setSettingsOpen(false)} />
+      )}
     </div>
   );
 }

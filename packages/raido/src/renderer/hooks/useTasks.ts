@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Task, TaskStats } from '../../shared/types';
 
-type ViewType = 'today' | 'inbox' | 'upcoming' | 'someday' | 'logbook' | 'search';
+type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'search';
 
 export function useTasks(view: ViewType | string, searchQuery?: string) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -21,9 +21,6 @@ export function useTasks(view: ViewType | string, searchQuery?: string) {
           break;
         case 'upcoming':
           result = await window.raido.getUpcoming();
-          break;
-        case 'someday':
-          result = await window.raido.getSomeday();
           break;
         case 'logbook':
           result = await window.raido.getLogbook(30);

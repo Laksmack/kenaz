@@ -42,7 +42,6 @@ export class TaskStore {
         status TEXT DEFAULT 'open' CHECK(status IN ('open', 'completed', 'canceled')),
         priority INTEGER DEFAULT 0 CHECK(priority BETWEEN 0 AND 3),
         due_date TEXT,
-        when_date TEXT,
         completed_at TEXT,
         project_id TEXT,
         heading TEXT,
@@ -70,10 +69,57 @@ export class TaskStore {
       );
 
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
-      CREATE INDEX IF NOT EXISTS idx_tasks_when_date ON tasks(when_date);
       CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
       CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
     `);
+
+    // Migration: drop when_date column if it still exists
+    this.migrateDropWhenDate();
+  }
+
+  private migrateDropWhenDate(): void {
+    const columns = this.db.pragma('table_info(tasks)') as { name: string }[];
+    const hasWhenDate = columns.some(c => c.name === 'when_date');
+    if (!hasWhenDate) return;
+
+    console.log('[Raidō] Migrating: dropping when_date column from tasks');
+    this.db.exec(`
+      CREATE TABLE tasks_new (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        notes TEXT DEFAULT '',
+        status TEXT DEFAULT 'open' CHECK(status IN ('open', 'completed', 'canceled')),
+        priority INTEGER DEFAULT 0 CHECK(priority BETWEEN 0 AND 3),
+        due_date TEXT,
+        completed_at TEXT,
+        project_id TEXT,
+        heading TEXT,
+        sort_order REAL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        kenaz_thread_id TEXT,
+        hubspot_deal_id TEXT,
+        vault_path TEXT,
+        calendar_event_id TEXT,
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+      );
+
+      INSERT INTO tasks_new
+        SELECT id, title, notes, status, priority,
+               COALESCE(due_date, when_date) as due_date,
+               completed_at, project_id, heading, sort_order,
+               created_at, updated_at,
+               kenaz_thread_id, hubspot_deal_id, vault_path, calendar_event_id
+        FROM tasks;
+
+      DROP TABLE tasks;
+      ALTER TABLE tasks_new RENAME TO tasks;
+
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+      CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
+      CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+    `);
+    console.log('[Raidō] Migration complete: when_date removed');
   }
 
   private genId(): string {
@@ -123,16 +169,19 @@ export class TaskStore {
     const rows = this.db.prepare(`
       SELECT * FROM tasks
       WHERE status = 'open'
-        AND (when_date <= ? OR (due_date < ? AND due_date IS NOT NULL))
-      ORDER BY priority DESC, sort_order, created_at
-    `).all(today, today) as any[];
+        AND due_date IS NOT NULL
+        AND due_date <= ?
+      ORDER BY due_date ASC, priority DESC, sort_order ASC
+    `).all(today) as any[];
     return rows.map(r => this.enrichTask(r));
   }
 
   getInbox(): Task[] {
     const rows = this.db.prepare(`
       SELECT * FROM tasks
-      WHERE project_id IS NULL AND when_date IS NULL AND status = 'open'
+      WHERE status = 'open'
+        AND due_date IS NULL
+        AND project_id IS NULL
       ORDER BY created_at DESC
     `).all() as any[];
     return rows.map(r => this.enrichTask(r));
@@ -142,18 +191,11 @@ export class TaskStore {
     const today = new Date().toISOString().split('T')[0];
     const rows = this.db.prepare(`
       SELECT * FROM tasks
-      WHERE when_date > ? AND status = 'open'
-      ORDER BY when_date, sort_order
+      WHERE status = 'open'
+        AND due_date IS NOT NULL
+        AND due_date > ?
+      ORDER BY due_date ASC, priority DESC
     `).all(today) as any[];
-    return rows.map(r => this.enrichTask(r));
-  }
-
-  getSomeday(): Task[] {
-    const rows = this.db.prepare(`
-      SELECT * FROM tasks
-      WHERE when_date IS NULL AND project_id IS NOT NULL AND status = 'open'
-      ORDER BY sort_order, created_at
-    `).all() as any[];
     return rows.map(r => this.enrichTask(r));
   }
 
@@ -167,7 +209,6 @@ export class TaskStore {
     title: string;
     notes?: string;
     due_date?: string;
-    when_date?: string;
     project_id?: string;
     priority?: number;
     tags?: string[];
@@ -180,16 +221,15 @@ export class TaskStore {
     const id = this.genId();
     const now = this.now();
     this.db.prepare(`
-      INSERT INTO tasks (id, title, notes, due_date, when_date, project_id, priority, heading,
+      INSERT INTO tasks (id, title, notes, due_date, project_id, priority, heading,
                          kenaz_thread_id, hubspot_deal_id, vault_path, calendar_event_id,
                          created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       data.title,
       data.notes || '',
       data.due_date || null,
-      data.when_date || null,
       data.project_id || null,
       data.priority || 0,
       data.heading || null,
@@ -212,7 +252,6 @@ export class TaskStore {
     title: string;
     notes: string;
     due_date: string | null;
-    when_date: string | null;
     project_id: string | null;
     priority: number;
     status: string;
@@ -228,7 +267,7 @@ export class TaskStore {
     const values: any[] = [];
 
     const allowedFields = [
-      'title', 'notes', 'due_date', 'when_date', 'project_id',
+      'title', 'notes', 'due_date', 'project_id',
       'priority', 'status', 'heading', 'sort_order',
       'kenaz_thread_id', 'hubspot_deal_id', 'vault_path', 'calendar_event_id',
     ];
@@ -297,17 +336,18 @@ export class TaskStore {
     const today = new Date().toISOString().split('T')[0];
 
     const overdue = (this.db.prepare(`
-      SELECT COUNT(*) as c FROM tasks WHERE due_date < ? AND status = 'open'
+      SELECT COUNT(*) as c FROM tasks
+      WHERE due_date < ? AND due_date IS NOT NULL AND status = 'open'
     `).get(today) as any).c;
 
     const todayCount = (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks
-      WHERE status = 'open' AND (when_date <= ? OR (due_date < ? AND due_date IS NOT NULL))
-    `).get(today, today) as any).c;
+      WHERE status = 'open' AND due_date IS NOT NULL AND due_date <= ?
+    `).get(today) as any).c;
 
     const inbox = (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks
-      WHERE project_id IS NULL AND when_date IS NULL AND status = 'open'
+      WHERE due_date IS NULL AND project_id IS NULL AND status = 'open'
     `).get() as any).c;
 
     const total_open = (this.db.prepare(`
@@ -320,7 +360,8 @@ export class TaskStore {
   getOverdueCount(): number {
     const today = new Date().toISOString().split('T')[0];
     return (this.db.prepare(`
-      SELECT COUNT(*) as c FROM tasks WHERE due_date < ? AND status = 'open'
+      SELECT COUNT(*) as c FROM tasks
+      WHERE due_date <= ? AND due_date IS NOT NULL AND status = 'open'
     `).get(today) as any).c;
   }
 

@@ -101,37 +101,52 @@ function getMcpClaudeDesktopConfig(apiPort: number): object {
   };
 }
 
-// ── Badge Management ─────────────────────────────────────────
+// ── Badge Management (Pre-Rendered PNGs) ─────────────────────
 
-function getBaseIconPath(): string {
+function getBadgesDir(): string {
   if (isDev) {
-    return path.join(__dirname, '../../..', 'branding', 'icon-512.png');
+    return path.join(__dirname, '../../..', 'branding', 'badges');
   }
-  return path.join(app.getAppPath(), 'branding', 'icon-512.png');
+  // Badges are in asarUnpack, so use the unpacked path
+  const appPath = app.getAppPath();
+  const base = appPath.endsWith('.asar')
+    ? appPath.replace(/\.asar$/, '.asar.unpacked')
+    : appPath;
+  return path.join(base, 'branding', 'badges');
+}
+
+function getBadgePath(count: number): string {
+  const appConfig = config.get();
+  const style = appConfig.numeralStyle || 'arabic';
+  const dir = getBadgesDir();
+
+  if (count <= 0) {
+    return path.join(dir, 'badge-none.png');
+  } else if (count > 19) {
+    return path.join(dir, style, 'badge-19plus.png');
+  } else {
+    return path.join(dir, style, `badge-${count}.png`);
+  }
 }
 
 async function updateDockBadge() {
   if (process.platform !== 'darwin' || !app.dock) return;
 
-  const overdueCount = store.getOverdueCount();
+  const count = store.getOverdueCount();
 
-  if (overdueCount === 0) {
-    // Revert to base icon
-    try {
-      const baseIcon = nativeImage.createFromPath(getBaseIconPath());
-      if (!baseIcon.isEmpty()) {
-        app.dock.setIcon(baseIcon);
-      }
-    } catch (e) {
-      // Silently fail — icon may not exist in dev
+  try {
+    const badgePath = getBadgePath(count);
+    const icon = nativeImage.createFromPath(badgePath);
+    if (!icon.isEmpty()) {
+      app.dock.setIcon(icon);
     }
-    app.dock.setBadge('');
-    return;
+  } catch (e) {
+    // Silently fail — badge PNGs may not exist in dev
+    console.error('[Raidō] Failed to set dock badge:', e);
   }
 
-  // Show badge count
-  const displayCount = overdueCount > 9 ? '9+' : String(overdueCount);
-  app.dock.setBadge(displayCount);
+  // Clear text badge since we use the icon itself
+  app.dock.setBadge('');
 }
 
 function startBadgeMonitor() {
@@ -157,7 +172,6 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.TASKS_TODAY, async () => store.getToday());
   ipcMain.handle(IPC.TASKS_INBOX, async () => store.getInbox());
   ipcMain.handle(IPC.TASKS_UPCOMING, async () => store.getUpcoming());
-  ipcMain.handle(IPC.TASKS_SOMEDAY, async () => store.getSomeday());
   ipcMain.handle(IPC.TASK_GET, async (_event, id: string) => store.getTask(id));
 
   ipcMain.handle(IPC.TASK_CREATE, async (_event, data: any) => {
@@ -220,7 +234,12 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.APP_GET_CONFIG, async () => config.get());
 
   ipcMain.handle(IPC.APP_SET_CONFIG, async (_event, updates: any) => {
-    return config.update(updates);
+    const updated = config.update(updates);
+    // If numeral style changed, refresh the dock badge immediately
+    if ('numeralStyle' in updates) {
+      updateDockBadge();
+    }
+    return updated;
   });
 
   ipcMain.handle(IPC.APP_SET_BADGE, async (_event, count: number) => {

@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Task } from '../../shared/types';
-import { cn, formatDate, isOverdue } from '../lib/utils';
+import { cn, formatDate, isOverdue, isToday, isDueSoon } from '../lib/utils';
 
 interface TaskListProps {
   tasks: Task[];
@@ -95,14 +95,12 @@ export function TaskList({ tasks, selectedId, onSelect, onComplete, loading, tit
                   {showDates && task.due_date && (
                     <span className={cn(
                       'text-xs',
-                      isOverdue(task.due_date) ? 'text-accent-danger font-semibold' : 'text-text-muted'
+                      isOverdue(task.due_date) && 'text-accent-danger font-semibold',
+                      !isOverdue(task.due_date) && isToday(task.due_date) && 'text-accent-primary font-medium',
+                      !isOverdue(task.due_date) && !isToday(task.due_date) && isDueSoon(task.due_date) && 'text-text-secondary',
+                      !isOverdue(task.due_date) && !isToday(task.due_date) && !isDueSoon(task.due_date) && 'text-text-muted',
                     )}>
                       {formatDate(task.due_date)}
-                    </span>
-                  )}
-                  {showDates && task.when_date && !task.due_date && (
-                    <span className="text-xs text-text-muted">
-                      {formatDate(task.when_date)}
                     </span>
                   )}
                   {task.tags && task.tags.length > 0 && (

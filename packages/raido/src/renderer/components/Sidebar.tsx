@@ -15,7 +15,6 @@ const NAV_ITEMS = [
   { id: 'today', name: 'Today', icon: '☀️', statKey: 'today' as const },
   { id: 'inbox', name: 'Inbox', icon: '📥', statKey: 'inbox' as const },
   { id: 'upcoming', name: 'Upcoming', icon: '📅' },
-  { id: 'someday', name: 'Someday', icon: '💭' },
   { id: 'logbook', name: 'Logbook', icon: '📖' },
 ];
 
@@ -106,9 +105,9 @@ export function Sidebar({ currentView, onViewChange, stats, projects, selectedPr
             </linearGradient>
           </defs>
           <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#raido-rune)"/>
-          <path d="M190 399.4L190 112.6" stroke="#FFF8F0" strokeWidth="35.84" strokeLinecap="round" fill="none"/>
-          <path d="M190 112.6L330 210L190 307.4" stroke="#FFF8F0" strokeWidth="35.84" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-          <path d="M190 307.4L330 399.4" stroke="#FFF8F0" strokeWidth="35.84" strokeLinecap="round" fill="none"/>
+          <path d="M198.2 130.5L198.2 381.5" stroke="#FFF8F0" strokeWidth="31.36" strokeLinecap="round" fill="none"/>
+          <path d="M198.2 130.5L320.8 215.8L198.2 301.0" stroke="#FFF8F0" strokeWidth="31.36" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+          <path d="M198.2 301.0L320.8 381.5" stroke="#FFF8F0" strokeWidth="31.36" strokeLinecap="round" fill="none"/>
         </svg>
         <span className="text-xs text-text-muted font-medium">Raidō</span>
       </div>

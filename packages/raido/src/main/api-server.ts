@@ -38,17 +38,6 @@ export function startApiServer(store: TaskStore, port: number) {
     }
   });
 
-  // ── Someday ───────────────────────────────────────────────
-
-  app.get('/api/someday', (_req, res) => {
-    try {
-      const tasks = store.getSomeday();
-      res.json({ tasks });
-    } catch (e: any) {
-      res.status(500).json({ error: e.message });
-    }
-  });
-
   // ── Projects ──────────────────────────────────────────────
 
   app.get('/api/projects', (_req, res) => {

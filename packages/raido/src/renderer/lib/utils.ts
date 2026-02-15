@@ -24,6 +24,21 @@ export function isOverdue(dateStr: string | null): boolean {
   return dateStr < today;
 }
 
+export function isToday(dateStr: string | null): boolean {
+  if (!dateStr) return false;
+  const today = new Date().toISOString().split('T')[0];
+  return dateStr === today;
+}
+
+export function isDueSoon(dateStr: string | null, leadDays: number = 5): boolean {
+  if (!dateStr) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const date = new Date(dateStr + 'T00:00:00');
+  const diffDays = Math.floor((date.getTime() - today.getTime()) / 86400000);
+  return diffDays > 0 && diffDays <= leadDays;
+}
+
 export function cn(...classes: (string | boolean | undefined | null)[]): string {
   return classes.filter(Boolean).join(' ');
 }

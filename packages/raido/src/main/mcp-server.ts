@@ -58,7 +58,7 @@ server.tool(
 
 server.tool(
   'get_inbox',
-  'Get unprocessed tasks (no project, no scheduled date)',
+  'Get unprocessed tasks (no due date, no project)',
   {},
   async () => {
     const data = await api('/api/inbox');
@@ -68,20 +68,10 @@ server.tool(
 
 server.tool(
   'get_upcoming',
-  'Get future scheduled tasks ordered by date',
+  'Get tasks with future due dates ordered by date',
   {},
   async () => {
     const data = await api('/api/upcoming');
-    return { content: [{ type: 'text', text: JSON.stringify(data.tasks, null, 2) }] };
-  }
-);
-
-server.tool(
-  'get_someday',
-  'Get tasks with no scheduled date (in a project but not scheduled)',
-  {},
-  async () => {
-    const data = await api('/api/someday');
     return { content: [{ type: 'text', text: JSON.stringify(data.tasks, null, 2) }] };
   }
 );
@@ -114,8 +104,7 @@ server.tool(
   {
     title: z.string().describe('Task title'),
     notes: z.string().optional().describe('Markdown notes'),
-    due_date: z.string().optional().describe('Due date (YYYY-MM-DD)'),
-    when_date: z.string().optional().describe('Scheduled date (YYYY-MM-DD)'),
+    due_date: z.string().optional().describe('Due date (YYYY-MM-DD). Tasks without a due date go to Inbox.'),
     project_id: z.string().optional().describe('Project to assign to'),
     tags: z.array(z.string()).optional().describe('Tags to apply'),
     priority: z.number().min(0).max(3).optional().describe('Priority: 0=none, 1=low, 2=medium, 3=high'),
@@ -140,8 +129,7 @@ server.tool(
     id: z.string().describe('Task ID'),
     title: z.string().optional().describe('New title'),
     notes: z.string().optional().describe('New notes'),
-    due_date: z.string().nullable().optional().describe('New due date or null to clear'),
-    when_date: z.string().nullable().optional().describe('New scheduled date or null to clear'),
+    due_date: z.string().nullable().optional().describe('New due date (YYYY-MM-DD) or null to move to Inbox'),
     completed: z.boolean().optional().describe('Mark as completed'),
     canceled: z.boolean().optional().describe('Mark as canceled'),
     priority: z.number().min(0).max(3).optional().describe('New priority'),

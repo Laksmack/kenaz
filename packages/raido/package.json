@@ -1,6 +1,6 @@
 {
   "name": "@futhark/raido",
-  "version": "0.1.0",
+  "version": "0.3.2",
   "description": "Raidō ᚱ — Personal task manager",
   "main": "dist/main/main/main.js",
   "private": true,
@@ -13,6 +13,8 @@
     "build:renderer": "vite build",
     "build": "npm run build:main && npm run build:mcp && npm run build:renderer",
     "start": "electron .",
+    "render-icons": "node scripts/render-icons.js",
+    "generate-badges": "node scripts/generate-badges.js",
     "dist": "npm run build && electron-builder --mac",
     "dist:dir": "npm run build && electron-builder --mac --dir"
   },
@@ -20,9 +22,12 @@
     "appId": "com.futhark.raido",
     "productName": "Raido",
     "electronVersion": "39.6.0",
-    "directories": { "output": "release" },
+    "directories": {
+      "output": "release"
+    },
     "files": [
       "dist/**/*",
+      "branding/badges/**/*",
       "node_modules/**/*",
       "!node_modules/**/*.map",
       "!node_modules/**/*.md"
@@ -30,10 +35,20 @@
     "mac": {
       "category": "public.app-category.productivity",
       "icon": "branding/icon.icns",
-      "target": [{ "target": "dmg", "arch": ["arm64"] }],
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
       "darkModeSupport": true
     },
-    "asarUnpack": ["dist/mcp/**"],
+    "asarUnpack": [
+      "dist/mcp/**",
+      "branding/badges/**"
+    ],
     "npmRebuild": true
   },
   "dependencies": {
@@ -47,6 +62,7 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^0.1.92",
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^4.17.21",
     "@types/node": "^22.0.0",
