@@ -823,21 +823,40 @@ export class GmailService {
       console.log(`[SEND] MIME end:\n${rawMessage.slice(-200)}`);
     }
 
-    const encodedMessage = Buffer.from(rawMessage)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
+    const messageBuffer = Buffer.from(rawMessage);
+    const MESSAGE_SIZE_THRESHOLD = 4 * 1024 * 1024; // 4MB — use upload for anything larger
 
-    const sendParams: any = {
-      userId: 'me',
-      requestBody: {
-        raw: encodedMessage,
-        threadId: payload.reply_to_thread_id || undefined,
-      },
-    };
+    let res;
+    if (messageBuffer.length > MESSAGE_SIZE_THRESHOLD) {
+      // Large message: use media upload endpoint (supports up to 35MB)
+      console.log(`[SEND] Using media upload (message size: ${(messageBuffer.length / 1024 / 1024).toFixed(1)} MB)`);
+      const { Readable } = await import('stream');
+      res = await this.gmail.users.messages.send({
+        userId: 'me',
+        requestBody: {
+          threadId: payload.reply_to_thread_id || undefined,
+        },
+        media: {
+          mimeType: 'message/rfc822',
+          body: Readable.from(messageBuffer),
+        },
+      });
+    } else {
+      // Small message: use simple raw send
+      const encodedMessage = messageBuffer
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
 
-    const res = await this.gmail.users.messages.send(sendParams);
+      res = await this.gmail.users.messages.send({
+        userId: 'me',
+        requestBody: {
+          raw: encodedMessage,
+          threadId: payload.reply_to_thread_id || undefined,
+        },
+      });
+    }
 
     return {
       id: res.data.id || '',
@@ -861,35 +880,97 @@ export class GmailService {
     const bodyContent = payload.body_markdown || '';
     const isHtml = /<[a-z][\s\S]*>/i.test(bodyContent);
 
-    const messageParts = [
-      fromHeader,
-      payload.to ? `To: ${payload.to}` : '',
-      payload.cc ? `Cc: ${payload.cc}` : '',
-      payload.bcc ? `Bcc: ${payload.bcc}` : '',
-      payload.subject ? `Subject: ${mimeEncodeHeader(payload.subject)}` : 'Subject: ',
-      isHtml ? 'Content-Type: text/html; charset=utf-8' : 'Content-Type: text/plain; charset=utf-8',
-      'MIME-Version: 1.0',
-      '',
-      bodyContent,
-    ]
-      .filter((line, i) => i >= 5 || line) // keep content headers + From, filter empty address lines
-      .join('\r\n');
+    let rawMessage: string;
 
-    const encodedMessage = Buffer.from(messageParts)
-      .toString('base64')
-      .replace(/\+/g, '-')
-      .replace(/\//g, '_')
-      .replace(/=+$/, '');
+    if (payload.attachments && payload.attachments.length > 0) {
+      // Multipart MIME with attachments
+      const boundary = `kenaz_draft_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-    const res = await this.gmail.users.drafts.create({
-      userId: 'me',
-      requestBody: {
-        message: {
-          raw: encodedMessage,
-          threadId: payload.reply_to_thread_id || undefined,
+      const topHeaders = [
+        fromHeader,
+        payload.to ? `To: ${payload.to}` : null,
+        payload.cc ? `Cc: ${payload.cc}` : null,
+        payload.bcc ? `Bcc: ${payload.bcc}` : null,
+        payload.subject ? `Subject: ${mimeEncodeHeader(payload.subject)}` : 'Subject: ',
+        'MIME-Version: 1.0',
+        `Content-Type: multipart/mixed; boundary="${boundary}"`,
+      ].filter(Boolean);
+
+      const mimeBody: string[] = [];
+
+      // Body part
+      mimeBody.push(`--${boundary}`);
+      mimeBody.push(isHtml ? 'Content-Type: text/html; charset=utf-8' : 'Content-Type: text/plain; charset=utf-8');
+      mimeBody.push('Content-Transfer-Encoding: 7bit');
+      mimeBody.push('');
+      mimeBody.push(bodyContent);
+
+      // Attachment parts
+      for (const att of payload.attachments) {
+        const wrappedBase64 = att.base64.replace(/(.{76})/g, '$1\r\n');
+        mimeBody.push(`--${boundary}`);
+        mimeBody.push(`Content-Type: ${att.mimeType}; name="${att.filename}"`);
+        mimeBody.push('Content-Transfer-Encoding: base64');
+        mimeBody.push(`Content-Disposition: attachment; filename="${att.filename}"`);
+        mimeBody.push('');
+        mimeBody.push(wrappedBase64);
+      }
+
+      mimeBody.push(`--${boundary}--`);
+      rawMessage = [...topHeaders, '', ...mimeBody].join('\r\n');
+    } else {
+      // Simple message without attachments
+      rawMessage = [
+        fromHeader,
+        payload.to ? `To: ${payload.to}` : '',
+        payload.cc ? `Cc: ${payload.cc}` : '',
+        payload.bcc ? `Bcc: ${payload.bcc}` : '',
+        payload.subject ? `Subject: ${mimeEncodeHeader(payload.subject)}` : 'Subject: ',
+        isHtml ? 'Content-Type: text/html; charset=utf-8' : 'Content-Type: text/plain; charset=utf-8',
+        'MIME-Version: 1.0',
+        '',
+        bodyContent,
+      ]
+        .filter((line, i) => i >= 5 || line)
+        .join('\r\n');
+    }
+
+    const messageBuffer = Buffer.from(rawMessage);
+    const MESSAGE_SIZE_THRESHOLD = 4 * 1024 * 1024;
+
+    let res;
+    if (messageBuffer.length > MESSAGE_SIZE_THRESHOLD) {
+      // Large draft: use media upload
+      const { Readable } = await import('stream');
+      res = await this.gmail.users.drafts.create({
+        userId: 'me',
+        requestBody: {
+          message: {
+            threadId: payload.reply_to_thread_id || undefined,
+          },
         },
-      },
-    });
+        media: {
+          mimeType: 'message/rfc822',
+          body: Readable.from(messageBuffer),
+        },
+      });
+    } else {
+      const encodedMessage = messageBuffer
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+
+      res = await this.gmail.users.drafts.create({
+        userId: 'me',
+        requestBody: {
+          message: {
+            raw: encodedMessage,
+            threadId: payload.reply_to_thread_id || undefined,
+          },
+        },
+      });
+    }
 
     return res.data.id || '';
   }
@@ -1063,6 +1144,27 @@ export class GmailService {
     });
     if (!res.data.data) throw new Error('No attachment data');
     return Buffer.from(res.data.data, 'base64url');
+  }
+
+  /**
+   * List all attachments across all messages in a thread.
+   * Returns attachment metadata enriched with the parent messageId.
+   */
+  async listThreadAttachments(threadId: string): Promise<Array<Attachment & { messageId: string; messageSubject: string }>> {
+    const thread = await this.fetchThread(threadId);
+    if (!thread) throw new Error(`Thread ${threadId} not found`);
+
+    const results: Array<Attachment & { messageId: string; messageSubject: string }> = [];
+    for (const msg of thread.messages) {
+      for (const att of msg.attachments) {
+        results.push({
+          ...att,
+          messageId: msg.id,
+          messageSubject: msg.subject,
+        });
+      }
+    }
+    return results;
   }
 
   // ── Stats ──────────────────────────────────────────────────

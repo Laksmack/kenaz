@@ -850,20 +850,6 @@ export default function App() {
               )}
             </div>
           )}
-          <button
-            onClick={() => handleCompose()}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors text-white hover:opacity-90 shadow-sm ${
-              isOnline
-                ? 'bg-gradient-to-r from-[#C43E0C] to-[#F7A94B]'
-                : 'bg-gradient-to-r from-[#DC2626] to-[#C43E0C]'
-            }`}
-            title={isOnline ? 'Compose (C)' : 'Compose (C) — will queue offline'}
-          >
-            <svg className="w-3.5 h-3.5" viewBox="0 0 512 512" fill="none">
-              <path d="M332.8 112.6L189.4 256L332.8 399.4" stroke="currentColor" strokeWidth="52" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-            </svg>
-            Compose
-          </button>
           <SearchBar
             query={searchQuery}
             onSearch={handleSearch}
@@ -892,18 +878,24 @@ export default function App() {
             </svg>
           </button>
         </div>
-        {/* Kenaz rune — far right */}
-        <div className="ml-3 flex items-center" title="Kenaz ᚲ">
-          <svg className="w-5 h-5" viewBox="0 0 512 512" fill="none">
-            <defs>
-              <linearGradient id="kenaz-rune" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stopColor="#C43E0C"/>
-                <stop offset="1" stopColor="#F7A94B"/>
-              </linearGradient>
-            </defs>
-            <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#kenaz-rune)"/>
-            <path d="M332.8 112.6L189.4 256L332.8 399.4" stroke="#FFF8F0" strokeWidth="44" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
-          </svg>
+        {/* Kenaz rune — far right, click to compose */}
+        <div className="titlebar-no-drag ml-3 flex items-center">
+          <button
+            onClick={() => handleCompose()}
+            className="p-0.5 rounded-md hover:opacity-80 transition-opacity"
+            title="Compose (C)"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 512 512" fill="none">
+              <defs>
+                <linearGradient id="kenaz-rune" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
+                  <stop offset="0" stopColor="#C43E0C"/>
+                  <stop offset="1" stopColor="#F7A94B"/>
+                </linearGradient>
+              </defs>
+              <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#kenaz-rune)"/>
+              <path d="M332.8 112.6L189.4 256L332.8 399.4" stroke="#FFF8F0" strokeWidth="44" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            </svg>
+          </button>
         </div>
       </div>
 

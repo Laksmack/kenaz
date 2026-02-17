@@ -43,10 +43,16 @@ export function Sidebar({ currentView, onViewChange, stats, groups, selectedGrou
               <span className="text-base w-6 text-center">{item.icon}</span>
               <span className="flex-1 text-left">{item.name}</span>
               {count !== undefined && count > 0 && (
-                <span className={cn(
-                  'text-xs font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center',
-                  item.id === 'today' && stats.overdue > 0 ? 'bg-accent-danger/15 text-accent-danger' : 'text-text-muted'
-                )}>
+                <span
+                  className="text-xs font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center"
+                  style={
+                    item.id === 'today'
+                      ? stats.overdue > 0
+                        ? { background: 'color-mix(in srgb, var(--color-urgency) 15%, transparent)', color: 'var(--color-urgency)' }
+                        : { background: 'color-mix(in srgb, var(--color-current) 15%, transparent)', color: 'var(--color-current)' }
+                      : { color: 'rgb(var(--text-muted))' }
+                  }
+                >
                   {count}
                 </span>
               )}

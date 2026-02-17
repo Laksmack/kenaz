@@ -45,6 +45,24 @@ export default function App() {
     setTimeout(() => quickAddRef.current?.focus(), 50);
   }, []);
 
+  const handleViewChange = useCallback((view: string) => {
+    setCurrentView(view as ViewType);
+    setSelectedTask(null);
+    setSelectedGroup(null);
+  }, []);
+
+  const handleSelectGroup = useCallback((name: string) => {
+    setCurrentView('group');
+    setSelectedGroup(name);
+    setSelectedTask(null);
+  }, []);
+
+  const handleComplete = useCallback(async (id: string) => {
+    await window.raido.completeTask(id);
+    setSelectedTask(prev => prev?.id === id ? null : prev);
+    refresh();
+  }, [refresh]);
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -141,24 +159,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler);
   }, [selectedTask, tasks, quickAddOpen, settingsOpen, refresh, openQuickAdd, handleComplete]);
 
-  const handleViewChange = useCallback((view: string) => {
-    setCurrentView(view as ViewType);
-    setSelectedTask(null);
-    setSelectedGroup(null);
-  }, []);
-
-  const handleSelectGroup = useCallback((name: string) => {
-    setCurrentView('group');
-    setSelectedGroup(name);
-    setSelectedTask(null);
-  }, []);
-
-  const handleComplete = useCallback(async (id: string) => {
-    await window.raido.completeTask(id);
-    setSelectedTask(prev => prev?.id === id ? null : prev);
-    refresh();
-  }, [refresh]);
-
   const handleUpdate = useCallback(async (id: string, updates: Partial<Task>) => {
     await window.raido.updateTask(id, updates);
     const updated = await window.raido.getTask(id);
@@ -229,20 +229,6 @@ export default function App() {
         <div className="titlebar-drag h-12 flex items-center px-4 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
           <div className="flex-1" />
           <div className="titlebar-no-drag flex items-center gap-2">
-            <button
-              onClick={() => {
-                setQuickAddOpen(true);
-                setTimeout(() => quickAddRef.current?.focus(), 50);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-colors text-white hover:opacity-90 shadow-sm brand-gradient"
-              title="New Task (C)"
-            >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-              </svg>
-              New Task
-            </button>
-
             {currentView === 'search' ? (
               <input
                 type="text"
@@ -282,6 +268,27 @@ export default function App() {
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
+          </div>
+          {/* Raidō rune — far right, click to create task */}
+          <div className="titlebar-no-drag ml-3 flex items-center">
+            <button
+              onClick={openQuickAdd}
+              className="p-0.5 rounded-md hover:opacity-80 transition-opacity"
+              title="New Task (C)"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 512 512" fill="none">
+                <defs>
+                  <linearGradient id="raido-title" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stopColor="#8B5E3C"/>
+                    <stop offset="1" stopColor="#D4A574"/>
+                  </linearGradient>
+                </defs>
+                <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#raido-title)"/>
+                <path d="M198.2 130.5L198.2 381.5" stroke="#FFF8F0" strokeWidth="31.36" strokeLinecap="round" fill="none"/>
+                <path d="M198.2 130.5L320.8 215.8L198.2 301.0" stroke="#FFF8F0" strokeWidth="31.36" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+                <path d="M198.2 301.0L320.8 381.5" stroke="#FFF8F0" strokeWidth="31.36" strokeLinecap="round" fill="none"/>
               </svg>
             </button>
           </div>

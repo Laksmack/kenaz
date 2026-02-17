@@ -372,15 +372,19 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
     setDragging(false);
     const files = Array.from(e.dataTransfer.files);
     if (files.length > 0) {
-      // In Electron, dropped files have a `path` property
-      const paths = files.map((f) => (f as any).path).filter(Boolean);
+      // Use Electron's webUtils.getPathForFile via preload bridge
+      const paths = files.map((f) => {
+        try { return window.kenaz.getFilePath(f); } catch { return ''; }
+      }).filter(Boolean);
       if (paths.length > 0) addFiles(paths);
     }
   }, [addFiles]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    const paths = files.map((f) => (f as any).path).filter(Boolean);
+    const paths = files.map((f) => {
+      try { return window.kenaz.getFilePath(f); } catch { return ''; }
+    }).filter(Boolean);
     if (paths.length > 0) addFiles(paths);
     // Reset input so the same file can be selected again
     e.target.value = '';
@@ -421,6 +425,7 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
         subject: subject || undefined,
         body_markdown: draftBody || undefined,
         reply_to_thread_id: initialData?.replyToThreadId,
+        attachments: attachments.length > 0 ? attachments : undefined,
       });
       if (initialData?.draftId) {
         try { await window.kenaz.deleteDraft(initialData.draftId); } catch {}

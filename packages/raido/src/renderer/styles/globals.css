@@ -20,6 +20,21 @@
     --accent-primary: 194 136 90;
     --accent-warm: 212 165 116;
     --accent-light: 255 248 240;
+
+    /* Cross-app semantic colors (from @futhark/core design system) */
+    --color-urgency: #E8834A;   /* Kenaz orange — overdue, attention */
+    --color-current: #C2885A;   /* Raidō brown — today, active */
+    --color-scheduled: #4A9AC2; /* Dagaz blue — future, time-bound */
+    --color-reference: #4AA89A; /* Laguz teal — linked, cross-ref */
+
+    /* Thermal date scale: fire → earth → sky */
+    --date-overdue-hot:  #C43E0C; /* 5+ days late — deep ember */
+    --date-overdue-warm: #E8571F; /* 2-4 days late — flame */
+    --date-overdue-mild: #F7A94B; /* 1 day late — amber */
+    --date-today:        #8B5E3C; /* due today — dark earth */
+    --date-tomorrow:     #C2885A; /* due tomorrow — brown */
+    --date-soon:         #D4A574; /* 2-3 days out — sand */
+    --date-future:       #5B8FB4; /* 4+ days out — sky blue */
   }
 
   [data-theme='light'] {
@@ -27,6 +42,11 @@
     --accent-primary: 160 114 78;
     --accent-warm: 180 140 100;
     --border-active: 160 114 78;
+
+    --color-urgency: #D06A2E;
+    --color-current: #A87548;
+    --color-scheduled: #3A7FA5;
+    --color-reference: #3A8A7E;
   }
 }
 
@@ -83,4 +103,124 @@
     color: rgb(var(--accent-primary));
     background: rgb(var(--accent-primary) / 0.1);
   }
+
+  /* ── Markdown prose styling for task notes ────────────── */
+  .prose-raido {
+    font-size: 0.875rem;
+    line-height: 1.65;
+    color: rgb(var(--text-primary));
+  }
+
+  .prose-raido h1 {
+    font-size: 1.25em;
+    font-weight: 700;
+    margin-top: 1.2em;
+    margin-bottom: 0.4em;
+    color: rgb(var(--text-primary));
+  }
+  .prose-raido h2 {
+    font-size: 1.1em;
+    font-weight: 600;
+    margin-top: 1.1em;
+    margin-bottom: 0.35em;
+    color: rgb(var(--text-primary));
+  }
+  .prose-raido h3 {
+    font-size: 1em;
+    font-weight: 600;
+    margin-top: 1em;
+    margin-bottom: 0.3em;
+    color: rgb(var(--text-primary));
+  }
+
+  .prose-raido p {
+    margin-bottom: 0.6em;
+  }
+
+  .prose-raido ul,
+  .prose-raido ol {
+    margin-left: 1.25em;
+    margin-bottom: 0.6em;
+  }
+  .prose-raido ul { list-style: disc; }
+  .prose-raido ol { list-style: decimal; }
+  .prose-raido li {
+    margin-bottom: 0.2em;
+  }
+  .prose-raido li > ul,
+  .prose-raido li > ol {
+    margin-top: 0.2em;
+    margin-bottom: 0;
+  }
+
+  .prose-raido code {
+    background: rgb(var(--bg-tertiary));
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.85em;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .prose-raido pre {
+    background: rgb(var(--bg-tertiary));
+    padding: 0.75em 1em;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin-bottom: 0.8em;
+    font-size: 0.82em;
+    line-height: 1.5;
+  }
+  .prose-raido pre code {
+    background: none;
+    padding: 0;
+    border-radius: 0;
+    font-size: inherit;
+  }
+
+  .prose-raido blockquote {
+    border-left: 3px solid rgb(var(--border-subtle));
+    padding-left: 0.75em;
+    margin-left: 0;
+    margin-bottom: 0.6em;
+    color: rgb(var(--text-secondary));
+    font-style: italic;
+  }
+
+  .prose-raido a {
+    color: var(--color-current);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .prose-raido a:hover {
+    color: rgb(var(--accent-warm));
+  }
+
+  .prose-raido hr {
+    border: none;
+    border-top: 1px solid rgb(var(--border-subtle));
+    margin: 1em 0;
+  }
+
+  .prose-raido table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 0.8em;
+    font-size: 0.9em;
+  }
+  .prose-raido th,
+  .prose-raido td {
+    border: 1px solid rgb(var(--border-subtle));
+    padding: 0.35em 0.6em;
+    text-align: left;
+  }
+  .prose-raido th {
+    background: rgb(var(--bg-tertiary));
+    font-weight: 600;
+  }
+
+  .prose-raido strong { font-weight: 600; }
+  .prose-raido em { font-style: italic; }
+  .prose-raido del { text-decoration: line-through; color: rgb(var(--text-muted)); }
+
+  /* First child in prose shouldn't have top margin */
+  .prose-raido > :first-child { margin-top: 0; }
 }

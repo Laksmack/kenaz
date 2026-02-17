@@ -1,6 +1,6 @@
 {
   "name": "@futhark/raido",
-  "version": "0.5.1",
+  "version": "0.6.2",
   "description": "Raidō ᚱ — Personal task manager",
   "main": "dist/main/main/main.js",
   "private": true,
@@ -54,6 +54,7 @@
     "better-sqlite3": "^12.6.2",
     "dotenv": "^17.2.4",
     "express": "^4.18.2",
+    "marked": "^17.0.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "zod": "^3.22.0"

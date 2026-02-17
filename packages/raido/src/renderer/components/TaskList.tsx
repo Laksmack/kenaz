@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import type { Task } from '../../shared/types';
-import { cn, formatDate, isOverdue, isToday, isDueSoon } from '../lib/utils';
+import { cn, formatDate, getDateColor } from '../lib/utils';
 
 interface TaskListProps {
   tasks: Task[];
@@ -131,18 +131,18 @@ export function TaskList({ tasks, selectedId, onSelect, onComplete, loading, tit
                 )}
               </div>
 
-              {/* Due date (right-aligned) */}
-              {task.due_date && (
-                <span className={cn(
-                  'text-xs flex-shrink-0 ml-2',
-                  isOverdue(task.due_date) && 'text-accent-danger font-semibold',
-                  !isOverdue(task.due_date) && isToday(task.due_date) && 'text-accent-primary font-medium',
-                  !isOverdue(task.due_date) && !isToday(task.due_date) && isDueSoon(task.due_date) && 'text-text-secondary',
-                  !isOverdue(task.due_date) && !isToday(task.due_date) && !isDueSoon(task.due_date) && 'text-text-muted',
-                )}>
-                  {formatDate(task.due_date)}
-                </span>
-              )}
+              {/* Due date (right-aligned) — thermal color scale */}
+              {task.due_date && (() => {
+                const { color, bold } = getDateColor(task.due_date);
+                return (
+                  <span
+                    className="text-xs flex-shrink-0 ml-2 tabular-nums"
+                    style={{ color, fontWeight: bold ? 700 : 400 }}
+                  >
+                    {formatDate(task.due_date)}
+                  </span>
+                );
+              })()}
             </div>
           ))
         )}

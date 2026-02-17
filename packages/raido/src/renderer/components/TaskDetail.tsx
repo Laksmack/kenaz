@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { marked } from 'marked';
 import type { Task } from '../../shared/types';
 import { extractGroup } from '../../shared/types';
-import { cn, isOverdue, isToday } from '../lib/utils';
+import { cn, isOverdue, isToday, formatDateLabel } from '../lib/utils';
+
+// Configure marked for a clean, safe output
+marked.setOptions({
+  breaks: true,       // GFM line breaks (single newline → <br>)
+  gfm: true,          // GitHub Flavored Markdown (tables, strikethrough, etc.)
+});
 
 interface TaskDetailProps {
   task: Task | null;
@@ -154,13 +161,18 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
               type="date"
               value={task.due_date || ''}
               onChange={(e) => onUpdate(task.id, { due_date: e.target.value || null })}
-              className={cn(
-                'bg-bg-tertiary border border-border-subtle rounded px-2 py-1 outline-none',
-                isOverdue(task.due_date) && 'text-accent-danger',
-                !isOverdue(task.due_date) && isToday(task.due_date) && 'text-accent-primary',
-                !isOverdue(task.due_date) && !isToday(task.due_date) && 'text-text-secondary',
-              )}
+              className="bg-bg-tertiary border border-border-subtle rounded px-2 py-1 outline-none text-text-secondary"
             />
+            {task.due_date && (() => {
+              const label = formatDateLabel(task.due_date);
+              if (!label) return null;
+              const color = isOverdue(task.due_date)
+                ? 'var(--color-urgency)'
+                : isToday(task.due_date)
+                  ? 'var(--color-current)'
+                  : 'rgb(var(--text-secondary))';
+              return <span className="text-[11px] font-medium" style={{ color }}>{label}</span>;
+            })()}
             {!task.due_date && (
               <span className="text-[10px] text-text-muted italic">No date — task is in Inbox</span>
             )}
@@ -236,16 +248,7 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
 }
 
 function renderMarkdown(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`(.+?)`/g, '<code style="background:rgb(var(--bg-tertiary));padding:1px 4px;border-radius:3px;font-size:0.85em">$1</code>')
-    .replace(/^### (.+)$/gm, '<h3 style="font-size:1em;font-weight:600;margin-top:1em;margin-bottom:0.3em;color:rgb(var(--text-primary))">$1</h3>')
-    .replace(/^## (.+)$/gm, '<h2 style="font-size:1.1em;font-weight:600;margin-top:1em;margin-bottom:0.3em;color:rgb(var(--text-primary))">$1</h2>')
-    .replace(/^# (.+)$/gm, '<h1 style="font-size:1.2em;font-weight:700;margin-top:1em;margin-bottom:0.3em;color:rgb(var(--text-primary))">$1</h1>')
-    .replace(/^- (.+)$/gm, '<li style="margin-left:1em;list-style:disc;margin-bottom:0.15em">$1</li>')
-    .replace(/\n/g, '<br/>');
+  // Normalize literal \n sequences (common from MCP/AI clients) to real newlines
+  const normalized = text.replace(/\\n/g, '\n');
+  return marked.parse(normalized, { async: false }) as string;
 }

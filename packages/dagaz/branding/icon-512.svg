@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2D5F8A"/>
+      <stop offset="1" stop-color="#7AB8D4"/>
+    </linearGradient>
+  </defs>
+  <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#bg)"/>
+  <!-- Dagaz rune ᛞ — horizontal butterfly/bowtie: |><| -->
+  <!-- Diagonal X connecting the two staves -->
+  <path d="M128 160L256 256L128 352M384 160L256 256L384 352" stroke="#FFF8F0" stroke-width="35.84" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- Left vertical stave -->
+  <line x1="128" y1="160" x2="128" y2="352" stroke="#FFF8F0" stroke-width="35.84" stroke-linecap="round"/>
+  <!-- Right vertical stave -->
+  <line x1="384" y1="160" x2="384" y2="352" stroke="#FFF8F0" stroke-width="35.84" stroke-linecap="round"/>
+</svg>

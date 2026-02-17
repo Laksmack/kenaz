@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 // IPC channel names - inlined to avoid import issues in preload context
 const IPC = {
@@ -90,6 +90,7 @@ const api = {
     ipcRenderer.invoke(IPC.GMAIL_LIST_LABELS),
   readFileBase64: (filePath: string) =>
     ipcRenderer.invoke(IPC.FILE_READ_BASE64, filePath),
+  getFilePath: (file: File) => webUtils.getPathForFile(file),
 
   // Calendar
   calendarToday: () => ipcRenderer.invoke(IPC.CALENDAR_TODAY),

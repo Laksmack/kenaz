@@ -1,0 +1,85 @@
+{
+  "name": "@futhark/dagaz",
+  "version": "0.6.2",
+  "description": "Dagaz ᛞ — Personal calendar",
+  "main": "dist/main/main/main.js",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
+    "dev:main": "tsc -p tsconfig.main.json && NODE_ENV=development electron .",
+    "dev:renderer": "vite",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:mcp": "esbuild src/main/mcp-server.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/mcp/mcp-server.js",
+    "build:renderer": "vite build",
+    "build": "npm run build:main && npm run build:mcp && npm run build:renderer",
+    "start": "electron .",
+    "render-icons": "node scripts/render-icons.js",
+    "dist": "npm run build && electron-builder --mac",
+    "dist:dir": "npm run build && electron-builder --mac --dir"
+  },
+  "build": {
+    "appId": "com.futhark.dagaz",
+    "productName": "Dagaz",
+    "electronVersion": "39.6.0",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "branding/fonts/**/*",
+      "node_modules/**/*",
+      "!node_modules/**/*.map",
+      "!node_modules/**/*.md",
+      ".env"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "branding/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "darkModeSupport": true
+    },
+    "asarUnpack": [
+      "dist/mcp/**",
+      "branding/fonts/**",
+      "node_modules/@napi-rs/canvas/**"
+    ],
+    "npmRebuild": true
+  },
+  "dependencies": {
+    "@futhark/core": "*",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@napi-rs/canvas": "^0.1.92",
+    "better-sqlite3": "^12.6.2",
+    "chrono-node": "^2.7.0",
+    "dotenv": "^17.2.4",
+    "express": "^4.18.2",
+    "googleapis": "^130.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@vitejs/plugin-react": "^4.3.0",
+    "autoprefixer": "^10.4.17",
+    "concurrently": "^8.2.2",
+    "electron": "^39.0.0",
+    "electron-builder": "^26.7.0",
+    "esbuild": "^0.24.0",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}

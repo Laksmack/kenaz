@@ -1,14 +1,16 @@
 import express from 'express';
+import archiver from 'archiver';
 import type { GmailService } from './gmail';
 import type { HubSpotService } from './hubspot';
 import type { ViewStore, RuleStore } from './stores';
 import type { View, Rule } from '../shared/types';
 
 import type { CalendarService } from './calendar';
+import type { ConfigStore } from './config';
 
-export function startApiServer(gmail: GmailService, hubspot: HubSpotService, port: number, viewStore?: ViewStore, ruleStore?: RuleStore, calendar?: CalendarService) {
+export function startApiServer(gmail: GmailService, hubspot: HubSpotService, port: number, viewStore?: ViewStore, ruleStore?: RuleStore, calendar?: CalendarService, configStore?: ConfigStore) {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
 
   // ── Gmail: Core ────────────────────────────────────────────
 
@@ -190,6 +192,71 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
     }
   });
 
+  // List all attachments in a thread
+  app.get('/api/thread/:threadId/attachments', async (req, res) => {
+    try {
+      const attachments = await gmail.listThreadAttachments(req.params.threadId);
+      res.json({ attachments });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Download a single attachment (saves to Downloads folder, returns file path)
+  app.post('/api/attachment/:messageId/:attachmentId/download', async (req, res) => {
+    try {
+      const filename = (req.query.filename as string) || 'attachment';
+      const filePath = await gmail.downloadAttachment(
+        req.params.messageId,
+        req.params.attachmentId,
+        filename
+      );
+      res.json({ success: true, path: filePath });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Download all attachments in a thread as a zip
+  app.get('/api/thread/:threadId/attachments/download-all', async (req, res) => {
+    try {
+      const attachments = await gmail.listThreadAttachments(req.params.threadId);
+      if (attachments.length === 0) {
+        return res.status(404).json({ error: 'No attachments in this thread' });
+      }
+
+      const archive = archiver('zip', { zlib: { level: 5 } });
+      const threadId = req.params.threadId;
+
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="attachments-${threadId}.zip"`);
+
+      archive.pipe(res);
+
+      // Fetch each attachment and add to zip
+      const seen = new Map<string, number>();
+      for (const att of attachments) {
+        const buffer = await gmail.getAttachmentBuffer(att.messageId, att.id);
+        // Deduplicate filenames
+        let name = att.filename;
+        const count = seen.get(name) || 0;
+        if (count > 0) {
+          const ext = name.includes('.') ? '.' + name.split('.').pop() : '';
+          const base = ext ? name.slice(0, -ext.length) : name;
+          name = `${base} (${count})${ext}`;
+        }
+        seen.set(att.filename, count + 1);
+        archive.append(buffer, { name });
+      }
+
+      await archive.finalize();
+    } catch (e: any) {
+      if (!res.headersSent) {
+        res.status(500).json({ error: e.message });
+      }
+    }
+  });
+
   // ── Gmail: Stats ───────────────────────────────────────────
 
   app.get('/api/stats', async (_req, res) => {
@@ -199,6 +266,16 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
+  });
+
+  // ── Config (read-only, for cross-app integration) ─────────
+
+  app.get('/api/config', (_req, res) => {
+    if (!configStore) return res.status(503).json({ error: 'Config not available' });
+    const cfg = configStore.get();
+    res.json({
+      archiveOnReply: cfg.archiveOnReply,
+    });
   });
 
   // ── HubSpot Endpoints ─────────────────────────────────────
