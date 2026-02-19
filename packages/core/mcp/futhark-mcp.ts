@@ -1168,7 +1168,7 @@ server.tool(
     company: z.string().describe('Company name'),
   },
   async ({ company }) => {
-    const data = await api('laguz', `/api/account?company=${encodeURIComponent(company)}`);
+    const data = await api('laguz', `/api/account?path=${encodeURIComponent(company)}`);
     return { content: [{ type: 'text', text: JSON.stringify(data.notes, null, 2) }] };
   }
 );

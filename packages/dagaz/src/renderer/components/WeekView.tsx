@@ -29,7 +29,6 @@ type LayoutItem = {
 };
 
 type EventLayout = {
-  isBackground: boolean;
   column: number;
   totalColumns: number;
 };
@@ -38,17 +37,20 @@ function getMinutesFromTime(start_time: string, end_time: string) {
   const s = new Date(start_time);
   const e = new Date(end_time);
   const start = s.getHours() * 60 + s.getMinutes();
-  const end = e.getHours() * 60 + e.getMinutes();
+  let end = e.getHours() * 60 + e.getMinutes();
+  // Handle events that cross midnight or end at midnight next day
+  if (end <= start && e.getTime() > s.getTime()) end = 24 * 60;
   return { start, end: Math.max(end, start + 15) };
 }
 
-function itemsOverlap(a: LayoutItem, b: LayoutItem) {
-  const am = getMinutesFromTime(a.start_time, a.end_time);
-  const bm = getMinutesFromTime(b.start_time, b.end_time);
-  return am.start < bm.end && am.end > bm.start;
-}
-
-/** Run the hybrid column layout on a mixed set of user + overlay events */
+/**
+ * Assign side-by-side columns to overlapping events.
+ * Uses a single-pass greedy algorithm (same approach as Google Calendar):
+ * 1. Sort by start time, longest first for ties
+ * 2. Group into transitive overlap clusters
+ * 3. Greedily assign columns within each cluster
+ * 4. All events in a cluster share the same totalColumns
+ */
 function computeLayouts(items: LayoutItem[]): Map<string, EventLayout> {
   const layouts = new Map<string, EventLayout>();
   if (items.length === 0) return layouts;
@@ -60,125 +62,57 @@ function computeLayouts(items: LayoutItem[]): Map<string, EventLayout> {
     return (bm.end - bm.start) - (am.end - am.start);
   });
 
-  // Build overlap clusters
-  const clusters: LayoutItem[][] = [];
-  let currentCluster: LayoutItem[] = [];
-  let clusterEnd = 0;
+  // Build transitive overlap groups
+  const groups: LayoutItem[][] = [];
+  let group: LayoutItem[] = [];
+  let groupEnd = 0;
 
   for (const item of sorted) {
     const m = getMinutesFromTime(item.start_time, item.end_time);
-    if (currentCluster.length === 0 || m.start < clusterEnd) {
-      currentCluster.push(item);
-      clusterEnd = Math.max(clusterEnd, m.end);
+    if (group.length === 0 || m.start < groupEnd) {
+      group.push(item);
+      groupEnd = Math.max(groupEnd, m.end);
     } else {
-      clusters.push(currentCluster);
-      currentCluster = [item];
-      clusterEnd = m.end;
+      groups.push(group);
+      group = [item];
+      groupEnd = m.end;
     }
   }
-  if (currentCluster.length > 0) clusters.push(currentCluster);
+  if (group.length > 0) groups.push(group);
 
-  for (const cluster of clusters) {
-    if (cluster.length === 1) {
-      layouts.set(cluster[0].id, { isBackground: false, column: 0, totalColumns: 1 });
+  for (const grp of groups) {
+    if (grp.length === 1) {
+      layouts.set(grp[0].id, { column: 0, totalColumns: 1 });
       continue;
     }
 
-    // Background detection: only for user events that are very long
-    const durations = cluster.map(it => {
-      const m = getMinutesFromTime(it.start_time, it.end_time);
-      return m.end - m.start;
-    });
-    const medianDur = [...durations].sort((a, b) => a - b)[Math.floor(durations.length / 2)];
-
-    const bgCandidates: LayoutItem[] = [];
-    const foregroundItems: LayoutItem[] = [];
-
-    for (const item of cluster) {
-      const m = getMinutesFromTime(item.start_time, item.end_time);
-      const dur = m.end - m.start;
-      const overlapCount = cluster.filter(o => o.id !== item.id && itemsOverlap(item, o)).length;
-
-      if (!item.isOverlay && dur >= 180 && dur >= medianDur * 2 && overlapCount >= 2) {
-        bgCandidates.push(item);
-      } else {
-        foregroundItems.push(item);
-      }
-    }
-
-    // At most 1 background item (the longest); rest become foreground columns
-    let bgItem: LayoutItem | null = null;
-    if (bgCandidates.length > 0 && foregroundItems.length > 0) {
-      bgCandidates.sort((a, b) => {
-        const ad = getMinutesFromTime(a.start_time, a.end_time);
-        const bd = getMinutesFromTime(b.start_time, b.end_time);
-        return (bd.end - bd.start) - (ad.end - ad.start);
-      });
-      bgItem = bgCandidates[0];
-      for (let i = 1; i < bgCandidates.length; i++) foregroundItems.push(bgCandidates[i]);
-    }
-
-    if (bgItem && foregroundItems.length > 0) {
-      layouts.set(bgItem.id, { isBackground: true, column: 0, totalColumns: 1 });
-      assignColumns(foregroundItems, layouts);
-    } else {
-      assignColumns(cluster, layouts);
-    }
-  }
-
-  return layouts;
-}
-
-function assignColumns(items: LayoutItem[], layouts: Map<string, EventLayout>) {
-  const sorted = [...items].sort((a, b) => {
-    const am = getMinutesFromTime(a.start_time, a.end_time);
-    const bm = getMinutesFromTime(b.start_time, b.end_time);
-    if (am.start !== bm.start) return am.start - bm.start;
-    return (bm.end - bm.start) - (am.end - am.start);
-  });
-
-  // Sub-cluster
-  const subClusters: LayoutItem[][] = [];
-  let sc: LayoutItem[] = [];
-  let scEnd = 0;
-
-  for (const item of sorted) {
-    const m = getMinutesFromTime(item.start_time, item.end_time);
-    if (sc.length === 0 || m.start < scEnd) {
-      sc.push(item);
-      scEnd = Math.max(scEnd, m.end);
-    } else {
-      subClusters.push(sc);
-      sc = [item];
-      scEnd = m.end;
-    }
-  }
-  if (sc.length > 0) subClusters.push(sc);
-
-  for (const sub of subClusters) {
+    // Greedy column assignment
     const colEnds: number[] = [];
-    for (const item of sub) {
+    for (const item of grp) {
       const m = getMinutesFromTime(item.start_time, item.end_time);
       let placed = false;
       for (let col = 0; col < colEnds.length; col++) {
         if (m.start >= colEnds[col]) {
           colEnds[col] = m.end;
-          layouts.set(item.id, { isBackground: false, column: col, totalColumns: 0 });
+          layouts.set(item.id, { column: col, totalColumns: 0 });
           placed = true;
           break;
         }
       }
       if (!placed) {
-        layouts.set(item.id, { isBackground: false, column: colEnds.length, totalColumns: 0 });
+        layouts.set(item.id, { column: colEnds.length, totalColumns: 0 });
         colEnds.push(m.end);
       }
     }
+
     const totalCols = colEnds.length;
-    for (const item of sub) {
+    for (const item of grp) {
       const l = layouts.get(item.id);
-      if (l && !l.isBackground) l.totalColumns = totalCols;
+      if (l) l.totalColumns = totalCols;
     }
   }
+
+  return layouts;
 }
 
 function overlayToEvent(oe: OverlayEvent): CalendarEvent {
@@ -287,35 +221,23 @@ export function WeekView({ currentDate, events, overlayEvents = [], selectedEven
     return result;
   }, [eventsByDay, overlayByDay]);
 
-  // Compute position style from layout
   const getItemStyle = useCallback((id: string, start_time: string, end_time: string, dayKey: string): React.CSSProperties => {
     const start = new Date(start_time);
     const end = new Date(end_time);
     const startMinutes = start.getHours() * 60 + start.getMinutes();
-    const endMinutes = end.getHours() * 60 + end.getMinutes();
+    let endMinutes = end.getHours() * 60 + end.getMinutes();
+    if (endMinutes <= startMinutes && end.getTime() > start.getTime()) endMinutes = 24 * 60;
     const duration = Math.max(endMinutes - startMinutes, 15);
 
     const layout = layoutsByDay.get(dayKey)?.get(id);
-    const isBackground = layout?.isBackground ?? false;
     const column = layout?.column ?? 0;
     const totalColumns = layout?.totalColumns ?? 1;
 
     const top = `${(startMinutes / 60) * HOUR_HEIGHT}px`;
     const height = `${Math.max((duration / 60) * HOUR_HEIGHT - 2, 18)}px`;
 
-    if (isBackground) {
-      return {
-        position: 'absolute', top, height,
-        left: '1px', right: '2px',
-        zIndex: 10, overflow: 'hidden',
-      };
-    }
-
-    const hasBackground = [...(layoutsByDay.get(dayKey)?.values() || [])].some(l => l.isBackground);
-    const inset = hasBackground ? 10 : 0;
-    const availableWidth = 100 - inset;
-    const colWidth = availableWidth / totalColumns;
-    const leftPercent = inset + column * colWidth;
+    const colWidth = 100 / totalColumns;
+    const leftPercent = column * colWidth;
 
     return {
       position: 'absolute', top, height,

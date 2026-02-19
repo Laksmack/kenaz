@@ -97,9 +97,9 @@ Consistent styling:
 - Padding: 2px 8px
 - Border radius: 10px
 
-## MCP Convention
+## MCP Server
 
-A single unified Futhark MCP server (`~/.futhark/mcp-server.js`) exposes tools from all apps via stdio. Tool names use slash namespacing: `kenaz/search_emails`, `raido/add_todo`, `dagaz/create_event`, `laguz/search`. Plus `futhark/status` as a meta tool.
+A single unified Futhark MCP server (`~/.futhark/mcp-server.js`) exposes tools from all apps via stdio. Tool names use underscore namespacing: `kenaz_search_emails`, `raido_add_todo`, `dagaz_create_event`, `laguz_search`. Plus `futhark_status` as a meta tool.
 
 The server proxies to each app's Express API on dedicated localhost ports:
 - Kenaz: 3141
@@ -108,6 +108,16 @@ The server proxies to each app's Express API on dedicated localhost ports:
 - Laguz: 3144
 
 Source: `packages/core/mcp/futhark-mcp.ts`. Built with `npm run build:mcp` in `@futhark/core`. Auto-installed to `~/.futhark/` and registered with Claude Desktop on any app's first launch.
+
+### MCP Tools (68 total)
+
+| Prefix | Count | Key tools |
+|--------|-------|-----------|
+| `futhark_` | 1 | `status` |
+| `kenaz_` | 28 | `get_inbox`, `search_emails`, `get_thread`, `get_thread_summary`, `send_email`, `draft_email`, `archive_thread`, `modify_labels`, `batch_archive`, `list_labels`, `list_drafts`, `get_stats`, `hubspot_lookup`, `hubspot_deals`, `get_contact_context`, `calendar_events`, `calendar_rsvp`, `list_views`, `list_rules`, ... |
+| `dagaz_` | 19 | `get_events`, `get_event`, `create_event`, `update_event`, `delete_event`, `rsvp_event`, `get_today`, `get_agenda`, `get_day_plan`, `get_event_context`, `find_meeting_time`, `parse_event_text`, `get_time_analytics`, `get_sync_status`, ... |
+| `raido_` | 13 | `get_today`, `get_inbox`, `get_upcoming`, `add_todo`, `update_todo`, `search_todos`, `get_logbook`, `get_stats`, `get_groups`, `get_tags`, ... |
+| `laguz_` | 6 | `search`, `get_note`, `get_meetings`, `get_account`, `get_unprocessed`, `write_note` |
 
 ## Cross-App Links
 

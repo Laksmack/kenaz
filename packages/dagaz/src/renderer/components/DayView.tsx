@@ -18,20 +18,16 @@ interface Props {
 const HOUR_HEIGHT = 60;
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
-// Unified layout item
 type LayoutItem = { id: string; start_time: string; end_time: string; isOverlay: boolean };
-type EventLayout = { isBackground: boolean; column: number; totalColumns: number };
+type EventLayout = { column: number; totalColumns: number };
 
 function getMins(start_time: string, end_time: string) {
   const s = new Date(start_time);
   const e = new Date(end_time);
-  return { start: s.getHours() * 60 + s.getMinutes(), end: Math.max(e.getHours() * 60 + e.getMinutes(), s.getHours() * 60 + s.getMinutes() + 15) };
-}
-
-function overlap(a: LayoutItem, b: LayoutItem) {
-  const am = getMins(a.start_time, a.end_time);
-  const bm = getMins(b.start_time, b.end_time);
-  return am.start < bm.end && am.end > bm.start;
+  const start = s.getHours() * 60 + s.getMinutes();
+  let end = e.getHours() * 60 + e.getMinutes();
+  if (end <= start && e.getTime() > s.getTime()) end = 24 * 60;
+  return { start, end: Math.max(end, start + 15) };
 }
 
 function computeLayouts(items: LayoutItem[]): Map<string, EventLayout> {
@@ -44,80 +40,32 @@ function computeLayouts(items: LayoutItem[]): Map<string, EventLayout> {
     return am.start !== bm.start ? am.start - bm.start : (bm.end - bm.start) - (am.end - am.start);
   });
 
-  const clusters: LayoutItem[][] = [];
-  let cc: LayoutItem[] = [], ce = 0;
+  // Transitive overlap groups
+  const groups: LayoutItem[][] = [];
+  let grp: LayoutItem[] = [], grpEnd = 0;
   for (const it of sorted) {
     const m = getMins(it.start_time, it.end_time);
-    if (cc.length === 0 || m.start < ce) { cc.push(it); ce = Math.max(ce, m.end); }
-    else { clusters.push(cc); cc = [it]; ce = m.end; }
+    if (grp.length === 0 || m.start < grpEnd) { grp.push(it); grpEnd = Math.max(grpEnd, m.end); }
+    else { groups.push(grp); grp = [it]; grpEnd = m.end; }
   }
-  if (cc.length > 0) clusters.push(cc);
+  if (grp.length > 0) groups.push(grp);
 
-  for (const cluster of clusters) {
-    if (cluster.length === 1) { layouts.set(cluster[0].id, { isBackground: false, column: 0, totalColumns: 1 }); continue; }
+  for (const g of groups) {
+    if (g.length === 1) { layouts.set(g[0].id, { column: 0, totalColumns: 1 }); continue; }
 
-    const durs = cluster.map(it => { const m = getMins(it.start_time, it.end_time); return m.end - m.start; });
-    const medDur = [...durs].sort((a, b) => a - b)[Math.floor(durs.length / 2)];
-
-    const bgCand: LayoutItem[] = [], fg: LayoutItem[] = [];
-    for (const it of cluster) {
-      const m = getMins(it.start_time, it.end_time);
-      const dur = m.end - m.start;
-      const oc = cluster.filter(o => o.id !== it.id && overlap(it, o)).length;
-      if (!it.isOverlay && dur >= 180 && dur >= medDur * 2 && oc >= 2) bgCand.push(it);
-      else fg.push(it);
-    }
-
-    // At most 1 background item (the longest); rest become foreground columns
-    let bgItem: LayoutItem | null = null;
-    if (bgCand.length > 0 && fg.length > 0) {
-      bgCand.sort((a, b) => {
-        const am = getMins(a.start_time, a.end_time);
-        const bm = getMins(b.start_time, b.end_time);
-        return (bm.end - bm.start) - (am.end - am.start);
-      });
-      bgItem = bgCand[0];
-      for (let i = 1; i < bgCand.length; i++) fg.push(bgCand[i]);
-    }
-
-    if (bgItem && fg.length > 0) {
-      layouts.set(bgItem.id, { isBackground: true, column: 0, totalColumns: 1 });
-      assignCols(fg, layouts);
-    } else {
-      assignCols(cluster, layouts);
-    }
-  }
-  return layouts;
-}
-
-function assignCols(items: LayoutItem[], layouts: Map<string, EventLayout>) {
-  const sorted = [...items].sort((a, b) => {
-    const am = getMins(a.start_time, a.end_time);
-    const bm = getMins(b.start_time, b.end_time);
-    return am.start !== bm.start ? am.start - bm.start : (bm.end - bm.start) - (am.end - am.start);
-  });
-  const subs: LayoutItem[][] = [];
-  let sc: LayoutItem[] = [], se = 0;
-  for (const it of sorted) {
-    const m = getMins(it.start_time, it.end_time);
-    if (sc.length === 0 || m.start < se) { sc.push(it); se = Math.max(se, m.end); }
-    else { subs.push(sc); sc = [it]; se = m.end; }
-  }
-  if (sc.length > 0) subs.push(sc);
-
-  for (const sub of subs) {
     const colEnds: number[] = [];
-    for (const it of sub) {
+    for (const it of g) {
       const m = getMins(it.start_time, it.end_time);
       let placed = false;
       for (let c = 0; c < colEnds.length; c++) {
-        if (m.start >= colEnds[c]) { colEnds[c] = m.end; layouts.set(it.id, { isBackground: false, column: c, totalColumns: 0 }); placed = true; break; }
+        if (m.start >= colEnds[c]) { colEnds[c] = m.end; layouts.set(it.id, { column: c, totalColumns: 0 }); placed = true; break; }
       }
-      if (!placed) { layouts.set(it.id, { isBackground: false, column: colEnds.length, totalColumns: 0 }); colEnds.push(m.end); }
+      if (!placed) { layouts.set(it.id, { column: colEnds.length, totalColumns: 0 }); colEnds.push(m.end); }
     }
     const tc = colEnds.length;
-    for (const it of sub) { const l = layouts.get(it.id); if (l && !l.isBackground) l.totalColumns = tc; }
+    for (const it of g) { const l = layouts.get(it.id); if (l) l.totalColumns = tc; }
   }
+  return layouts;
 }
 
 function overlayToEvent(oe: OverlayEvent): CalendarEvent {
@@ -196,24 +144,19 @@ export function DayView({ currentDate, events, overlayEvents = [], selectedEvent
     const start = new Date(start_time);
     const end = new Date(end_time);
     const startMins = start.getHours() * 60 + start.getMinutes();
-    const endMins = end.getHours() * 60 + end.getMinutes();
+    let endMins = end.getHours() * 60 + end.getMinutes();
+    if (endMins <= startMins && end.getTime() > start.getTime()) endMins = 24 * 60;
     const dur = Math.max(endMins - startMins, 15);
 
     const layout = allLayouts.get(id);
-    const isBg = layout?.isBackground ?? false;
     const col = layout?.column ?? 0;
     const totalCols = layout?.totalColumns ?? 1;
 
     const top = `${(startMins / 60) * HOUR_HEIGHT}px`;
     const height = `${Math.max((dur / 60) * HOUR_HEIGHT - 2, 18)}px`;
 
-    if (isBg) return { position: 'absolute', top, height, left: '1px', right: '2px', zIndex: 10, overflow: 'hidden' };
-
-    const hasBg = [...allLayouts.values()].some(l => l.isBackground);
-    const inset = hasBg ? 10 : 0;
-    const avail = 100 - inset;
-    const cw = avail / totalCols;
-    const left = inset + col * cw;
+    const cw = 100 / totalCols;
+    const left = col * cw;
 
     return {
       position: 'absolute', top, height,

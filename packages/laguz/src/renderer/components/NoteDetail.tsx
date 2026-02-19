@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useEffect, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useEffect, useState } from 'react';
 import { EditorView, keymap, drawSelection, highlightActiveLine, Decoration, DecorationSet, ViewPlugin, ViewUpdate, WidgetType } from '@codemirror/view';
 import { EditorState, RangeSetBuilder, Prec } from '@codemirror/state';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
@@ -6,10 +6,37 @@ import { defaultKeymap, indentWithTab, history, historyKeymap } from '@codemirro
 import { syntaxHighlighting, HighlightStyle, foldEffect, foldedRanges, codeFolding, foldKeymap, foldService } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
 import { tags } from '@lezer/highlight';
+import { marked } from 'marked';
 import { useNote } from '../hooks/useNotes';
 import { formatDate } from '../lib/utils';
 
-// ── Markdown highlight style using Laguz CSS classes ────────
+// ── Helpers ─────────────────────────────────────────────────
+
+function stripFrontmatter(content: string): string {
+  const lines = content.split('\n');
+  if (lines[0]?.trim() !== '---') return content;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === '---') return lines.slice(i + 1).join('\n').trimStart();
+  }
+  return content;
+}
+
+// ── Rendered Markdown Viewer ────────────────────────────────
+
+function NoteViewer({ content }: { content: string }) {
+  const html = useMemo(() => {
+    const body = stripFrontmatter(content);
+    return marked.parse(body, { async: false }) as string;
+  }, [content]);
+
+  return (
+    <div className="flex-1 overflow-y-auto scrollbar-hide px-6 py-4">
+      <div className="prose-laguz" dangerouslySetInnerHTML={{ __html: html }} />
+    </div>
+  );
+}
+
+// ── CodeMirror highlight style using Laguz CSS classes ──────
 
 const laguzHighlight = HighlightStyle.define([
   { tag: tags.heading1, class: 'cm-header-1' },
@@ -63,7 +90,6 @@ const frontmatterFoldService = foldService.of((state, lineStart) => {
   return { from: range.from, to: range.to };
 });
 
-// Decoration to dim frontmatter lines when expanded
 const frontmatterDecoPlugin = ViewPlugin.fromClass(class {
   decorations: DecorationSet;
   constructor(view: EditorView) {
@@ -79,7 +105,6 @@ const frontmatterDecoPlugin = ViewPlugin.fromClass(class {
     const range = findFrontmatterRange(view.state.doc);
     if (!range) return builder.finish();
 
-    // Check if frontmatter is folded — if so, skip decorations (fold widget handles it)
     const folded = foldedRanges(view.state);
     let isFolded = false;
     folded.between(range.from, range.to, () => { isFolded = true; });
@@ -95,26 +120,21 @@ const frontmatterDecoPlugin = ViewPlugin.fromClass(class {
   }
 }, { decorations: v => v.decorations });
 
-// ── Auto-fold frontmatter on editor initialization ──────────
-
 function autoFoldFrontmatter(view: EditorView) {
   const range = findFrontmatterRange(view.state.doc);
   if (!range) return;
-
-  // Dispatch the fold after a microtask to let the editor settle
   queueMicrotask(() => {
-    view.dispatch({
-      effects: foldEffect.of({ from: range.from, to: range.to }),
-    });
+    view.dispatch({ effects: foldEffect.of({ from: range.from, to: range.to }) });
   });
 }
 
-// ── Editor Component ────────────────────────────────────────
+// ── CodeMirror Editor Component ─────────────────────────────
 
-function NoteEditor({ content, notePath, onContentChange }: {
+function NoteEditor({ content, notePath, onContentChange, onDone }: {
   content: string;
   notePath: string;
   onContentChange: (content: string) => void;
+  onDone: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -150,15 +170,20 @@ function NoteEditor({ content, notePath, onContentChange }: {
       }
     });
 
-    // Cmd+S / Ctrl+S to save immediately
-    const saveKeymap = keymap.of([{
-      key: 'Mod-s',
-      run: (view) => {
-        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-        save(view.state.doc.toString());
-        return true;
+    const saveKeymap = keymap.of([
+      {
+        key: 'Mod-s',
+        run: (view) => {
+          if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+          save(view.state.doc.toString());
+          return true;
+        },
       },
-    }]);
+      {
+        key: 'Escape',
+        run: () => { onDone(); return true; },
+      },
+    ]);
 
     const state = EditorState.create({
       doc: content,
@@ -194,7 +219,6 @@ function NoteEditor({ content, notePath, onContentChange }: {
     autoFoldFrontmatter(view);
 
     return () => {
-      // Flush any pending save on unmount
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
         const currentContent = view.state.doc.toString();
@@ -205,12 +229,11 @@ function NoteEditor({ content, notePath, onContentChange }: {
       view.destroy();
       viewRef.current = null;
     };
-  }, [notePath]); // Only re-create editor when note path changes
+  }, [notePath]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden relative">
       <div ref={containerRef} className="flex-1 overflow-y-auto scrollbar-hide px-6 py-4" />
-      {/* Save status indicator */}
       <div className="absolute bottom-2 right-4 text-[10px] text-text-muted pointer-events-none select-none">
         {saveStatus === 'saving' && 'Saving...'}
         {saveStatus === 'modified' && '●'}
@@ -228,6 +251,10 @@ interface NoteDetailProps {
 
 export function NoteDetail({ notePath, onMarkProcessed }: NoteDetailProps) {
   const { note, loading, refresh } = useNote(notePath);
+  const [editing, setEditing] = useState(false);
+
+  // Reset to view mode when switching notes
+  useEffect(() => { setEditing(false); }, [notePath]);
 
   const handleMarkProcessed = useCallback(async () => {
     if (!note) return;
@@ -265,7 +292,11 @@ export function NoteDetail({ notePath, onMarkProcessed }: NoteDetailProps) {
   }, [note, refresh, onMarkProcessed]);
 
   const handleContentChange = useCallback(() => {
-    // Refresh the note metadata after a save (title, tags, etc. might have changed)
+    refresh();
+  }, [refresh]);
+
+  const handleDoneEditing = useCallback(() => {
+    setEditing(false);
     refresh();
   }, [refresh]);
 
@@ -292,7 +323,19 @@ export function NoteDetail({ notePath, onMarkProcessed }: NoteDetailProps) {
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Header */}
       <div className="px-6 py-4 border-b border-border-subtle flex-shrink-0">
-        <h1 className="text-lg font-semibold text-text-primary">{note.title}</h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-lg font-semibold text-text-primary">{note.title}</h1>
+          <button
+            onClick={() => editing ? handleDoneEditing() : setEditing(true)}
+            className="flex-shrink-0 px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
+            style={{
+              background: editing ? 'rgba(74, 168, 154, 0.15)' : 'rgb(var(--bg-tertiary))',
+              color: editing ? '#4AA89A' : 'rgb(var(--text-secondary))',
+            }}
+          >
+            {editing ? 'Done' : 'Edit'}
+          </button>
+        </div>
         <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-text-secondary">
           {note.date && <span>{formatDate(note.date)}</span>}
           {note.company && (
@@ -329,12 +372,17 @@ export function NoteDetail({ notePath, onMarkProcessed }: NoteDetailProps) {
         )}
       </div>
 
-      {/* Editor body */}
-      <NoteEditor
-        content={note.content}
-        notePath={note.path}
-        onContentChange={handleContentChange}
-      />
+      {/* Body: viewer or editor */}
+      {editing ? (
+        <NoteEditor
+          content={note.content}
+          notePath={note.path}
+          onContentChange={handleContentChange}
+          onDone={handleDoneEditing}
+        />
+      ) : (
+        <NoteViewer content={note.content} />
+      )}
 
       {/* Mark processed footer */}
       {note.type === 'meeting' && note.processed === 0 && (

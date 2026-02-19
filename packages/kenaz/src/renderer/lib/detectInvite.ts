@@ -50,9 +50,8 @@ export function detectCalendarInvite(message: Email): {
   let parsedSummary: string | null = null;
 
   if (isInvite) {
-    parsedTime = extractTimeFromInvite(bodyContent);
+    parsedTime = extractTimeFromInvite(bodyContent, message.subject);
 
-    // Extract summary from "Invitation: <summary>" subject pattern
     const subjectMatch = message.subject.match(/(?:Updated )?Invitation:\s*(.+?)(?:\s*@\s*|$)/i);
     if (subjectMatch) {
       parsedSummary = subjectMatch[1].trim();
@@ -64,27 +63,33 @@ export function detectCalendarInvite(message: Email): {
 
 /**
  * Best-effort extraction of event times from a Google Calendar invite email.
- * Tries multiple patterns found in Google's invite HTML.
+ * Tries multiple patterns found in Google's invite HTML and subject lines.
  */
-function extractTimeFromInvite(bodyContent: string): { start: Date; end: Date } | null {
-  // Pattern 1: Google Calendar HTML invites often contain structured time info
-  // e.g., "When: Tuesday, Feb 25, 2025 9:00am – 10:00am (Eastern Time)"
-  // or "When  Tue Feb 25, 2025 9am – 10am Eastern Time"
+function extractTimeFromInvite(bodyContent: string, subject?: string): { start: Date; end: Date } | null {
+  // Pattern 1: Google Calendar "When" line
+  // "When Thursday Feb 19, 2026 · 2pm – 2:30pm (Eastern Time)"
+  // "When: Tuesday, Feb 25, 2025 9:00am – 10:00am (Eastern Time)"
+  // The separator between date and time can be space, middle-dot (·), bullet, comma, etc.
   const whenMatch = bodyContent.match(
-    /When[:\s]+\w+[.,]?\s+(\w+\s+\d{1,2}[,.]?\s+\d{4})\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*[–—-]\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i
+    /When[:\s]+\w+[.,]?\s+(\w+\s+\d{1,2}[,.]?\s+\d{4})\s*[·•,]?\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*[–—\-]\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i
   );
   if (whenMatch) {
-    const dateStr = whenMatch[1];
-    const startTime = whenMatch[2];
-    const endTime = whenMatch[3];
-    const start = new Date(`${dateStr} ${startTime}`);
-    const end = new Date(`${dateStr} ${endTime}`);
-    if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-      return { start, end };
+    const result = parseDateTimeParts(whenMatch[1], whenMatch[2], whenMatch[3]);
+    if (result) return result;
+  }
+
+  // Pattern 2: Subject line "@ Thu Feb 19, 2026 2pm - 2:30pm (EST)"
+  if (subject) {
+    const subjectMatch = subject.match(
+      /@\s*\w+\s+(\w+\s+\d{1,2},?\s+\d{4})\s+(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s*[–—\-]\s*(\d{1,2}(?::\d{2})?\s*(?:am|pm))/i
+    );
+    if (subjectMatch) {
+      const result = parseDateTimeParts(subjectMatch[1], subjectMatch[2], subjectMatch[3]);
+      if (result) return result;
     }
   }
 
-  // Pattern 2: ISO-style dates in VEVENT data
+  // Pattern 3: ISO-style dates in VEVENT data
   // DTSTART:20250225T140000Z or DTSTART;TZID=...:20250225T090000
   const dtStartMatch = bodyContent.match(/DTSTART[^:]*:(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?/);
   const dtEndMatch = bodyContent.match(/DTEND[^:]*:(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?/);
@@ -100,18 +105,24 @@ function extractTimeFromInvite(bodyContent: string): { start: Date; end: Date } 
     }
   }
 
-  // Pattern 3: Date in Google Calendar link title attributes or aria-labels
-  // "title="Tuesday, February 25, 2025, 9:00 AM to 10:00 AM""
+  // Pattern 4: "title="Tuesday, February 25, 2025, 9:00 AM to 10:00 AM""
   const titleMatch = bodyContent.match(
     /(\w+day,?\s+\w+\s+\d{1,2},?\s+\d{4}),?\s+(\d{1,2}:\d{2}\s*(?:AM|PM))\s+to\s+(\d{1,2}:\d{2}\s*(?:AM|PM))/i
   );
   if (titleMatch) {
-    const start = new Date(`${titleMatch[1]} ${titleMatch[2]}`);
-    const end = new Date(`${titleMatch[1]} ${titleMatch[3]}`);
-    if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-      return { start, end };
-    }
+    const result = parseDateTimeParts(titleMatch[1], titleMatch[2], titleMatch[3]);
+    if (result) return result;
   }
 
+  return null;
+}
+
+/** Parse "Feb 19, 2026", "2pm", "2:30pm" into Date objects */
+function parseDateTimeParts(dateStr: string, startTime: string, endTime: string): { start: Date; end: Date } | null {
+  const start = new Date(`${dateStr} ${startTime}`);
+  const end = new Date(`${dateStr} ${endTime}`);
+  if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+    return { start, end };
+  }
   return null;
 }

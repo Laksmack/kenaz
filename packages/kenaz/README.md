@@ -63,16 +63,74 @@ npm run dist
 
 ## Local API
 
-Runs on `http://localhost:3141` — usable by Claude Desktop, scripts, etc.
+Runs on `http://localhost:3141` — usable by Claude Desktop (via MCP), scripts, etc. Full OpenAPI spec at `/openapi.json`.
+
+### Gmail
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/inbox` | GET | List inbox threads |
-| `/api/email/:id` | GET | Get full thread |
-| `/api/search?q=...` | GET | Search emails |
-| `/api/send` | POST | Send email |
-| `/api/draft` | POST | Create draft |
-| `/api/label/:id` | POST | Modify labels |
-| `/api/hubspot/contact/:email` | GET | HubSpot lookup |
-| `/api/hubspot/log` | POST | Log to HubSpot |
+| `/api/inbox` | GET | List inbox threads (top 50) |
+| `/api/unread` | GET | Unread inbox threads with count |
+| `/api/email/:id` | GET | Get full thread by ID |
+| `/api/thread/:id/summary` | GET | AI-ready thread summary (timeline, participants, latest message) |
+| `/api/search?q=...` | GET | Search threads using Gmail query syntax |
+| `/api/stats` | GET | Inbox statistics (inbox, unread, pending, todo, starred counts) |
+| `/api/send` | POST | Send an email (body in `body_markdown`) |
+| `/api/draft` | POST | Create a draft |
+| `/api/drafts` | GET | List all drafts |
+| `/api/draft/:id` | GET | Get a draft by ID |
+| `/api/draft/:id` | DELETE | Delete a draft |
+| `/api/labels` | GET | List all Gmail labels |
+| `/api/label/:id` | POST | Add/remove labels on a thread (`{add, remove}`) |
+| `/api/archive/:id` | POST | Archive a thread (remove from inbox) |
+| `/api/thread/:id` | DELETE | Trash a thread |
+| `/api/batch/archive` | POST | Archive multiple threads (`{threadIds: [...]}`) |
+
+### Attachments
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/thread/:threadId/attachments` | GET | List all attachments in a thread |
+| `/api/attachment/:messageId/:attachmentId` | GET | Download an attachment (binary) |
+| `/api/attachment/:messageId/:attachmentId/download` | POST | Save attachment to ~/Downloads |
+| `/api/thread/:threadId/attachments/download-all` | GET | Download all thread attachments as zip |
+
+### HubSpot
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/hubspot/contact/:email` | GET | Look up contact by email (+ deals, activities) |
+| `/api/hubspot/deals` | GET | List active deals (`?stage=...&owner=...`) |
+| `/api/hubspot/recent/:email` | GET | Recent activities for a contact (`?limit=10`) |
+| `/api/hubspot/log` | POST | Log an email to HubSpot |
+| `/api/context/:email` | GET | Combined context: HubSpot + recent email threads |
+
+### Calendar
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/calendar/events` | GET | Events in range (`?timeMin=...&timeMax=...`) |
+| `/api/calendar/rsvp/:eventId` | POST | RSVP to an event (`{response, calendarId?}`) |
+
+### Views & Rules
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/views` | GET | List custom email views |
+| `/api/views` | POST | Create a view |
+| `/api/views/:id` | PUT | Update a view |
+| `/api/views/:id` | DELETE | Delete a view |
+| `/api/rules` | GET | List automation rules |
+| `/api/rules` | POST | Create a rule |
+| `/api/rules/:id` | PUT | Update a rule |
+| `/api/rules/:id` | DELETE | Delete a rule |
+
+### System
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/api/health` | GET | Health check |
+| `/api/config` | GET | Read-only config (e.g. `archiveOnReply`) |
+| `/api/navigate` | POST | Cross-app deep link (`{action, threadId}`) |
+| `/openapi.json` | GET | Full OpenAPI 3.0 spec |
+| `/` | GET | Root discovery (links to docs and health) |

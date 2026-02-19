@@ -153,7 +153,7 @@ if [ "$SERIAL" = true ] || [ ${#TARGETS[@]} -eq 1 ]; then
     fi
   done
 else
-  # Parallel builds
+  # Parallel builds — each subshell prints its result the moment it finishes
   echo ""
   echo "━━━ Building ${#TARGETS[@]} apps in parallel ━━━"
   echo ""
@@ -162,32 +162,50 @@ else
     NAME=$(get_display_name "$app")
     VERSION=$(node -p "require('$REPO_ROOT/packages/$app/package.json').version" 2>/dev/null || echo "?")
     echo "  ⟐ $NAME v$VERSION"
-    build_app "$app" &
-    PIDS+=($!)
   done
 
   echo ""
-  echo "  waiting for builds to complete..."
+
+  RESULT_DIR=$(mktemp -d)
+
+  for app in "${TARGETS[@]}"; do
+    (
+      APP_START=$(date +%s)
+      NAME=$(get_display_name "$app")
+      if build_app "$app"; then
+        APP_END=$(date +%s)
+        APP_ELAPSED=$((APP_END - APP_START))
+        result=$(tail -1 "$LOG_DIR/$app.log")
+        echo "  ✓ $result (${APP_ELAPSED}s)"
+        echo "ok" > "$RESULT_DIR/$app"
+      else
+        APP_END=$(date +%s)
+        APP_ELAPSED=$((APP_END - APP_START))
+        result=$(tail -1 "$LOG_DIR/$app.log")
+        echo "  ✗ $NAME: $result (${APP_ELAPSED}s)"
+        echo "fail" > "$RESULT_DIR/$app"
+      fi
+    ) &
+    PIDS+=($!)
+  done
+
+  # Wait for all background jobs to finish
+  wait "${PIDS[@]}" 2>/dev/null || true
+
   echo ""
 
   FAILED=()
   SUCCEEDED=()
 
-  for i in "${!TARGETS[@]}"; do
-    app="${TARGETS[$i]}"
-    pid="${PIDS[$i]}"
-    NAME=$(get_display_name "$app")
-
-    if wait "$pid"; then
+  for app in "${TARGETS[@]}"; do
+    if [ -f "$RESULT_DIR/$app" ] && [ "$(cat "$RESULT_DIR/$app")" = "ok" ]; then
       SUCCEEDED+=("$app")
-      result=$(tail -1 "$LOG_DIR/$app.log")
-      echo "  ✓ $result"
     else
       FAILED+=("$app")
-      result=$(tail -1 "$LOG_DIR/$app.log")
-      echo "  ✗ $NAME: $result"
     fi
   done
+
+  rm -rf "$RESULT_DIR"
 fi
 
 BUILD_END=$(date +%s)
