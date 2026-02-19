@@ -379,7 +379,28 @@ export class CacheStore {
   }
 
   deleteCancelledEvent(googleId: string): void {
-    this.db.prepare('DELETE FROM events WHERE google_id = ?').run(googleId);
+    const result = this.db.prepare('DELETE FROM events WHERE google_id = ?').run(googleId);
+    if (result.changes === 0) {
+      console.warn(`[Dagaz Cache] deleteCancelledEvent: no match for google_id=${googleId}`);
+    }
+  }
+
+  reconcileCalendarEvents(calendarId: string, liveGoogleIds: Set<string>): number {
+    const localRows = this.db.prepare(
+      'SELECT id, google_id FROM events WHERE calendar_id = ? AND local_only = 0 AND pending_action IS NULL'
+    ).all() as { id: string; google_id: string }[];
+
+    let removed = 0;
+    for (const row of localRows) {
+      if (row.google_id && !liveGoogleIds.has(row.google_id)) {
+        this.db.prepare('DELETE FROM events WHERE id = ?').run(row.id);
+        removed++;
+      }
+    }
+    if (removed > 0) {
+      console.log(`[Dagaz Cache] Reconciled ${calendarId}: removed ${removed} orphaned events`);
+    }
+    return removed;
   }
 
   getPendingEvents(): CalendarEvent[] {

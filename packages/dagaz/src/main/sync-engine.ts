@@ -102,12 +102,15 @@ export class SyncEngine {
             singleEvents: true,
           });
 
+          const liveGoogleIds = new Set<string>();
+
           for (const event of events) {
             try {
               if (event.status === 'cancelled') {
                 this.cache.deleteCancelledEvent(event.google_id);
                 continue;
               }
+              liveGoogleIds.add(event.google_id);
               const localId = this.cache.upsertEvent(event);
               if (event.attendees) {
                 this.cache.upsertAttendees(localId, event.attendees.map(a => ({ ...a, event_id: localId })));
@@ -116,6 +119,9 @@ export class SyncEngine {
               console.warn(`[Dagaz Sync] Failed to sync event ${event.google_id}:`, eventErr.message);
             }
           }
+
+          // Remove local events that no longer exist on Google
+          this.cache.reconcileCalendarEvents(cal.id, liveGoogleIds);
 
           if (nextSyncToken) {
             this.cache.updateCalendarSyncToken(cal.id, nextSyncToken);
@@ -166,6 +172,7 @@ export class SyncEngine {
           for (const event of events) {
             try {
               if (event.status === 'cancelled') {
+                console.log(`[Dagaz Sync] Removing cancelled event: ${event.google_id}`);
                 this.cache.deleteCancelledEvent(event.google_id);
                 hasChanges = true;
                 continue;
