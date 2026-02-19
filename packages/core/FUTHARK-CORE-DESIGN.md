@@ -99,11 +99,15 @@ Consistent styling:
 
 ## MCP Convention
 
-Every app exposes an MCP server via stdio. Tool names follow the pattern `app:action` (e.g., `kenaz:search_emails`, `raido:add_todo`). All apps use Express APIs on dedicated localhost ports:
+A single unified Futhark MCP server (`~/.futhark/mcp-server.js`) exposes tools from all apps via stdio. Tool names use slash namespacing: `kenaz/search_emails`, `raido/add_todo`, `dagaz/create_event`, `laguz/search`. Plus `futhark/status` as a meta tool.
+
+The server proxies to each app's Express API on dedicated localhost ports:
 - Kenaz: 3141
 - Raidō: 3142
-- Dagaz: 3143 (reserved)
-- Laguz: 3144 (reserved)
+- Dagaz: 3143
+- Laguz: 3144
+
+Source: `packages/core/mcp/futhark-mcp.ts`. Built with `npm run build:mcp` in `@futhark/core`. Auto-installed to `~/.futhark/` and registered with Claude Desktop on any app's first launch.
 
 ## Cross-App Links
 

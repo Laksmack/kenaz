@@ -1,34 +1,98 @@
-import React from 'react';
+import React, { useCallback, useRef, useState, useEffect } from 'react';
 import type { CalendarEvent } from '../../shared/types';
 import { formatTime } from '../lib/utils';
+import type { DragMode } from '../hooks/useEventDrag';
+import { createDraftFromEvent, createNoteFromEvent, createTodoFromEvent, type EventContext } from '@futhark/core/lib/crossApp';
 
 interface Props {
   event: CalendarEvent;
   selected: boolean;
   onClick: (event: CalendarEvent) => void;
   onRSVP?: (eventId: string, response: 'accepted' | 'declined' | 'tentative') => void;
+  onDragStart?: (event: CalendarEvent, mode: DragMode, mouseY: number) => void;
   style?: React.CSSProperties;
   compact?: boolean;
+  isDragGhost?: boolean;
 }
 
-export function EventBlock({ event, selected, onClick, onRSVP, style, compact }: Props) {
+const DRAG_THRESHOLD = 4;
+
+export function EventBlock({ event, selected, onClick, onRSVP, onDragStart, style, compact, isDragGhost }: Props) {
   const color = event.calendar_color || '#4A9AC2';
   const isInvite = event.self_response === 'needsAction' && !event.is_organizer;
+  const canDrag = !event.all_day && !compact && !!onDragStart;
 
   const hasConferencing = event.conference_data?.entryPoints?.some(
     ep => ep.entryPointType === 'video'
   ) || !!event.hangout_link;
 
+  const mouseDownRef = useRef<{ y: number; mode: DragMode; moved: boolean } | null>(null);
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const ctxRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = (e: MouseEvent) => { if (ctxRef.current && !ctxRef.current.contains(e.target as Node)) setCtxMenu(null); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setCtxMenu(null); };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [ctxMenu]);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({ x: e.clientX, y: e.clientY });
+  }, []);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent, mode: DragMode) => {
+    if (!canDrag) return;
+    e.stopPropagation();
+    e.preventDefault();
+    mouseDownRef.current = { y: e.clientY, mode, moved: false };
+
+    const onMove = (me: MouseEvent) => {
+      if (!mouseDownRef.current) return;
+      if (!mouseDownRef.current.moved && Math.abs(me.clientY - mouseDownRef.current.y) >= DRAG_THRESHOLD) {
+        mouseDownRef.current.moved = true;
+        onDragStart!(event, mouseDownRef.current.mode, mouseDownRef.current.y);
+      }
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      if (mouseDownRef.current && !mouseDownRef.current.moved) {
+        onClick(event);
+      }
+      mouseDownRef.current = null;
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [canDrag, event, onDragStart, onClick]);
+
   return (
     <div
-      className={`event-block ${selected ? 'selected' : ''} ${event.all_day ? 'all-day' : ''} ${!event.all_day ? 'h-full' : ''} ${isInvite ? 'event-invite' : ''}`}
+      className={`event-block ${selected ? 'selected' : ''} ${event.all_day ? 'all-day' : ''} ${!event.all_day ? 'h-full' : ''} ${isInvite ? 'event-invite' : ''} ${isDragGhost ? 'drag-ghost' : ''} ${canDrag ? 'group' : ''}`}
       style={{
         '--event-color': color,
+        opacity: isDragGhost ? 0.85 : undefined,
         ...style,
       } as React.CSSProperties}
-      onClick={(e) => { e.stopPropagation(); onClick(event); }}
+      onClick={(e) => { e.stopPropagation(); if (!canDrag) onClick(event); }}
+      onMouseDown={canDrag ? (e) => handleMouseDown(e, 'move') : undefined}
+      onContextMenu={handleContextMenu}
       title={`${event.summary}\n${formatTime(event.start_time)} – ${formatTime(event.end_time)}${isInvite ? '\n📨 Invitation — pending response' : ''}${event.location ? `\n📍 ${event.location}` : ''}`}
     >
+      {/* Top resize handle */}
+      {canDrag && (
+        <div
+          className="absolute top-0 left-0 right-0 h-1.5 cursor-ns-resize z-10 opacity-0 group-hover:opacity-100 transition-opacity"
+          onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, 'resize-top'); }}
+        >
+          <div className="mx-auto mt-0.5 w-6 h-0.5 rounded-full bg-white/40" />
+        </div>
+      )}
+
       <div className="flex items-center gap-1 min-w-0">
         {isInvite && <span className="flex-shrink-0 text-[10px] opacity-70">📨</span>}
         <span className="font-medium truncate text-text-primary" style={{ fontSize: compact ? '10px' : '11px' }}>
@@ -65,6 +129,55 @@ export function EventBlock({ event, selected, onClick, onRSVP, style, compact }:
           >No</button>
         </div>
       )}
+
+      {/* Bottom resize handle */}
+      {canDrag && (
+        <div
+          className="absolute bottom-0 left-0 right-0 h-1.5 cursor-ns-resize z-10 opacity-0 group-hover:opacity-100 transition-opacity"
+          onMouseDown={(e) => { e.stopPropagation(); handleMouseDown(e, 'resize-bottom'); }}
+        >
+          <div className="mx-auto mb-0.5 w-6 h-0.5 rounded-full bg-white/40" />
+        </div>
+      )}
+
+      {/* Cross-app context menu */}
+      {ctxMenu && (() => {
+        const ctx: EventContext = {
+          id: event.id,
+          summary: event.summary,
+          description: event.description,
+          location: event.location,
+          startTime: event.start_time,
+          endTime: event.end_time,
+          attendees: (event.attendees || []).map(a => ({ email: a.email, displayName: a.display_name })),
+          organizerEmail: event.organizer_email,
+        };
+        const fetcher = window.dagaz.crossAppFetch;
+        const actions = [
+          { label: 'Email Recipients', icon: 'ᚲ', fn: async () => { try { await createDraftFromEvent(fetcher, ctx); window.dagaz.notify('Kenaz', `Draft created for: ${ctx.summary}`); } catch { window.dagaz.notify('Kenaz', 'Failed — is Kenaz running?'); } } },
+          { label: 'Create Meeting Note', icon: 'ᛚ', fn: async () => { try { await createNoteFromEvent(fetcher, ctx); window.dagaz.notify('Laguz', `Note created: ${ctx.summary}`); } catch { window.dagaz.notify('Laguz', 'Failed — is Laguz running?'); } } },
+          { label: 'Create Prep Todo', icon: 'ᚱ', fn: async () => { try { await createTodoFromEvent(fetcher, ctx); window.dagaz.notify('Raidō', `Todo created: Prepare: ${ctx.summary}`); } catch { window.dagaz.notify('Raidō', 'Failed — is Raidō running?'); } } },
+        ];
+        return (
+          <div
+            ref={ctxRef}
+            className="fixed z-[100] py-1 min-w-[200px] bg-bg-secondary border border-border-subtle rounded-lg shadow-2xl"
+            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {actions.map((a, i) => (
+              <button
+                key={i}
+                onClick={() => { a.fn(); setCtxMenu(null); }}
+                className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+              >
+                <span className="w-4 text-center">{a.icon}</span>
+                {a.label}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
     </div>
   );
 }

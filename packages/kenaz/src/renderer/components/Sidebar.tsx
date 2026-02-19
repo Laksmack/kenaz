@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import type { EmailThread } from '@shared/types';
 import { useHubSpot } from '../hooks/useHubSpot';
 import { CalendarWidget } from './CalendarWidget';
+import { CalendarInviteContext } from './CalendarInviteContext';
+import { detectCalendarInvite } from '../lib/detectInvite';
 import { formatRelativeDate } from '../lib/utils';
 
 interface Props {
@@ -18,9 +20,102 @@ function hubspotDealUrl(portalId: string, dealId: string) {
   return `https://app.hubspot.com/contacts/${portalId}/record/0-3/${dealId}`;
 }
 
+/**
+ * Resolve invite info from a thread: detect the invite, look up the event,
+ * and extract the time window for the conflict preview.
+ */
+function useInviteInfo(thread: EmailThread | null) {
+  const detection = useMemo(() => {
+    if (!thread?.messages?.length) return null;
+    // Check the newest message first, then fall back through older messages
+    for (let i = thread.messages.length - 1; i >= 0; i--) {
+      const result = detectCalendarInvite(thread.messages[i]);
+      if (result.isInvite) return result;
+    }
+    return null;
+  }, [thread?.id]);
+
+  const [inviteInfo, setInviteInfo] = useState<{
+    summary: string;
+    start: Date;
+    end: Date;
+    eventId: string | null;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!detection?.isInvite) {
+      setInviteInfo(null);
+      return;
+    }
+
+    let cancelled = false;
+    const summary = detection.parsedSummary
+      || thread?.subject?.replace(/^(Re|Fwd|Updated\s+)?Invitation:\s*/i, '').replace(/@.*$/, '').trim()
+      || 'Calendar Invite';
+
+    (async () => {
+      // Resolve eventId from Dagaz for accurate conflict matching
+      let eventId: string | null = null;
+      if (detection.iCalUID) {
+        try {
+          eventId = await window.kenaz.calendarFindEvent(detection.iCalUID);
+        } catch {
+          // Dagaz not running or event not found
+        }
+      }
+
+      // If we parsed the time from the email body, use it directly
+      if (detection.parsedTime) {
+        if (!cancelled) {
+          setInviteInfo({
+            summary,
+            start: detection.parsedTime.start,
+            end: detection.parsedTime.end,
+            eventId,
+          });
+        }
+        return;
+      }
+
+      // No parsed time — try to find the event in Dagaz within a narrow range
+      if (eventId) {
+        try {
+          const rangeStart = new Date();
+          rangeStart.setDate(rangeStart.getDate() - 7);
+          rangeStart.setHours(0, 0, 0, 0);
+          const rangeEnd = new Date();
+          rangeEnd.setDate(rangeEnd.getDate() + 28);
+          rangeEnd.setHours(23, 59, 59, 999);
+
+          const events = await window.kenaz.calendarRange(rangeStart.toISOString(), rangeEnd.toISOString());
+          const match = events.find((e: any) => e.id === eventId);
+          if (match && !cancelled) {
+            setInviteInfo({
+              summary: match.summary || summary,
+              start: new Date(match.start),
+              end: new Date(match.end),
+              eventId,
+            });
+            return;
+          }
+        } catch {
+          // Dagaz not running
+        }
+      }
+
+      if (!cancelled) setInviteInfo(null);
+    })();
+
+    return () => { cancelled = true; };
+  }, [detection, thread?.id]);
+
+  return { isInvite: !!detection?.isInvite, inviteInfo };
+}
+
 export function Sidebar({ thread, hubspotEnabled = false, hubspotPortalId = '' }: Props) {
   const senderEmail = hubspotEnabled ? (thread?.from?.email || null) : null;
   const hubspot = useHubSpot(senderEmail);
+  const { isInvite, inviteInfo } = useInviteInfo(thread);
 
   if (!thread) {
     return (
@@ -38,9 +133,13 @@ export function Sidebar({ thread, hubspotEnabled = false, hubspotPortalId = '' }
 
   return (
     <div className="h-full flex flex-col overflow-y-auto scrollbar-hide">
-      {/* Calendar always at top */}
+      {/* Calendar: show invite context when viewing an invite, otherwise normal widget */}
       <div className="border-b border-border-subtle">
-        <CalendarWidget enabled={true} />
+        {inviteInfo ? (
+          <CalendarInviteContext invite={inviteInfo} />
+        ) : (
+          <CalendarWidget enabled={true} />
+        )}
       </div>
 
       <div className="flex-1 p-3 space-y-3">

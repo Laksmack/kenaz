@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import DOMPurify from 'dompurify';
 import type { AppConfig, View, Rule, RuleCondition, RuleAction } from '@shared/types';
 
 interface Props {
@@ -727,7 +728,7 @@ function SignatureSettings({ config, onSave, saving, saved }: TabProps) {
           <div className="text-xs font-medium text-text-secondary mb-2">Preview</div>
           <div
             className="text-sm text-text-primary"
-            dangerouslySetInnerHTML={{ __html: signature }}
+            dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(signature) }}
           />
         </div>
 
@@ -1364,13 +1365,12 @@ function CalendarSettings({ config, onSave, saving, saved }: TabProps) {
 // ── MCP Settings ──────────────────────────────────────────────
 
 function McpSettings({ config, onSave, saving, saved }: TabProps) {
-  const [enabled, setEnabled] = useState(config.mcpEnabled ?? false);
   const [mcpStatus, setMcpStatus] = useState<any>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     window.kenaz.getMcpStatus().then(setMcpStatus);
-  }, [enabled]);
+  }, []);
 
   const claudeConfig = mcpStatus?.claudeDesktopConfig
     ? JSON.stringify(mcpStatus.claudeDesktopConfig, null, 2)
@@ -1378,78 +1378,61 @@ function McpSettings({ config, onSave, saving, saved }: TabProps) {
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-text-primary mb-1">MCP Server</h3>
+      <h3 className="text-sm font-semibold text-text-primary mb-1">Futhark MCP</h3>
       <p className="text-xs text-text-muted mb-4">
-        Expose Kenaz as a Model Context Protocol server for Claude Desktop.
-        Gives Claude native access to your email, HubSpot, calendar, and more.
-        Requires the API server to be enabled. Restart required after changes.
+        A unified MCP server gives Claude Desktop access to all Futhark apps —
+        email, tasks, calendar, and notes — through a single connection.
+        The server is installed to <span className="font-mono">~/.futhark/mcp-server.js</span> and
+        auto-registered with Claude Desktop on first launch.
       </p>
       <div className="space-y-4">
-        {!config.apiEnabled && (
-          <div className="px-3 py-2 rounded-lg bg-accent-warning/10 text-accent-warning text-xs font-medium">
-            The API server must be enabled first (Settings → API).
-          </div>
-        )}
-
-        <SettingsField label="Enable MCP Server" description="Allow Claude Desktop to connect to Kenaz via MCP">
-          <ToggleSwitch
-            checked={enabled}
-            onChange={(v) => {
-              setEnabled(v);
-              onSave({ mcpEnabled: v });
-            }}
-          />
+        <SettingsField label="Status">
+          <span className={`text-xs flex items-center gap-1.5 ${mcpStatus?.installed ? 'text-accent-success' : 'text-text-muted'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${mcpStatus?.installed ? 'bg-accent-success' : 'bg-text-muted'}`} />
+            {mcpStatus?.installed ? 'Installed' : 'Not installed — restart app to install'}
+          </span>
         </SettingsField>
 
-        {enabled && config.apiEnabled && (
-          <>
-            <SettingsField label="Status">
-              <span className={`text-xs flex items-center gap-1.5 ${mcpStatus?.running ? 'text-accent-success' : 'text-text-muted'}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${mcpStatus?.running ? 'bg-accent-success' : 'bg-text-muted'}`} />
-                {mcpStatus?.running ? 'Running' : 'Will start on next launch'}
-              </span>
-            </SettingsField>
+        <div className="p-3 rounded-lg bg-bg-primary border border-border-subtle">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-medium text-text-secondary">Claude Desktop Configuration</div>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(claudeConfig);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="text-[10px] text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
+            >
+              {copied ? (
+                <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Copied!</>
+              ) : (
+                <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> Copy</>
+              )}
+            </button>
+          </div>
+          <pre className="text-[10px] font-mono text-text-muted whitespace-pre overflow-x-auto">{claudeConfig}</pre>
+          <p className="text-[10px] text-text-muted mt-2">
+            This should be auto-registered. If needed, paste into{' '}
+            <span className="font-mono">~/Library/Application Support/Claude/claude_desktop_config.json</span>
+          </p>
+        </div>
 
-            <div className="p-3 rounded-lg bg-bg-primary border border-border-subtle">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-medium text-text-secondary">Claude Desktop Configuration</div>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(claudeConfig);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
-                  }}
-                  className="text-[10px] text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
-                >
-                  {copied ? (
-                    <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Copied!</>
-                  ) : (
-                    <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> Copy</>
-                  )}
-                </button>
-              </div>
-              <pre className="text-[10px] font-mono text-text-muted whitespace-pre overflow-x-auto">{claudeConfig}</pre>
-              <p className="text-[10px] text-text-muted mt-2">
-                Paste this into your <span className="font-mono">claude_desktop_config.json</span> file.
-                On macOS: <span className="font-mono">~/Library/Application Support/Claude/claude_desktop_config.json</span>
-              </p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-bg-primary border border-border-subtle">
-              <div className="text-xs font-medium text-text-secondary mb-2">Available Tools (24)</div>
-              <div className="space-y-0.5 text-[10px] font-mono text-text-muted">
-                <div className="text-[9px] text-text-secondary font-semibold mt-1 mb-0.5 font-sans uppercase tracking-wider">Email</div>
-                <div>get_inbox, get_unread, search_emails, get_thread, get_thread_summary</div>
-                <div>draft_email, send_email, list_drafts, get_draft, delete_draft</div>
-                <div>archive_thread, trash_thread, modify_labels, batch_archive, list_labels</div>
-                <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">CRM & Context</div>
-                <div>get_contact_context, hubspot_lookup, hubspot_deals, hubspot_recent_activities</div>
-                <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Other</div>
-                <div>get_stats, suggest_contacts, calendar_events, calendar_rsvp, list_views, list_rules</div>
-              </div>
-            </div>
-          </>
-        )}
+        <div className="p-3 rounded-lg bg-bg-primary border border-border-subtle">
+          <div className="text-xs font-medium text-text-secondary mb-2">67 Tools Across All Apps</div>
+          <div className="space-y-0.5 text-[10px] font-mono text-text-muted">
+            <div className="text-[9px] text-text-secondary font-semibold mt-1 mb-0.5 font-sans uppercase tracking-wider">Kenaz — Email & CRM (28)</div>
+            <div>kenaz/get_inbox, kenaz/search_emails, kenaz/draft_email, kenaz/send_email, ...</div>
+            <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Dagaz — Calendar (19)</div>
+            <div>dagaz/get_events, dagaz/create_event, dagaz/get_meeting_prep, ...</div>
+            <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Raido — Tasks (13)</div>
+            <div>raido/add_todo, raido/get_today, raido/search_todos, ...</div>
+            <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Laguz — Notes (6)</div>
+            <div>laguz/search, laguz/write_note, laguz/get_meetings, ...</div>
+            <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Meta (1)</div>
+            <div>futhark/status</div>
+          </div>
+        </div>
       </div>
     </div>
   );

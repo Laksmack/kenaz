@@ -184,18 +184,15 @@ export function SettingsModal({ onClose }: Props) {
                 onChange={v => updateConfig({ apiEnabled: v })}
               />
             </label>
-            <label className="flex items-center justify-between py-1.5">
-              <span className="text-xs text-text-secondary">MCP Server</span>
-              <ToggleSwitch
-                checked={config.mcpEnabled}
-                onChange={v => updateConfig({ mcpEnabled: v })}
-              />
-            </label>
-
             {mcpStatus && (
               <div className="mt-2 p-3 rounded-lg bg-bg-primary border border-border-subtle">
-                <p className="text-[10px] text-text-muted mb-1">Claude Desktop config:</p>
-                <pre className="text-[10px] text-text-secondary font-mono overflow-x-auto selectable">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className={`w-1.5 h-1.5 rounded-full ${mcpStatus.installed ? 'bg-accent-success' : 'bg-text-muted'}`} />
+                  <span className="text-[10px] text-text-secondary font-medium">
+                    Futhark MCP {mcpStatus.installed ? 'installed' : 'not installed'}
+                  </span>
+                </div>
+                <pre className="text-[10px] text-text-muted font-mono overflow-x-auto selectable">
                   {JSON.stringify(mcpStatus.claudeDesktopConfig, null, 2)}
                 </pre>
               </div>

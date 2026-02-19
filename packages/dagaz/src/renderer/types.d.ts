@@ -24,7 +24,7 @@ interface DagazAPI {
 
   // Sync
   getSyncStatus(): Promise<{ status: string; lastSync: string | null; pendingCount: number }>;
-  triggerSync(): Promise<any>;
+  triggerSync(opts?: { full?: boolean }): Promise<any>;
 
   // Parse
   parseEvent(text: string): Promise<any>;

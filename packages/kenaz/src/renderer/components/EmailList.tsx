@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { EmailThread, ViewType, View } from '@shared/types';
 import { formatRelativeDate } from '../lib/utils';
+import { createTodoFromEmail, createNoteFromEmail, createEventFromEmail, type EmailContext, type CreateTodoOptions } from '@futhark/core/lib/crossApp';
 
 // ── Nudge Detection ──────────────────────────────────────────
 // Gmail nudges re-add the INBOX label to a thread without adding new messages,
@@ -119,7 +120,9 @@ interface Props {
 
 export function EmailList({ threads, selectedId, selectedIds, loading, loadingMore, hasMore, onSelect, onMultiSelect, onLoadMore, currentView, userEmail, userDisplayName, views = [], onArchive, onLabel, onStar, onCreateRule, onDoubleClick }: Props) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; thread: EmailThread } | null>(null);
+  const [dueDatePicker, setDueDatePicker] = useState<{ x: number; y: number; ctx: EmailContext } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const datePickerRef = useRef<HTMLDivElement>(null);
   const lastClickedIdRef = useRef<string | null>(null);
   const [snoozeMap, setSnoozeMap] = useState<Map<string, string>>(new Map());
 
@@ -156,6 +159,25 @@ export function EmailList({ threads, selectedId, selectedIds, loading, loadingMo
       document.removeEventListener('keydown', handleKey);
     };
   }, [contextMenu]);
+
+  // Close due date picker on click outside or Escape
+  useEffect(() => {
+    if (!dueDatePicker) return;
+    const handleClick = (e: MouseEvent) => {
+      if (datePickerRef.current && !datePickerRef.current.contains(e.target as Node)) {
+        setDueDatePicker(null);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setDueDatePicker(null);
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [dueDatePicker]);
 
   // Reposition menu if it overflows the viewport
   useEffect(() => {
@@ -296,6 +318,47 @@ export function EmailList({ threads, selectedId, selectedIds, loading, loadingMo
       });
     }
 
+    // Cross-app actions (single thread only)
+    if (count === 1) {
+      actions.push({ label: '', onClick: () => {}, separator: true });
+      const ctx: EmailContext = {
+        threadId: thread.id,
+        subject: thread.subject,
+        snippet: thread.snippet,
+        from: thread.from,
+        participants: thread.participants,
+        lastDate: thread.lastDate,
+        hasAttachments: thread.messages.some(m => m.hasAttachments),
+      };
+      actions.push({
+        label: 'Create Todo in Raidō',
+        icon: 'ᚱ',
+        onClick: () => {
+          setDueDatePicker({ x: contextMenu!.x, y: contextMenu!.y, ctx });
+        },
+      });
+      actions.push({
+        label: 'Create Note in Laguz',
+        icon: 'ᛚ',
+        onClick: async () => {
+          try {
+            await createNoteFromEmail(fetcher, ctx);
+            window.kenaz.notify('Laguz', `Note created from: ${ctx.subject}`);
+          } catch { window.kenaz.notify('Laguz', 'Failed — is Laguz running?'); }
+        },
+      });
+      actions.push({
+        label: 'Create Event in Dagaz',
+        icon: 'ᛞ',
+        onClick: async () => {
+          try {
+            await createEventFromEmail(fetcher, ctx);
+            window.kenaz.notify('Dagaz', `Event created: ${ctx.subject}`);
+          } catch { window.kenaz.notify('Dagaz', 'Failed — is Dagaz running?'); }
+        },
+      });
+    }
+
     return actions;
   };
 
@@ -398,6 +461,79 @@ export function EmailList({ threads, selectedId, selectedIds, loading, loadingMo
           )}
         </div>
       )}
+
+      {/* Due Date Picker (shown after "Create Todo in Raidō") */}
+      {dueDatePicker && (() => {
+        const today = new Date();
+        const todayStr = today.toISOString().split('T')[0];
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = tomorrow.toISOString().split('T')[0];
+        const nextMon = new Date(today);
+        nextMon.setDate(nextMon.getDate() + ((8 - nextMon.getDay()) % 7 || 7));
+        const nextMonStr = nextMon.toISOString().split('T')[0];
+        const nextWeek = new Date(today);
+        nextWeek.setDate(nextWeek.getDate() + 7);
+        const nextWeekStr = nextWeek.toISOString().split('T')[0];
+
+        const handleCreate = async (dueDate: string | null) => {
+          const { ctx } = dueDatePicker;
+          setDueDatePicker(null);
+          const fetcher = window.kenaz.crossAppFetch;
+          try {
+            await createTodoFromEmail(fetcher, ctx, {
+              dueDate,
+              pullAttachments: ctx.hasAttachments,
+            });
+            const extra = ctx.hasAttachments ? ' (pulling attachments…)' : '';
+            window.kenaz.notify('Raidō', `Todo created: ${ctx.subject}${extra}`);
+          } catch {
+            window.kenaz.notify('Raidō', 'Failed — is Raidō running?');
+          }
+        };
+
+        const options: { label: string; sub?: string; date: string | null }[] = [
+          { label: 'No date', sub: 'goes to Inbox', date: null },
+          { label: 'Today', sub: todayStr, date: todayStr },
+          { label: 'Tomorrow', sub: tomorrowStr, date: tomorrowStr },
+          { label: 'Next Monday', sub: nextMonStr, date: nextMonStr },
+          { label: 'In a week', sub: nextWeekStr, date: nextWeekStr },
+        ];
+
+        return (
+          <div
+            ref={datePickerRef}
+            className="fixed z-50 py-1.5 min-w-[220px] bg-bg-secondary border border-border-subtle rounded-lg shadow-2xl"
+            style={{ left: dueDatePicker.x, top: dueDatePicker.y }}
+          >
+            <div className="px-3 py-1.5 text-[10px] text-text-muted uppercase tracking-wider font-medium">
+              When is it due?
+            </div>
+            {options.map(opt => (
+              <button
+                key={opt.label}
+                onClick={() => handleCreate(opt.date)}
+                className="w-full text-left px-3 py-1.5 text-xs flex items-center justify-between gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+              >
+                <span>{opt.label}</span>
+                {opt.sub && <span className="text-[10px] text-text-muted">{opt.sub}</span>}
+              </button>
+            ))}
+            <div className="border-t border-border-subtle my-1" />
+            <div className="px-3 py-1.5 flex items-center gap-2">
+              <input
+                type="date"
+                className="flex-1 bg-bg-tertiary border border-border-subtle rounded px-2 py-1 text-xs text-text-secondary outline-none"
+                min={todayStr}
+                onChange={(e) => {
+                  if (e.target.value) handleCreate(e.target.value);
+                }}
+                autoFocus
+              />
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

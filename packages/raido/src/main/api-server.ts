@@ -163,6 +163,82 @@ export function startApiServer(store: TaskStore, port: number) {
     }
   });
 
+  // ── Attachments ─────────────────────────────────────────────
+
+  app.get('/api/task/:id/attachments', (req, res) => {
+    try {
+      const attachments = store.getAttachments(req.params.id);
+      res.json({ attachments });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/task/:id/attachment/:attachmentId', (req, res) => {
+    try {
+      const filePath = store.getAttachmentPath(req.params.id, req.params.attachmentId);
+      if (!filePath) return res.status(404).json({ error: 'Attachment not found' });
+      res.sendFile(filePath);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete('/api/task/:id/attachment/:attachmentId', (req, res) => {
+    try {
+      const ok = store.deleteAttachment(req.params.id, req.params.attachmentId);
+      res.json({ success: ok });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/task/:id/attachments/pull-email', async (req, res) => {
+    try {
+      const { threadId } = req.body;
+      if (!threadId) return res.status(400).json({ error: 'threadId required' });
+
+      const KENAZ_PORT = 3141;
+      const listRes = await fetch(`http://localhost:${KENAZ_PORT}/api/thread/${threadId}/attachments`);
+      if (!listRes.ok) return res.json({ attachments: [], note: 'Could not reach Kenaz' });
+
+      const { attachments: emailAtts } = await listRes.json() as {
+        attachments: { id: string; messageId: string; filename: string; mimeType: string; size: number }[]
+      };
+      if (!emailAtts || emailAtts.length === 0) return res.json({ attachments: [] });
+
+      const results = [];
+      for (const att of emailAtts) {
+        try {
+          const bufRes = await fetch(
+            `http://localhost:${KENAZ_PORT}/api/attachment/${att.messageId}/${att.id}?filename=${encodeURIComponent(att.filename)}`
+          );
+          if (!bufRes.ok) continue;
+          const arrayBuf = await bufRes.arrayBuffer();
+          const buffer = Buffer.from(arrayBuf);
+          const saved = store.addAttachment(req.params.id, att.filename, buffer, {
+            mimeType: att.mimeType,
+            source: 'email',
+            sourceRef: `kenaz:${threadId}:${att.messageId}:${att.id}`,
+          });
+          results.push(saved);
+        } catch {
+          console.error(`[Raidō] Failed to pull attachment: ${att.filename}`);
+        }
+      }
+
+      res.json({ attachments: results });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Health ─────────────────────────────────────────────────
+
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', app: 'raido' });
+  });
+
   // ── Start Server ──────────────────────────────────────────
 
   const server = app.listen(port, '127.0.0.1', () => {

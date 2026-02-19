@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { Task } from '../../shared/types';
 import { cn, formatDate, getDateColor } from '../lib/utils';
+import { createDraftFromTask, createNoteFromTask, createEventFromTask, type TaskContext } from '@futhark/core/lib/crossApp';
 
 interface TaskListProps {
   tasks: Task[];
@@ -13,6 +14,19 @@ interface TaskListProps {
 
 export function TaskList({ tasks, selectedId, onSelect, onComplete, loading, title }: TaskListProps) {
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setContextMenu(null);
+    };
+    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setContextMenu(null); };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => { document.removeEventListener('mousedown', handleClick); document.removeEventListener('keydown', handleKey); };
+  }, [contextMenu]);
 
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
@@ -78,7 +92,7 @@ export function TaskList({ tasks, selectedId, onSelect, onComplete, loading, tit
       )}
 
       {/* Task list */}
-      <div className="flex-1 overflow-y-auto scrollbar-hide">
+      <div className="flex-1 overflow-y-auto scrollbar-hide relative">
         {filteredTasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-text-muted">
             <div className="text-3xl mb-2">✨</div>
@@ -89,6 +103,7 @@ export function TaskList({ tasks, selectedId, onSelect, onComplete, loading, tit
             <div
               key={task.id}
               onClick={() => onSelect(task)}
+              onContextMenu={(e) => { e.preventDefault(); setContextMenu({ x: e.clientX, y: e.clientY, task }); }}
               className={cn(
                 'task-item',
                 selectedId === task.id && 'active'
@@ -146,6 +161,36 @@ export function TaskList({ tasks, selectedId, onSelect, onComplete, loading, tit
             </div>
           ))
         )}
+
+        {/* Context Menu */}
+        {contextMenu && (() => {
+          const task = contextMenu.task;
+          const ctx: TaskContext = { id: task.id, title: task.title, notes: task.notes, dueDate: task.due_date, tags: task.tags };
+          const fetcher = window.raido.crossAppFetch;
+          const actions = [
+            { label: 'Draft Email in Kenaz', icon: 'ᚲ', fn: async () => { try { await createDraftFromTask(fetcher, ctx); window.raido.notify('Kenaz', `Draft created: ${ctx.title}`); } catch { window.raido.notify('Kenaz', 'Failed — is Kenaz running?'); } } },
+            { label: 'Create Note in Laguz', icon: 'ᛚ', fn: async () => { try { await createNoteFromTask(fetcher, ctx); window.raido.notify('Laguz', `Note created: ${ctx.title}`); } catch { window.raido.notify('Laguz', 'Failed — is Laguz running?'); } } },
+            { label: 'Create Event in Dagaz', icon: 'ᛞ', fn: async () => { try { await createEventFromTask(fetcher, ctx); window.raido.notify('Dagaz', `Event created: ${ctx.title}`); } catch { window.raido.notify('Dagaz', 'Failed — is Dagaz running?'); } } },
+          ];
+          return (
+            <div
+              ref={menuRef}
+              className="fixed z-50 py-1 min-w-[200px] bg-bg-secondary border border-border-subtle rounded-lg shadow-2xl"
+              style={{ left: contextMenu.x, top: contextMenu.y }}
+            >
+              {actions.map((a, i) => (
+                <button
+                  key={i}
+                  onClick={() => { a.fn(); setContextMenu(null); }}
+                  className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+                >
+                  <span className="w-4 text-center">{a.icon}</span>
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );

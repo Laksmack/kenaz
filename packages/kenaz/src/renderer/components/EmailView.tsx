@@ -1,60 +1,13 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import type { EmailThread, Email } from '@shared/types';
 import { formatFullDate } from '../lib/utils';
+import { detectCalendarInvite } from '../lib/detectInvite';
 
 function decodeHtmlEntities(text: string): string {
   const el = document.createElement('textarea');
   el.innerHTML = text;
   return el.value;
-}
-
-/**
- * Detect if an email is a calendar invite.
- * Gmail calendar invites typically:
- * - Have an .ics attachment
- * - Come from calendar-notification@google.com
- * - Contain "VCALENDAR" or "invitation" references
- * Returns the iCalUID if detectable, or true for generic invite detection.
- */
-function detectCalendarInvite(message: Email): { isInvite: boolean; iCalUID: string | null } {
-  // Check for .ics attachments
-  const hasIcs = message.attachments.some((a) =>
-    a.filename.endsWith('.ics') || a.mimeType === 'text/calendar' || a.mimeType === 'application/ics'
-  );
-
-  // Check if it's from Google Calendar
-  const isCalendarNotification = message.from.email.includes('calendar-notification@google.com') ||
-    message.from.email.includes('calendar@google.com');
-
-  // Try to extract iCalUID from body text or HTML
-  // Google Calendar invites embed the event info in the email body
-  let iCalUID: string | null = null;
-  const bodyContent = message.body + ' ' + message.bodyText;
-
-  // Look for Google Calendar event patterns in links
-  // e.g., https://calendar.google.com/calendar/event?eid=XXXXX
-  const eidMatch = bodyContent.match(/calendar\.google\.com\/calendar\/event\?.*?eid=([A-Za-z0-9_-]+)/);
-  if (eidMatch) {
-    // The eid is a base64-encoded string containing the event ID
-    try {
-      const decoded = atob(eidMatch[1].replace(/-/g, '+').replace(/_/g, '/'));
-      // Format: "eventId calendarEmail" — we want just the eventId
-      const eventId = decoded.split(' ')[0];
-      if (eventId) iCalUID = eventId;
-    } catch {
-      // ignore decode errors
-    }
-  }
-
-  // Check for invite keywords in subject/body
-  const hasInviteKeywords = message.subject.toLowerCase().includes('invitation:') ||
-    message.subject.toLowerCase().includes('updated invitation:') ||
-    bodyContent.includes('VCALENDAR') ||
-    bodyContent.includes('BEGIN:VEVENT');
-
-  const isInvite = hasIcs || isCalendarNotification || hasInviteKeywords;
-
-  return { isInvite, iCalUID };
 }
 
 // ── Nudge Detection ──────────────────────────────────────────
@@ -108,13 +61,15 @@ interface Props {
   onLabel: (label: string) => void;
   onStar: () => void;
   onDeleteDraft?: (thread: EmailThread) => void;
+  onEditDraft?: (thread: EmailThread) => void;
+  onSendDraft?: (thread: EmailThread) => void;
   threadUpdateAvailable?: boolean;
   onRefreshThread?: () => void;
   userEmail?: string;
   currentView?: string;
 }
 
-export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDeleteDraft, threadUpdateAvailable, onRefreshThread, userEmail, currentView }: Props) {
+export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDeleteDraft, onEditDraft, onSendDraft, threadUpdateAvailable, onRefreshThread, userEmail, currentView }: Props) {
   const [showDetails, setShowDetails] = useState(false);
   const [labelMap, setLabelMap] = useState<Record<string, string>>({});
 
@@ -197,7 +152,11 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       {/* Thread header */}
-      <div className="flex-shrink-0 px-6 py-3 border-b border-border-subtle">
+      <div
+        className="flex-shrink-0 px-6 py-3 border-b border-border-subtle"
+        onDoubleClick={thread.labels.includes('DRAFT') && onEditDraft ? () => onEditDraft(thread) : undefined}
+        style={thread.labels.includes('DRAFT') && onEditDraft ? { cursor: 'pointer' } : undefined}
+      >
         <h2 className="text-lg font-semibold text-text-primary leading-tight mb-2">
           {thread.subject || '(no subject)'}
         </h2>
@@ -245,16 +204,42 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
                 </svg>
               }
             />
-            <ActionButton
-              label="Reply"
-              shortcut="R"
-              onClick={onReply}
-              icon={
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                </svg>
-              }
-            />
+            {/* Draft-specific actions: Send + Edit */}
+            {thread.labels.includes('DRAFT') && onSendDraft && (
+              <ActionButton
+                label="Send"
+                onClick={() => onSendDraft(thread)}
+                color="text-green-400"
+                icon={
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5" />
+                  </svg>
+                }
+              />
+            )}
+            {thread.labels.includes('DRAFT') && onEditDraft ? (
+              <ActionButton
+                label="Edit"
+                shortcut="R"
+                onClick={() => onEditDraft(thread)}
+                icon={
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+                  </svg>
+                }
+              />
+            ) : (
+              <ActionButton
+                label="Reply"
+                shortcut="R"
+                onClick={onReply}
+                icon={
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+                  </svg>
+                }
+              />
+            )}
             {onDeleteDraft && thread.labels.includes('DRAFT') && (
               <ActionButton
                 label="Delete Draft"
@@ -644,7 +629,12 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
     // We'll hide it and show a "show quoted text" button
     // Fix protocol-relative URLs (//fonts.gstatic.com → https://fonts.gstatic.com)
     // In Electron's file:// context these resolve to file:// instead of https://
-    let bodyHtml = message.body.replace(/(?:src|href)=(["'])\/\//g, (match, quote) => {
+    let bodyHtml = DOMPurify.sanitize(message.body, {
+      ADD_TAGS: ['style'],
+      ADD_ATTR: ['target', 'class', 'style'],
+      ALLOW_DATA_ATTR: false,
+      WHOLE_DOCUMENT: false,
+    }).replace(/(?:src|href)=(["'])\/\//g, (match, quote) => {
       return match.replace(`${quote}//`, `${quote}https://`);
     }).replace(/url\((['"]?)\/\//g, (_match, quote) => {
       return `url(${quote}https://`;
@@ -753,11 +743,6 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
       el.classList.add('kenaz-quoted');
     }
 
-    // Prevent iframe from stealing focus after content write
-    if (iframeRef.current) {
-      iframeRef.current.blur();
-    }
-
     // Open links in default browser instead of inside the iframe
     doc.addEventListener('click', (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -768,13 +753,9 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
       }
     });
 
-    // When user clicks inside iframe, reclaim focus for parent (keeps shortcuts working)
-    doc.addEventListener('mouseup', () => {
-      // Small delay to allow text selection to complete, then reclaim focus
-      setTimeout(() => {
-        if (iframeRef.current) iframeRef.current.blur();
-      }, 100);
-    });
+    // NOTE: We no longer blur the iframe on mouseup — the keyboard bridge
+    // (bridgeIframeKeys) handles forwarding shortcuts to the parent, and
+    // blurring broke Cmd+C (copy) by moving focus away from the selection.
 
     // Forward keyboard events from iframe to parent so shortcuts still work
     // This is a safety net in case the iframe somehow has focus

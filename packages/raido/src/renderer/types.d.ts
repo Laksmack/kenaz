@@ -1,4 +1,4 @@
-import type { Task, TaskGroup, Tag, TaskStats, AppConfig } from '../shared/types';
+import type { Task, TaskGroup, Tag, TaskStats, AppConfig, TaskAttachment } from '../shared/types';
 
 declare global {
   interface Window {
@@ -17,6 +17,11 @@ declare global {
       getStats: () => Promise<TaskStats>;
       getTaggedTasks: (tagName: string) => Promise<Task[]>;
 
+      // Attachments
+      getAttachments: (taskId: string) => Promise<TaskAttachment[]>;
+      openAttachment: (taskId: string, attachmentId: string) => Promise<void>;
+      deleteAttachment: (taskId: string, attachmentId: string) => Promise<void>;
+
       // Groups
       getGroups: () => Promise<TaskGroup[]>;
       getGroup: (name: string) => Promise<Task[]>;
@@ -32,6 +37,9 @@ declare global {
 
       // MCP
       getMcpStatus: () => Promise<{ enabled: boolean; claudeDesktopConfig: any; serverPath: string }>;
+
+      // Cross-app
+      crossAppFetch: (url: string, options?: any) => Promise<any>;
 
       // Events
       onTasksChanged: (callback: () => void) => () => void;

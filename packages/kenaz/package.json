@@ -1,6 +1,6 @@
 {
   "name": "@futhark/kenaz",
-  "version": "0.14.1",
+  "version": "0.17.0",
   "description": "Kenaz ᚲ — Personal Gmail client with HubSpot CRM, Google Calendar, and Claude API",
   "main": "dist/main/main/main.js",
   "bin": {
@@ -11,9 +11,8 @@
     "dev:main": "tsc -p tsconfig.main.json && electron .",
     "dev:renderer": "vite",
     "build:main": "tsc -p tsconfig.main.json",
-    "build:mcp": "esbuild src/main/mcp-server.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/mcp/mcp-server.js",
     "build:renderer": "vite build",
-    "build": "npm run build:main && npm run build:mcp && npm run build:renderer",
+    "build": "npm run build:main && npm run build:renderer",
     "start": "electron .",
     "dev:electron": "NODE_ENV=development electron .",
     "dist": "npm run build && electron-builder --mac",
@@ -49,9 +48,7 @@
       ],
       "darkModeSupport": true
     },
-    "asarUnpack": [
-      "dist/mcp/**"
-    ],
+    "asarUnpack": [],
     "npmRebuild": true,
     "dmg": {
       "title": "Kenaz",
@@ -100,8 +97,10 @@
     "@tiptap/extension-underline": "^3.19.0",
     "@tiptap/react": "^3.19.0",
     "@tiptap/starter-kit": "^3.19.0",
+    "@types/dompurify": "^3.0.5",
     "archiver": "^7.0.1",
     "better-sqlite3": "^12.6.2",
+    "dompurify": "^3.3.1",
     "dotenv": "^17.2.4",
     "express": "^4.18.2",
     "googleapis": "^130.0.0",

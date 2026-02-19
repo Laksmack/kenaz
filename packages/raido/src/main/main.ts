@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, shell, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Notification, dialog } from 'electron';
+import fs from 'fs';
 import path from 'path';
 
 import { startApiServer } from './api-server';
@@ -73,29 +74,8 @@ async function initServices() {
   }
 }
 
-// ── MCP Server Config ────────────────────────────────────────
-
-function getMcpServerPath(): string {
-  const appPath = app.getAppPath();
-  const base = appPath.endsWith('.asar')
-    ? appPath.replace(/\.asar$/, '.asar.unpacked')
-    : appPath;
-  return path.join(base, 'dist', 'mcp', 'mcp-server.js');
-}
-
-function getMcpClaudeDesktopConfig(apiPort: number): object {
-  return {
-    mcpServers: {
-      raido: {
-        command: 'node',
-        args: [getMcpServerPath()],
-        env: {
-          RAIDO_API_PORT: String(apiPort),
-        },
-      },
-    },
-  };
-}
+// ── MCP ─────────────────────────────────────────────────────
+// Unified Futhark MCP server installed to ~/.futhark/ on startup.
 
 // ── Badge Management ─────────────────────────────────────────
 
@@ -187,24 +167,85 @@ function registerIpcHandlers() {
     }
   });
 
+  // Attachments
+  ipcMain.handle(IPC.ATTACHMENTS_LIST, async (_event, taskId: string) => store.getAttachments(taskId));
+
+  ipcMain.handle(IPC.ATTACHMENT_OPEN, async (_event, taskId: string, attachmentId: string) => {
+    const filePath = store.getAttachmentPath(taskId, attachmentId);
+    if (filePath && fs.existsSync(filePath)) {
+      shell.openPath(filePath);
+    }
+  });
+
+  ipcMain.handle(IPC.ATTACHMENT_DELETE, async (_event, taskId: string, attachmentId: string) => {
+    return store.deleteAttachment(taskId, attachmentId);
+  });
+
+  // Cross-app
+  ipcMain.handle('cross-app:fetch', async (_event, url: string, options?: any) => {
+    const res = await fetch(url, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...options?.headers },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Cross-app request failed (${res.status}): ${text}`);
+    }
+    return res.json();
+  });
+
   // MCP
   ipcMain.handle(IPC.MCP_STATUS, async () => {
     const appConfig = config.get();
+    let mcpConfig = {};
+    let installed = false;
+    try {
+      const corePkg = require.resolve('@futhark/core/package.json');
+      const installerPath = path.join(path.dirname(corePkg), 'dist', 'mcp', 'installer.js');
+      const { getFutharkMcpConfig, isMcpInstalled } = require(installerPath);
+      mcpConfig = getFutharkMcpConfig();
+      installed = isMcpInstalled();
+    } catch {}
     return {
       enabled: appConfig.mcpEnabled,
-      claudeDesktopConfig: getMcpClaudeDesktopConfig(appConfig.apiPort),
-      serverPath: getMcpServerPath(),
+      installed,
+      claudeDesktopConfig: mcpConfig,
     };
   });
 }
 
 // ── App Lifecycle ────────────────────────────────────────────
 
+async function installFutharkMcp() {
+  try {
+    const corePkg = require.resolve('@futhark/core/package.json');
+    const installerPath = path.join(path.dirname(corePkg), 'dist', 'mcp', 'installer.js');
+    const bundlePath = path.join(path.dirname(corePkg), 'dist', 'mcp', 'futhark-mcp.js');
+    const { ensureFutharkMcp } = require(installerPath);
+    await ensureFutharkMcp({
+      bundlePath,
+      showPrompt: async (msg: string) => {
+        const { response } = await dialog.showMessageBox({
+          type: 'question',
+          buttons: ['Register', 'Not Now'],
+          defaultId: 0,
+          title: 'Futhark MCP',
+          message: msg,
+        });
+        return response === 0;
+      },
+    });
+  } catch (e: any) {
+    console.error('[Raidō] Failed to install Futhark MCP:', e.message);
+  }
+}
+
 app.whenReady().then(async () => {
   await initServices();
   registerIpcHandlers();
   createWindow();
   startBadgeMonitor();
+  installFutharkMcp();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

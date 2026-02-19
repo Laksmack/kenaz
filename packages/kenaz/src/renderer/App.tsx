@@ -163,6 +163,22 @@ export default function App() {
     return cleanup;
   }, [refresh]);
 
+  // Cross-app navigation (e.g. "focus thread" from Raidō)
+  useEffect(() => {
+    const cleanup = window.kenaz.onNavigate(async (data: any) => {
+      if (data.action === 'focus-thread' && data.threadId) {
+        setCurrentView('all');
+        try {
+          const full = await window.kenaz.fetchThread(data.threadId);
+          if (full) setSelectedThread(full);
+        } catch (e) {
+          console.error('[NAVIGATE] Failed to focus thread:', e);
+        }
+      }
+    });
+    return cleanup;
+  }, []);
+
   // Also update counts when threads change (user actions)
   useEffect(() => {
     if (currentView && currentView !== 'search' && currentView !== 'all') {
@@ -240,6 +256,19 @@ export default function App() {
     setSelectedThread(threads[0]);
   }, [threads]);
 
+  // Normalize Gmail draft HTML for the rich text editor.
+  // Gmail uses <div> blocks; TipTap expects <p> blocks. Without this,
+  // <div><br></div> creates extra empty paragraphs doubling the spacing.
+  const normalizeDraftHtml = useCallback((html: string): string => {
+    // Unwrap Gmail's outer <div dir="ltr"> wrapper
+    let s = html.replace(/^<div[^>]*dir=["']ltr["'][^>]*>([\s\S]*)<\/div>\s*$/i, '$1');
+    // Convert <div><br></div> or <div><br/></div> to a single <br> (blank line)
+    s = s.replace(/<div>\s*<br\s*\/?>\s*<\/div>/gi, '<p><br></p>');
+    // Convert <div>content</div> to <p>content</p>
+    s = s.replace(/<div>([\s\S]*?)<\/div>/gi, '<p>$1</p>');
+    return s;
+  }, []);
+
   // Open a draft in the composer (used by Enter/R in drafts view, or double-click)
   const openDraftInComposer = useCallback(async (thread: EmailThread) => {
     try {
@@ -247,13 +276,14 @@ export default function App() {
       const draft = drafts.find((d: any) => d.threadId === thread.id);
       if (draft) {
         const draftDetail = await window.kenaz.getDraft(draft.id);
+        const normalizedBody = normalizeDraftHtml(draftDetail.body);
         setComposeData({
           to: draftDetail.to,
           cc: draftDetail.cc,
           bcc: draftDetail.bcc,
           subject: draftDetail.subject,
           bodyMarkdown: draftDetail.body,
-          bodyHtml: draftDetail.body, // Draft body is HTML — feed to rich editor too
+          bodyHtml: normalizedBody,
           replyToThreadId: draftDetail.threadId || undefined,
           draftId: draftDetail.id,
         });
@@ -262,7 +292,7 @@ export default function App() {
     } catch (e) {
       console.error('Failed to load draft:', e);
     }
-  }, []);
+  }, [normalizeDraftHtml]);
 
   const handleSelectThread = useCallback(async (thread: EmailThread) => {
     // If re-clicking the already-selected thread, don't overwrite with metadata-only version
@@ -422,8 +452,9 @@ export default function App() {
     }
     setSelectedIds(new Set());
 
-    // Remove managed labels + archive for all targets
+    // Mark as read + remove managed labels + archive for all targets
     for (const t of targets) {
+      if (t.unread) markRead(t.id);
       for (const label of managedLabels) {
         labelThread(t.id, null, label);
       }
@@ -445,7 +476,7 @@ export default function App() {
       }
       setTimeout(() => refresh(), 500);
     });
-  }, [getTargetThreads, threads, archiveThread, labelThread, currentView, views, refresh, getManagedLabels, addUndo, selectedThread]);
+  }, [getTargetThreads, threads, archiveThread, labelThread, markRead, currentView, views, refresh, getManagedLabels, addUndo, selectedThread]);
 
   const handleLabel = useCallback(async (label: string) => {
     const targets = getTargetThreads();
@@ -464,6 +495,7 @@ export default function App() {
         setSelectedThread(next);
       }
       for (const t of targets) {
+        if (t.unread) markRead(t.id);
         for (const managed of getManagedLabels()) {
           if (managed !== label) {
             labelThread(t.id, null, managed);
@@ -475,7 +507,7 @@ export default function App() {
     }
     setSelectedIds(new Set());
     setTimeout(() => refresh(), 2000);
-  }, [getTargetThreads, selectedThread, threads, labelThread, archiveThread, getManagedLabels, refresh]);
+  }, [getTargetThreads, selectedThread, threads, labelThread, markRead, archiveThread, getManagedLabels, refresh]);
 
   const handleStar = useCallback(async () => {
     const targets = getTargetThreads();
@@ -607,6 +639,41 @@ export default function App() {
     });
   }, [addUndo, refresh, appConfig?.archiveOnReply, getManagedLabels, archiveThread, labelThread, isOnline]);
 
+  // Send a draft directly without opening the composer
+  const sendDraft = useCallback(async (thread: EmailThread) => {
+    try {
+      const drafts = await window.kenaz.listDrafts();
+      const draft = drafts.find((d: any) => d.threadId === thread.id);
+      if (!draft) return;
+      const draftDetail = await window.kenaz.getDraft(draft.id);
+
+      const payload: SendEmailPayload = {
+        to: draftDetail.to,
+        cc: draftDetail.cc || undefined,
+        bcc: draftDetail.bcc || undefined,
+        subject: draftDetail.subject,
+        body_markdown: '',
+        body_html: draftDetail.body,
+        reply_to_thread_id: draftDetail.threadId || undefined,
+        signature: false,
+      };
+
+      handleSent(payload, draftDetail.id);
+
+      // Move to next thread
+      const idx = threads.findIndex((t) => t.id === thread.id);
+      const next = threads[idx + 1] || threads[idx - 1] || null;
+      if (next) {
+        pendingSelectIdRef.current = next.id;
+        setSelectedThread(next);
+      } else {
+        setSelectedThread(null);
+      }
+    } catch (e) {
+      console.error('Failed to send draft:', e);
+    }
+  }, [threads, handleSent]);
+
   const handleReply = useCallback(() => {
     if (!selectedThread) return;
     const lastMsg = selectedThread.messages[selectedThread.messages.length - 1];
@@ -717,7 +784,9 @@ export default function App() {
   // ── Context menu handlers ───────────────────────────────
 
   const handleContextArchive = useCallback(async (threadId: string) => {
-    // Remove all managed labels, same as keyboard Done
+    // Mark as read + remove all managed labels, same as keyboard Done
+    const thread = threads.find((t) => t.id === threadId);
+    if (thread?.unread) markRead(threadId);
     for (const label of getManagedLabels()) {
       labelThread(threadId, null, label);
     }
@@ -729,9 +798,12 @@ export default function App() {
       setSelectedThread(next);
     }
     await archiveThread(threadId);
-  }, [archiveThread, labelThread, getManagedLabels, selectedThread, threads, findNextThread]);
+  }, [archiveThread, labelThread, markRead, getManagedLabels, selectedThread, threads, findNextThread]);
 
   const handleContextLabel = useCallback(async (threadId: string, label: string) => {
+    // Mark as read
+    const thread = threads.find((t) => t.id === threadId);
+    if (thread?.unread) markRead(threadId);
     // Remove all OTHER managed labels first (e.g. moving from Pending to Todo
     // should remove PENDING before adding TODO)
     for (const managed of getManagedLabels()) {
@@ -751,7 +823,7 @@ export default function App() {
     // Archive (remove from inbox) since we're moving to a specific view
     await archiveThread(threadId);
     refresh();
-  }, [labelThread, archiveThread, getManagedLabels, selectedThread, threads, refresh, findNextThread]);
+  }, [labelThread, markRead, archiveThread, getManagedLabels, selectedThread, threads, refresh, findNextThread]);
 
   const handleContextStar = useCallback(async (threadId: string) => {
     const thread = threads.find((t) => t.id === threadId);
@@ -939,11 +1011,13 @@ export default function App() {
             <EmailView
               key={selectedThread?.id || 'none'}
               thread={selectedThread}
-              onReply={currentView === 'drafts' && selectedThread ? () => openDraftInComposer(selectedThread) : handleReply}
+              onReply={handleReply}
               onArchive={handleArchive}
               onLabel={handleLabel}
               onStar={handleStar}
               onDeleteDraft={currentView === 'drafts' ? handleDeleteDraft : undefined}
+              onEditDraft={currentView === 'drafts' ? openDraftInComposer : undefined}
+              onSendDraft={currentView === 'drafts' ? sendDraft : undefined}
               threadUpdateAvailable={threadUpdateAvailable}
               onRefreshThread={refreshSelectedThread}
               userEmail={userEmail}

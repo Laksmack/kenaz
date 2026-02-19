@@ -8,7 +8,7 @@ import type { View, Rule } from '../shared/types';
 import type { CalendarService } from './calendar';
 import type { ConfigStore } from './config';
 
-export function startApiServer(gmail: GmailService, hubspot: HubSpotService, port: number, viewStore?: ViewStore, ruleStore?: RuleStore, calendar?: CalendarService, configStore?: ConfigStore) {
+export function startApiServer(gmail: GmailService, hubspot: HubSpotService, port: number, viewStore?: ViewStore, ruleStore?: RuleStore, calendar?: CalendarService, configStore?: ConfigStore, getMainWindow?: () => import('electron').BrowserWindow | null) {
   const app = express();
   app.use(express.json({ limit: '50mb' }));
 
@@ -449,6 +449,27 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', app: 'kenaz' });
+  });
+
+  // ── Navigation (cross-app deep links) ─────────────────────
+
+  app.post('/api/navigate', (req, res) => {
+    try {
+      const win = getMainWindow?.();
+      if (!win || win.isDestroyed()) {
+        return res.status(503).json({ error: 'Kenaz window not available' });
+      }
+      const { action, threadId } = req.body;
+      if (action === 'focus-thread' && threadId) {
+        win.webContents.send('navigate', { action: 'focus-thread', threadId });
+        win.show();
+        win.focus();
+        return res.json({ success: true });
+      }
+      res.status(400).json({ error: 'Unknown navigation action' });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
   });
 
   // ── OpenAPI Spec ──────────────────────────────────────────

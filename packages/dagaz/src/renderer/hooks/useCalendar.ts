@@ -74,31 +74,38 @@ export function useCalendar(view: ViewType, currentDate: Date, weekDays: 5 | 7) 
     }
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (opts?: { full?: boolean }) => {
     setLoading(true);
     try {
-      // Trigger a real backend sync first, then read updated cache
-      await window.dagaz.triggerSync();
+      // Trigger a real backend sync (full on manual refresh) then read updated cache
+      await window.dagaz.triggerSync({ full: opts?.full ?? true });
     } catch (e) {
       console.error('[Dagaz] Sync trigger failed:', e);
     }
-    await Promise.all([fetchEvents(), fetchCalendars()]);
-  }, [fetchEvents, fetchCalendars]);
+    try {
+      const { start, end } = getDateRange();
+      const evts = await window.dagaz.getEvents(start, end);
+      if (mountedRef.current) setEvents(evts || []);
+      const cals = await window.dagaz.getCalendars();
+      if (mountedRef.current) setCalendars(cals || []);
+    } catch (e) {
+      console.error('[Dagaz] Failed to fetch after sync:', e);
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [getDateRange]);
 
-  // Initial load and refresh on changes
+  // Initial load — full sync on mount, then read cache
   useEffect(() => {
-    refresh();
+    refresh({ full: false });
   }, [refresh]);
 
-  // Listen for sync and event changes
+  // Listen for background sync completions — re-read cache
   useEffect(() => {
     const unsubSync = window.dagaz.onSyncChanged(() => {
+      // Background sync finished — re-read cache without triggering another sync
       fetchEvents();
     });
-
-    const handleEventsChanged = () => fetchEvents();
-    // The 'events:changed' message is sent via IPC when events are modified
-    // We use the electron IPC listener pattern from preload
 
     return () => {
       unsubSync();

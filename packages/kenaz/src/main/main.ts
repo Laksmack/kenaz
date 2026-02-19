@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, Notification } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Notification, Menu, MenuItem, dialog } from 'electron';
 import path from 'path';
 
 import { GmailService } from './gmail';
@@ -46,6 +46,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       webviewTag: true,
+      spellcheck: true,
     },
   });
 
@@ -57,6 +58,44 @@ function createWindow() {
     console.log('[Kenaz] Loading HTML from:', htmlPath);
     mainWindow.loadFile(htmlPath);
   }
+
+  // Native context menu with spell-check suggestions
+  mainWindow.webContents.on('context-menu', (_event, params) => {
+    const menu = new Menu();
+
+    // Spell-check suggestions
+    if (params.misspelledWord) {
+      for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
+        menu.append(new MenuItem({
+          label: suggestion,
+          click: () => mainWindow?.webContents.replaceMisspelling(suggestion),
+        }));
+      }
+      if (params.dictionarySuggestions.length > 0) {
+        menu.append(new MenuItem({ type: 'separator' }));
+      }
+      menu.append(new MenuItem({
+        label: 'Add to Dictionary',
+        click: () => mainWindow?.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord),
+      }));
+      menu.append(new MenuItem({ type: 'separator' }));
+    }
+
+    // Standard edit actions
+    if (params.selectionText) {
+      menu.append(new MenuItem({ label: 'Copy', role: 'copy' }));
+    }
+    if (params.isEditable) {
+      menu.append(new MenuItem({ label: 'Cut', role: 'cut' }));
+      menu.append(new MenuItem({ label: 'Paste', role: 'paste' }));
+      menu.append(new MenuItem({ type: 'separator' }));
+      menu.append(new MenuItem({ label: 'Select All', role: 'selectAll' }));
+    }
+
+    if (menu.items.length > 0) {
+      menu.popup();
+    }
+  });
 
   // Allow toggling DevTools with Cmd+Shift+I in production
   mainWindow.webContents.on('before-input-event', (_event, input) => {
@@ -119,39 +158,14 @@ async function initServices() {
 
   // Start the local API server if enabled
   if (appConfig.apiEnabled) {
-    startApiServer(gmail, hubspot, appConfig.apiPort, viewStore, ruleStore, calendar, config);
+    startApiServer(gmail, hubspot, appConfig.apiPort, viewStore, ruleStore, calendar, config, () => mainWindow);
   }
 
 }
 
-// ── MCP Server Config ────────────────────────────────────────
-// The MCP server is a standalone stdio process. It is NOT spawned by Kenaz.
-// Claude Desktop (or another MCP client) spawns it using the config below.
-
-function getMcpServerPath(): string {
-  // In packaged app: asar-unpacked so Node.js can execute it directly
-  // e.g. .../Resources/app.asar.unpacked/dist/mcp/mcp-server.js
-  // In dev: dist/mcp/mcp-server.js (getAppPath() returns project root)
-  const appPath = app.getAppPath();
-  const base = appPath.endsWith('.asar')
-    ? appPath.replace(/\.asar$/, '.asar.unpacked')
-    : appPath;
-  return path.join(base, 'dist', 'mcp', 'mcp-server.js');
-}
-
-function getMcpClaudeDesktopConfig(apiPort: number): object {
-  return {
-    mcpServers: {
-      kenaz: {
-        command: 'node',
-        args: [getMcpServerPath()],
-        env: {
-          KENAZ_API_PORT: String(apiPort),
-        },
-      },
-    },
-  };
-}
+// ── MCP ─────────────────────────────────────────────────────
+// The unified Futhark MCP server is installed to ~/.futhark/mcp-server.js
+// by installFutharkMcp() on startup. See packages/core/mcp/ for source.
 
 // ── Helper: wrap an async Gmail call with offline awareness ──
 
@@ -742,13 +756,35 @@ function registerIpcHandlers() {
     return cache.getAllSnoozed();
   });
 
+  // ── Cross-app ──
+  ipcMain.handle('cross-app:fetch', async (_event, url: string, options?: any) => {
+    const res = await fetch(url, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...options?.headers },
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Cross-app request failed (${res.status}): ${text}`);
+    }
+    return res.json();
+  });
+
   // ── MCP ──
   ipcMain.handle(IPC.MCP_STATUS, async () => {
     const appConfig = config.get();
+    let mcpConfig = {};
+    let installed = false;
+    try {
+      const corePkg = require.resolve('@futhark/core/package.json');
+      const installerPath = path.join(path.dirname(corePkg), 'dist', 'mcp', 'installer.js');
+      const { getFutharkMcpConfig, isMcpInstalled } = require(installerPath);
+      mcpConfig = getFutharkMcpConfig();
+      installed = isMcpInstalled();
+    } catch {}
     return {
       enabled: appConfig.mcpEnabled,
-      claudeDesktopConfig: getMcpClaudeDesktopConfig(appConfig.apiPort),
-      serverPath: getMcpServerPath(),
+      installed,
+      claudeDesktopConfig: mcpConfig,
     };
   });
 }
@@ -807,11 +843,75 @@ function setupOfflineFlush() {
   });
 }
 
+function buildAppMenu() {
+  const isMac = process.platform === 'darwin';
+  const isDefault = app.isDefaultProtocolClient('mailto');
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' as const },
+        { type: 'separator' as const },
+        {
+          label: isDefault ? 'Default Mail App ✓' : 'Make Default Mail App',
+          enabled: !isDefault,
+          click: () => {
+            app.setAsDefaultProtocolClient('mailto');
+            buildAppMenu();
+          },
+        },
+        { type: 'separator' as const },
+        { role: 'services' as const },
+        { type: 'separator' as const },
+        { role: 'hide' as const },
+        { role: 'hideOthers' as const },
+        { role: 'unhide' as const },
+        { type: 'separator' as const },
+        { role: 'quit' as const },
+      ],
+    }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
+async function installFutharkMcp() {
+  try {
+    const corePkg = require.resolve('@futhark/core/package.json');
+    const installerPath = path.join(path.dirname(corePkg), 'dist', 'mcp', 'installer.js');
+    const bundlePath = path.join(path.dirname(corePkg), 'dist', 'mcp', 'futhark-mcp.js');
+    const { ensureFutharkMcp } = require(installerPath);
+    await ensureFutharkMcp({
+      bundlePath,
+      showPrompt: async (msg: string) => {
+        const { response } = await dialog.showMessageBox({
+          type: 'question',
+          buttons: ['Register', 'Not Now'],
+          defaultId: 0,
+          title: 'Futhark MCP',
+          message: msg,
+        });
+        return response === 0;
+      },
+    });
+  } catch (e: any) {
+    console.error('[Kenaz] Failed to install Futhark MCP:', e.message);
+  }
+}
+
 app.whenReady().then(async () => {
   await initServices();
   registerIpcHandlers();
   setupOfflineFlush();
+  buildAppMenu();
   createWindow();
+  installFutharkMcp();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

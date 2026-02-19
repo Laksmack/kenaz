@@ -79,6 +79,7 @@ export function RichTextEditor({ content, onChange, placeholder, autoFocus, onCm
       },
       attributes: {
         class: 'max-w-none focus:outline-none min-h-[200px] px-4 py-3 text-sm text-text-primary',
+        spellcheck: 'true',
       },
     },
   });

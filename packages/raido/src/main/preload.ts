@@ -13,6 +13,9 @@ const IPC = {
   TASKS_LOGBOOK: 'tasks:logbook',
   TASKS_STATS: 'tasks:stats',
   TASKS_TAGGED: 'tasks:tagged',
+  ATTACHMENTS_LIST: 'attachments:list',
+  ATTACHMENT_OPEN: 'attachment:open',
+  ATTACHMENT_DELETE: 'attachment:delete',
   GROUPS_LIST: 'groups:list',
   GROUP_GET: 'group:get',
   TAGS_LIST: 'tags:list',
@@ -38,6 +41,11 @@ const api = {
   getStats: () => ipcRenderer.invoke(IPC.TASKS_STATS),
   getTaggedTasks: (tagName: string) => ipcRenderer.invoke(IPC.TASKS_TAGGED, tagName),
 
+  // Attachments
+  getAttachments: (taskId: string) => ipcRenderer.invoke(IPC.ATTACHMENTS_LIST, taskId),
+  openAttachment: (taskId: string, attachmentId: string) => ipcRenderer.invoke(IPC.ATTACHMENT_OPEN, taskId, attachmentId),
+  deleteAttachment: (taskId: string, attachmentId: string) => ipcRenderer.invoke(IPC.ATTACHMENT_DELETE, taskId, attachmentId),
+
   // Groups
   getGroups: () => ipcRenderer.invoke(IPC.GROUPS_LIST),
   getGroup: (name: string) => ipcRenderer.invoke(IPC.GROUP_GET, name),
@@ -53,6 +61,9 @@ const api = {
 
   // MCP
   getMcpStatus: () => ipcRenderer.invoke(IPC.MCP_STATUS),
+
+  // Cross-app
+  crossAppFetch: (url: string, options?: any) => ipcRenderer.invoke('cross-app:fetch', url, options),
 
   // Push events
   onTasksChanged: (callback: () => void) => {

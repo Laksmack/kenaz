@@ -288,7 +288,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   dockBadgeEnabled: false,
   timeZones: [],
   use24HourClock: false,
-  dynamicDockIcon: true,
+  dynamicDockIcon: false,
   dockEventIndicator: false,
   dockEventIndicatorMinutes: 5,
   hideDeclinedEvents: true,

@@ -58,7 +58,7 @@ const api = {
 
   // Sync
   getSyncStatus: () => ipcRenderer.invoke(IPC.SYNC_STATUS),
-  triggerSync: () => ipcRenderer.invoke(IPC.SYNC_TRIGGER),
+  triggerSync: (opts?: { full?: boolean }) => ipcRenderer.invoke(IPC.SYNC_TRIGGER, opts),
 
   // Parse
   parseEvent: (text: string) => ipcRenderer.invoke(IPC.PARSE_EVENT, text),
@@ -78,6 +78,9 @@ const api = {
 
   // MCP
   getMcpStatus: () => ipcRenderer.invoke(IPC.MCP_STATUS),
+
+  // Cross-app
+  crossAppFetch: (url: string, options?: any) => ipcRenderer.invoke('cross-app:fetch', url, options),
 
   // Overlay / "Meet with…"
   fetchOverlayEvents: (email: string, start: string, end: string) =>

@@ -18,6 +18,17 @@ export interface Task {
   tags?: string[];
 }
 
+export interface TaskAttachment {
+  id: string;
+  task_id: string;
+  filename: string;
+  mime_type: string;
+  size: number;
+  source: 'email' | 'upload' | 'vault';
+  source_ref: string | null;
+  created_at: string;
+}
+
 export interface TaskGroup {
   name: string;
   count: number;
@@ -54,6 +65,11 @@ export const IPC = {
   TASKS_LOGBOOK: 'tasks:logbook',
   TASKS_STATS: 'tasks:stats',
   TASKS_TAGGED: 'tasks:tagged',
+
+  // Attachments
+  ATTACHMENTS_LIST: 'attachments:list',
+  ATTACHMENT_OPEN: 'attachment:open',
+  ATTACHMENT_DELETE: 'attachment:delete',
 
   // Groups
   GROUPS_LIST: 'groups:list',

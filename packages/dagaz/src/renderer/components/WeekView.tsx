@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect, useCallback, useState } from 'react'
 import type { CalendarEvent, OverlayEvent } from '../../shared/types';
 import { EventBlock } from './EventBlock';
 import { getWeekDates, isSameDay, formatTime, dateKey, getUse24HourClock } from '../lib/utils';
+import { useEventDrag, type DragMode } from '../hooks/useEventDrag';
 
 interface Props {
   currentDate: Date;
@@ -10,6 +11,7 @@ interface Props {
   selectedEvent: CalendarEvent | null;
   onSelectEvent: (event: CalendarEvent) => void;
   onCreateEvent: (start: Date, end: Date) => void;
+  onUpdateEvent?: (event: CalendarEvent, newStart: Date, newEnd: Date) => void;
   onRSVP?: (eventId: string, response: 'accepted' | 'declined' | 'tentative') => void;
   weekDays: 5 | 7;
 }
@@ -89,7 +91,7 @@ function computeLayouts(items: LayoutItem[]): Map<string, EventLayout> {
     });
     const medianDur = [...durations].sort((a, b) => a - b)[Math.floor(durations.length / 2)];
 
-    const backgroundItems: LayoutItem[] = [];
+    const bgCandidates: LayoutItem[] = [];
     const foregroundItems: LayoutItem[] = [];
 
     for (const item of cluster) {
@@ -97,18 +99,27 @@ function computeLayouts(items: LayoutItem[]): Map<string, EventLayout> {
       const dur = m.end - m.start;
       const overlapCount = cluster.filter(o => o.id !== item.id && itemsOverlap(item, o)).length;
 
-      // Only user events can be background; overlay events are always foreground
       if (!item.isOverlay && dur >= 180 && dur >= medianDur * 2 && overlapCount >= 2) {
-        backgroundItems.push(item);
+        bgCandidates.push(item);
       } else {
         foregroundItems.push(item);
       }
     }
 
-    if (backgroundItems.length > 0 && foregroundItems.length > 0) {
-      for (const item of backgroundItems) {
-        layouts.set(item.id, { isBackground: true, column: 0, totalColumns: 1 });
-      }
+    // At most 1 background item (the longest); rest become foreground columns
+    let bgItem: LayoutItem | null = null;
+    if (bgCandidates.length > 0 && foregroundItems.length > 0) {
+      bgCandidates.sort((a, b) => {
+        const ad = getMinutesFromTime(a.start_time, a.end_time);
+        const bd = getMinutesFromTime(b.start_time, b.end_time);
+        return (bd.end - bd.start) - (ad.end - ad.start);
+      });
+      bgItem = bgCandidates[0];
+      for (let i = 1; i < bgCandidates.length; i++) foregroundItems.push(bgCandidates[i]);
+    }
+
+    if (bgItem && foregroundItems.length > 0) {
+      layouts.set(bgItem.id, { isBackground: true, column: 0, totalColumns: 1 });
       assignColumns(foregroundItems, layouts);
     } else {
       assignColumns(cluster, layouts);
@@ -170,10 +181,49 @@ function assignColumns(items: LayoutItem[], layouts: Map<string, EventLayout>) {
   }
 }
 
-export function WeekView({ currentDate, events, overlayEvents = [], selectedEvent, onSelectEvent, onCreateEvent, onRSVP, weekDays }: Props) {
+function overlayToEvent(oe: OverlayEvent): CalendarEvent {
+  return {
+    id: `overlay-${oe.personEmail}::${oe.id}`,
+    google_id: null, calendar_id: oe.personEmail,
+    summary: oe.summary, description: '', location: '',
+    start_time: oe.start_time, end_time: oe.end_time,
+    start_date: oe.start_date ?? null, end_date: oe.end_date ?? null,
+    all_day: oe.all_day, time_zone: null,
+    status: oe.status as 'confirmed' | 'tentative' | 'cancelled',
+    self_response: null, organizer_email: oe.personEmail, organizer_name: null,
+    is_organizer: false, recurrence_rule: null, recurring_event_id: null,
+    html_link: null, hangout_link: null, conference_data: null,
+    transparency: 'opaque', visibility: 'default', color_id: null,
+    reminders: null, etag: null, local_only: true,
+    pending_action: null, pending_payload: null,
+    created_at: '', updated_at: '',
+    calendar_color: oe.personColor,
+  };
+}
+
+export function WeekView({ currentDate, events, overlayEvents = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP, weekDays }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const today = useMemo(() => new Date(), []);
   const weekDates = useMemo(() => getWeekDates(currentDate, weekDays), [currentDate, weekDays]);
+
+  // Drag-to-move / resize
+  const handleDragEnd = useCallback((event: CalendarEvent, newStart: Date, newEnd: Date, dayIndex: number) => {
+    if (!onUpdateEvent) return;
+    const targetDay = weekDates[dayIndex];
+    if (!targetDay) return;
+    const finalStart = new Date(targetDay);
+    finalStart.setHours(newStart.getHours(), newStart.getMinutes(), 0, 0);
+    const finalEnd = new Date(targetDay);
+    finalEnd.setHours(newEnd.getHours(), newEnd.getMinutes(), 0, 0);
+    onUpdateEvent(event, finalStart, finalEnd);
+  }, [onUpdateEvent, weekDates]);
+
+  const { dragState, isDragging, startDrag, getGhostStyle, getGhostLabel } = useEventDrag(handleDragEnd);
+
+  const handleEventDragStart = useCallback((event: CalendarEvent, mode: DragMode, mouseY: number, dayIndex: number) => {
+    if (!scrollRef.current) return;
+    startDrag(event, mode, mouseY, dayIndex, scrollRef.current, '[data-day-column]');
+  }, [startDrag]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -226,7 +276,7 @@ export function WeekView({ currentDate, events, overlayEvents = [], selectedEven
         isOverlay: false, source: e,
       }));
       const overlayItems: LayoutItem[] = (overlayByDay.get(key) || []).map(oe => ({
-        id: `overlay-${oe.id}`, start_time: oe.start_time, end_time: oe.end_time,
+        id: `overlay-${oe.personEmail}::${oe.id}`, start_time: oe.start_time, end_time: oe.end_time,
         isOverlay: true, source: oe,
       }));
 
@@ -292,6 +342,7 @@ export function WeekView({ currentDate, events, overlayEvents = [], selectedEven
   }, [weekDates]);
 
   const handleTimeSlotClick = useCallback((dayDate: Date, e: React.MouseEvent) => {
+    if (isDragging) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const y = e.clientY - rect.top + (scrollRef.current?.scrollTop || 0);
     const hour = Math.floor(y / HOUR_HEIGHT);
@@ -301,7 +352,7 @@ export function WeekView({ currentDate, events, overlayEvents = [], selectedEven
     const end = new Date(start);
     end.setHours(start.getHours() + 1);
     onCreateEvent(start, end);
-  }, [onCreateEvent]);
+  }, [onCreateEvent, isDragging]);
 
   return (
     <div className="flex flex-col h-full">
@@ -354,10 +405,12 @@ export function WeekView({ currentDate, events, overlayEvents = [], selectedEven
             const timedEvents = eventsByDay.get(key)?.timed || [];
             const dayOverlay = overlayByDay.get(key) || [];
             const isToday = isSameDay(d, today);
+            const ghostStyle = dragState?.dayIndex === dayIdx ? getGhostStyle(HOUR_HEIGHT) : null;
 
             return (
               <div
                 key={dayIdx}
+                data-day-column
                 className={`flex-1 min-w-0 relative border-l border-border-subtle ${isToday ? 'bg-accent-primary/[0.02]' : ''}`}
                 onClick={(e) => handleTimeSlotClick(d, e)}
               >
@@ -371,11 +424,16 @@ export function WeekView({ currentDate, events, overlayEvents = [], selectedEven
 
                 {/* Overlay events — rendered with column layout */}
                 {dayOverlay.map(oe => {
-                  const layoutId = `overlay-${oe.id}`;
+                  const layoutId = `overlay-${oe.personEmail}::${oe.id}`;
                   return (
-                    <div key={layoutId} style={getItemStyle(layoutId, oe.start_time, oe.end_time, key)} title={`${oe.personEmail}: ${oe.summary}`}>
+                    <div
+                      key={layoutId}
+                      style={getItemStyle(layoutId, oe.start_time, oe.end_time, key)}
+                      title={`${oe.personEmail}: ${oe.summary}`}
+                      onClick={(e) => { e.stopPropagation(); onSelectEvent(overlayToEvent(oe)); }}
+                    >
                       <div
-                        className="h-full rounded-md px-1.5 py-0.5 text-[10px] font-medium leading-tight overflow-hidden border"
+                        className="h-full rounded-md px-1.5 py-0.5 text-[10px] font-medium leading-tight overflow-hidden border cursor-pointer hover:brightness-125 transition-all"
                         style={{
                           backgroundColor: oe.personColor + '25',
                           borderColor: oe.personColor + '60',
@@ -391,10 +449,34 @@ export function WeekView({ currentDate, events, overlayEvents = [], selectedEven
 
                 {/* User events */}
                 {timedEvents.map(event => (
-                  <div key={event.id} style={getItemStyle(event.id, event.start_time, event.end_time, key)}>
-                    <EventBlock event={event} selected={selectedEvent?.id === event.id} onClick={onSelectEvent} onRSVP={onRSVP} />
+                  <div
+                    key={event.id}
+                    style={{
+                      ...getItemStyle(event.id, event.start_time, event.end_time, key),
+                      ...(isDragging && dragState?.event.id === event.id ? { opacity: 0.35 } : {}),
+                    }}
+                  >
+                    <EventBlock
+                      event={event}
+                      selected={selectedEvent?.id === event.id}
+                      onClick={onSelectEvent}
+                      onRSVP={onRSVP}
+                      onDragStart={onUpdateEvent ? (ev, mode, mouseY) => handleEventDragStart(ev, mode, mouseY, dayIdx) : undefined}
+                    />
                   </div>
                 ))}
+
+                {/* Drag ghost */}
+                {ghostStyle && dragState && (
+                  <div style={ghostStyle} className="drag-ghost flex items-start px-2 py-1">
+                    <span className="text-[10px] font-medium text-accent-primary">
+                      {dragState.event.summary}
+                    </span>
+                    <span className="text-[9px] text-text-muted ml-auto whitespace-nowrap">
+                      {getGhostLabel(getUse24HourClock())}
+                    </span>
+                  </div>
+                )}
               </div>
             );
           })}

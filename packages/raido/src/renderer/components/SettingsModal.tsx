@@ -301,13 +301,12 @@ GET ${base}/api/tagged/:tagName
 }
 
 function McpSettings({ config, onSave, saving, saved }: TabProps) {
-  const [enabled, setEnabled] = useState(config.mcpEnabled ?? false);
   const [mcpStatus, setMcpStatus] = useState<any>(null);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     window.raido.getMcpStatus().then(setMcpStatus);
-  }, [enabled]);
+  }, []);
 
   const claudeConfig = mcpStatus?.claudeDesktopConfig
     ? JSON.stringify(mcpStatus.claudeDesktopConfig, null, 2)
@@ -315,71 +314,44 @@ function McpSettings({ config, onSave, saving, saved }: TabProps) {
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-text-primary mb-1">MCP Server</h3>
+      <h3 className="text-sm font-semibold text-text-primary mb-1">Futhark MCP</h3>
       <p className="text-xs text-text-muted mb-4">
-        Expose Raidō as a Model Context Protocol server for Claude Desktop.
-        Gives Claude native access to your tasks, groups, and more.
-        Requires the API server to be enabled. Restart required after changes.
+        A unified MCP server gives Claude Desktop access to all Futhark apps —
+        email, tasks, calendar, and notes — through a single connection.
+        Auto-registered with Claude Desktop on first launch.
       </p>
       <div className="space-y-4">
-        {!config.apiEnabled && (
-          <div className="px-3 py-2 rounded-lg bg-accent-warning/10 text-accent-warning text-xs font-medium">
-            The API server must be enabled first (Settings → API).
-          </div>
-        )}
-
-        <SettingsField label="Enable MCP Server" description="Allow Claude Desktop to connect to Raidō via MCP">
-          <ToggleSwitch
-            checked={enabled}
-            onChange={(v) => {
-              setEnabled(v);
-              onSave({ mcpEnabled: v });
-            }}
-          />
+        <SettingsField label="Status">
+          <span className={`text-xs flex items-center gap-1.5 ${mcpStatus?.installed ? 'text-accent-success' : 'text-text-muted'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${mcpStatus?.installed ? 'bg-accent-success' : 'bg-text-muted'}`} />
+            {mcpStatus?.installed ? 'Installed' : 'Not installed — restart app to install'}
+          </span>
         </SettingsField>
 
-        {enabled && config.apiEnabled && (
-          <>
-            <div className="p-3 rounded-lg bg-bg-primary border border-border-subtle">
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-medium text-text-secondary">Claude Desktop Configuration</div>
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(claudeConfig);
-                    setCopied(true);
-                    setTimeout(() => setCopied(false), 2000);
-                  }}
-                  className="text-[10px] text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
-                >
-                  {copied ? (
-                    <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Copied!</>
-                  ) : (
-                    <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> Copy</>
-                  )}
-                </button>
-              </div>
-              <pre className="text-[10px] font-mono text-text-muted whitespace-pre overflow-x-auto">{claudeConfig}</pre>
-              <p className="text-[10px] text-text-muted mt-2">
-                Paste this into your <span className="font-mono">claude_desktop_config.json</span> file.
-                On macOS: <span className="font-mono">~/Library/Application Support/Claude/claude_desktop_config.json</span>
-              </p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-bg-primary border border-border-subtle">
-              <div className="text-xs font-medium text-text-secondary mb-2">Available Tools (13)</div>
-              <div className="space-y-0.5 text-[10px] font-mono text-text-muted">
-                <div className="text-[9px] text-text-secondary font-semibold mt-1 mb-0.5 font-sans uppercase tracking-wider">Read</div>
-                <div>get_today, get_inbox, get_upcoming</div>
-                <div>get_groups, get_group</div>
-                <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Write</div>
-                <div>add_todo, update_todo</div>
-                <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Search & Stats</div>
-                <div>search_todos, search_advanced, get_logbook</div>
-                <div>get_stats, get_tags, get_tagged_items</div>
-              </div>
-            </div>
-          </>
-        )}
+        <div className="p-3 rounded-lg bg-bg-primary border border-border-subtle">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-medium text-text-secondary">Claude Desktop Configuration</div>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(claudeConfig);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 2000);
+              }}
+              className="text-[10px] text-text-muted hover:text-text-secondary transition-colors flex items-center gap-1"
+            >
+              {copied ? (
+                <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Copied!</>
+              ) : (
+                <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg> Copy</>
+              )}
+            </button>
+          </div>
+          <pre className="text-[10px] font-mono text-text-muted whitespace-pre overflow-x-auto">{claudeConfig}</pre>
+          <p className="text-[10px] text-text-muted mt-2">
+            This should be auto-registered. If needed, paste into{' '}
+            <span className="font-mono">~/Library/Application Support/Claude/claude_desktop_config.json</span>
+          </p>
+        </div>
       </div>
     </div>
   );

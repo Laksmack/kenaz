@@ -31,6 +31,7 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
 
   if (!event) return null;
   const ev = fullEvent || event;
+  const isOverlayEvent = ev.id.startsWith('overlay-');
 
   const videoEntry = ev.conference_data?.entryPoints?.find(ep => ep.entryPointType === 'video');
   const phoneEntry = ev.conference_data?.entryPoints?.find(ep => ep.entryPointType === 'phone');
@@ -270,7 +271,7 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
         )}
 
         {/* RSVP buttons */}
-        {!!selfAttendee && !ev.is_organizer && (
+        {!isOverlayEvent && !!selfAttendee && !ev.is_organizer && (
           <div>
             <h3 className="text-[10px] uppercase tracking-wider text-text-muted mb-2">
               Your status: <span className={responseStatusColor(ev.self_response || 'needsAction')}>
@@ -327,33 +328,39 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
       </div>
 
       {/* Actions footer */}
-      <div className="p-3 border-t border-border-subtle flex gap-2">
-        {ev.html_link && (
+      {isOverlayEvent ? (
+        <div className="p-3 border-t border-border-subtle">
+          <p className="text-[10px] text-text-muted text-center">Viewing {ev.organizer_email}'s calendar</p>
+        </div>
+      ) : (
+        <div className="p-3 border-t border-border-subtle flex gap-2">
+          {ev.html_link && (
+            <button
+              onClick={handleOpenInGoogle}
+              className="px-3 py-1.5 rounded-md text-xs font-medium bg-bg-tertiary text-text-secondary hover:bg-bg-hover transition-colors"
+              title="Open in Google Calendar"
+            >
+              ↗ Google
+            </button>
+          )}
           <button
-            onClick={handleOpenInGoogle}
-            className="px-3 py-1.5 rounded-md text-xs font-medium bg-bg-tertiary text-text-secondary hover:bg-bg-hover transition-colors"
-            title="Open in Google Calendar"
+            onClick={() => onEdit(ev)}
+            className="flex-1 px-3 py-1.5 rounded-md text-xs font-medium bg-bg-tertiary text-text-primary hover:bg-bg-hover transition-colors"
           >
-            ↗ Google
+            Edit
           </button>
-        )}
-        <button
-          onClick={() => onEdit(ev)}
-          className="flex-1 px-3 py-1.5 rounded-md text-xs font-medium bg-bg-tertiary text-text-primary hover:bg-bg-hover transition-colors"
-        >
-          Edit
-        </button>
-        <button
-          onClick={handleDelete}
-          className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-            showDeleteConfirm
-              ? 'bg-red-500/20 text-red-400'
-              : 'bg-bg-tertiary text-text-secondary hover:bg-bg-hover hover:text-red-400'
-          }`}
-        >
-          {showDeleteConfirm ? 'Confirm' : 'Delete'}
-        </button>
-      </div>
+          <button
+            onClick={handleDelete}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              showDeleteConfirm
+                ? 'bg-red-500/20 text-red-400'
+                : 'bg-bg-tertiary text-text-secondary hover:bg-bg-hover hover:text-red-400'
+            }`}
+          >
+            {showDeleteConfirm ? 'Confirm' : 'Delete'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

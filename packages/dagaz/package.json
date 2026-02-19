@@ -1,6 +1,6 @@
 {
   "name": "@futhark/dagaz",
-  "version": "0.6.2",
+  "version": "0.10.1",
   "description": "Dagaz ᛞ — Personal calendar",
   "main": "dist/main/main/main.js",
   "private": true,
@@ -9,9 +9,8 @@
     "dev:main": "tsc -p tsconfig.main.json && NODE_ENV=development electron .",
     "dev:renderer": "vite",
     "build:main": "tsc -p tsconfig.main.json",
-    "build:mcp": "esbuild src/main/mcp-server.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/mcp/mcp-server.js",
     "build:renderer": "vite build",
-    "build": "npm run build:main && npm run build:mcp && npm run build:renderer",
+    "build": "npm run build:main && npm run build:renderer",
     "start": "electron .",
     "render-icons": "node scripts/render-icons.js",
     "dist": "npm run build && electron-builder --mac",
@@ -46,7 +45,6 @@
       "darkModeSupport": true
     },
     "asarUnpack": [
-      "dist/mcp/**",
       "branding/fonts/**",
       "node_modules/@napi-rs/canvas/**"
     ],

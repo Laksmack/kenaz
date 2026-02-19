@@ -193,6 +193,14 @@ export function startApiServer(
       const parsed = createEventSchema.parse(req.body);
       const calendarId = parsed.calendar_id || cache.getPrimaryCalendarId() || 'primary';
 
+      // Auto-detect all-day if date-only strings are passed (YYYY-MM-DD, no T)
+      if (parsed.all_day === undefined && parsed.start && parsed.end) {
+        const dateOnly = /^\d{4}-\d{2}-\d{2}$/;
+        if (dateOnly.test(parsed.start) && dateOnly.test(parsed.end)) {
+          (parsed as any).all_day = true;
+        }
+      }
+
       if (connectivity.isOnline && google.isAuthorized()) {
         const result = await google.createEvent(calendarId, parsed);
         const localId = cache.upsertEvent(result);
@@ -616,6 +624,12 @@ export function startApiServer(
       }
       res.status(500).json({ error: e.message });
     }
+  });
+
+  // ── Health ─────────────────────────────────────────────────
+
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok', app: 'dagaz' });
   });
 
   // ── Start Server ──────────────────────────────────────────

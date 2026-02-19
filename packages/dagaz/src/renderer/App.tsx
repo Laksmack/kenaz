@@ -28,6 +28,14 @@ export default function App() {
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [overlayPeople, setOverlayPeople] = useState<OverlayPerson[]>([]);
   const [overlayEvents, setOverlayEvents] = useState<OverlayEvent[]>([]);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((msg: string, durationMs = 3000) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast(msg);
+    toastTimerRef.current = setTimeout(() => setToast(null), durationMs);
+  }, []);
 
   const weekDays = appConfig?.weekViewDays || 5;
   const { events: rawEvents, calendars, loading, refresh, fetchCalendars } = useCalendar(currentView, currentDate, weekDays as 5 | 7);
@@ -66,15 +74,27 @@ export default function App() {
     }
   }, [appConfig?.theme]);
 
-  // Today's events for sidebar
-  const todayEvents = useMemo(() => {
-    const today = new Date();
-    return events.filter(e => {
-      if (e.all_day) return false;
-      const start = new Date(e.start_time);
-      return isSameDay(start, today);
-    });
-  }, [events]);
+  // Today's events for sidebar — fetched independently so they persist across view changes
+  const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([]);
+  const fetchTodayEvents = useCallback(async () => {
+    try {
+      const today = new Date();
+      const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
+      const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString();
+      const evts = await window.dagaz.getEvents(start, end);
+      const filtered = (evts || []).filter((e: CalendarEvent) => !e.all_day);
+      setTodayEvents(filtered);
+    } catch { /* silent */ }
+  }, []);
+
+  // Fetch today's events on mount, on sync, and when the visible events change
+  useEffect(() => { fetchTodayEvents(); }, [fetchTodayEvents]);
+  useEffect(() => {
+    const unsub = window.dagaz.onSyncChanged(() => fetchTodayEvents());
+    return unsub;
+  }, [fetchTodayEvents]);
+  // Also refresh when events change (covers drag/create/delete)
+  useEffect(() => { fetchTodayEvents(); }, [rawEvents, fetchTodayEvents]);
 
   // ── Navigation ────────────────────────────────────────────
 
@@ -115,18 +135,68 @@ export default function App() {
 
   const handleCreateEvent = useCallback(async (data: CreateEventInput) => {
     await window.dagaz.createEvent(data);
-    refresh();
+    refresh({ full: false });
   }, [refresh]);
 
+  const handleUpdateEvent = useCallback(async (event: CalendarEvent, newStart: Date, newEnd: Date) => {
+    // Recurring event: ask whether to edit this instance or the series
+    if (event.recurring_event_id) {
+      const choice = window.confirm(
+        `"${event.summary}" is a recurring event.\n\nOK = Change only this event\nCancel = Don't change`
+      );
+      if (!choice) return;
+      // Editing a single instance: use the instance ID (event.id), which Google handles correctly
+    }
+
+    // Permission check for events you don't organize
+    const hasOtherAttendees = (event.attendees?.length ?? 0) > 1;
+    const canEditDirectly = event.is_organizer || !hasOtherAttendees;
+
+    if (!canEditDirectly) {
+      const ok = window.confirm(
+        `You are not the organizer of "${event.summary}".\n\nPropose a new time? This will update the event and notify the organizer.`
+      );
+      if (!ok) return;
+    }
+
+    const updates = {
+      start: newStart.toISOString(),
+      end: newEnd.toISOString(),
+    };
+    await window.dagaz.updateEvent(event.id, updates);
+
+    // Show toast
+    if (hasOtherAttendees) {
+      showToast(`"${event.summary}" updated — invitations sent to ${(event.attendees?.length ?? 1) - 1} attendee${(event.attendees?.length ?? 2) > 2 ? 's' : ''}`);
+    } else {
+      showToast(`"${event.summary}" moved`);
+    }
+
+    refresh({ full: false });
+    if (selectedEvent?.id === event.id) {
+      const updated = await window.dagaz.getEvent(event.id);
+      if (updated) setSelectedEvent(updated);
+    }
+  }, [refresh, selectedEvent, showToast]);
+
   const handleDeleteEvent = useCallback(async (id: string) => {
+    // Find the event to check if it's recurring
+    const event = rawEvents.find(e => e.id === id) || selectedEvent;
+    if (event?.recurring_event_id) {
+      const ok = window.confirm(
+        `"${event.summary}" is a recurring event.\n\nOK = Delete only this event\nCancel = Don't delete`
+      );
+      if (!ok) return;
+    }
     await window.dagaz.deleteEvent(id);
     setSelectedEvent(prev => prev?.id === id ? null : prev);
-    refresh();
-  }, [refresh]);
+    showToast(event ? `"${event.summary}" deleted` : 'Event deleted');
+    refresh({ full: false });
+  }, [refresh, rawEvents, selectedEvent, showToast]);
 
   const handleRSVP = useCallback(async (id: string, response: 'accepted' | 'declined' | 'tentative') => {
     await window.dagaz.rsvpEvent(id, response);
-    refresh();
+    refresh({ full: false });
     // Refresh the selected event detail
     const updated = await window.dagaz.getEvent(id);
     if (updated) setSelectedEvent(updated);
@@ -135,7 +205,7 @@ export default function App() {
   const handleCalendarToggle = useCallback(async (id: string, visible: boolean) => {
     await window.dagaz.updateCalendar(id, { visible });
     fetchCalendars();
-    refresh();
+    refresh({ full: false });
   }, [fetchCalendars, refresh]);
 
   const openQuickCreate = useCallback((start?: Date, end?: Date) => {
@@ -454,9 +524,10 @@ export default function App() {
           {/* Toolbar buttons */}
           <div className="titlebar-no-drag flex items-center gap-1.5">
             {/* Sync indicator */}
-            {syncState.status === 'syncing' && (
-              <svg className="w-3.5 h-3.5 animate-spin text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            {syncState.status === 'syncing' && !loading && (
+              <svg className="w-3.5 h-3.5 animate-spin text-text-muted" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
             )}
             {syncState.status === 'offline' && (
@@ -469,12 +540,12 @@ export default function App() {
             )}
 
             <button
-              onClick={refresh}
+              onClick={() => refresh({ full: true })}
               disabled={loading || syncState.status === 'syncing'}
               className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
               title="Refresh (sync & reload)"
             >
-              <svg className={`w-4 h-4 transition-transform ${loading || syncState.status === 'syncing' ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className={`w-4 h-4 ${loading || syncState.status === 'syncing' ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
@@ -526,6 +597,7 @@ export default function App() {
                 selectedEvent={selectedEvent}
                 onSelectEvent={setSelectedEvent}
                 onCreateEvent={(start, end) => openQuickCreate(start, end)}
+                onUpdateEvent={handleUpdateEvent}
                 onRSVP={handleRSVP}
                 weekDays={weekDays as 5 | 7}
               />
@@ -538,6 +610,7 @@ export default function App() {
                 selectedEvent={selectedEvent}
                 onSelectEvent={setSelectedEvent}
                 onCreateEvent={(start, end) => openQuickCreate(start, end)}
+                onUpdateEvent={handleUpdateEvent}
                 onRSVP={handleRSVP}
               />
             )}
@@ -618,6 +691,18 @@ export default function App() {
                 </React.Fragment>
               ))}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast notification */}
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
+          <div className="bg-bg-tertiary border border-border-subtle text-text-primary text-xs px-4 py-2.5 rounded-lg shadow-xl flex items-center gap-2">
+            <svg className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            {toast}
           </div>
         </div>
       )}

@@ -162,6 +162,9 @@ const api = {
   // MCP
   getMcpStatus: () => ipcRenderer.invoke(IPC.MCP_STATUS),
 
+  // Cross-app
+  crossAppFetch: (url: string, options?: any) => ipcRenderer.invoke('cross-app:fetch', url, options),
+
   // Push event listeners
   onThreadsUpdated: (callback: (data: any) => void) => {
     const handler = (_event: any, data: any) => callback(data);
@@ -172,6 +175,11 @@ const api = {
     const handler = (_event: any, data: any) => callback(data);
     ipcRenderer.on('thread:updated', handler);
     return () => { ipcRenderer.removeListener('thread:updated', handler); };
+  },
+  onNavigate: (callback: (data: any) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('navigate', handler);
+    return () => { ipcRenderer.removeListener('navigate', handler); };
   },
 };
 

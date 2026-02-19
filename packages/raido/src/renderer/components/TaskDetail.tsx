@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { marked } from 'marked';
-import type { Task } from '../../shared/types';
+import type { Task, TaskAttachment } from '../../shared/types';
 import { extractGroup } from '../../shared/types';
 import { cn, isOverdue, isToday, formatDateLabel } from '../lib/utils';
 
@@ -23,6 +23,7 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
   const [tagInput, setTagInput] = useState('');
+  const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
 
   useEffect(() => {
     if (task) {
@@ -30,6 +31,9 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
       setNotes(task.notes || '');
       setEditingTitle(false);
       setEditingNotes(false);
+      window.raido.getAttachments(task.id).then(setAttachments).catch(() => setAttachments([]));
+    } else {
+      setAttachments([]);
     }
   }, [task?.id]);
 
@@ -64,11 +68,44 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
 
   const links = useMemo(() => {
     if (!task) return [];
-    const items: { label: string; value: string; icon: string }[] = [];
-    if (task.kenaz_thread_id) items.push({ label: 'Email Thread', value: task.kenaz_thread_id, icon: '📧' });
-    if (task.hubspot_deal_id) items.push({ label: 'HubSpot Deal', value: task.hubspot_deal_id, icon: '💼' });
-    if (task.vault_path) items.push({ label: 'Vault Note', value: task.vault_path, icon: '📝' });
-    if (task.calendar_event_id) items.push({ label: 'Calendar Event', value: task.calendar_event_id, icon: '📅' });
+    const items: { label: string; value: string; icon: string; app: string; action: () => void }[] = [];
+    if (task.kenaz_thread_id) items.push({
+      label: 'Email Thread', value: 'Open in Kenaz', icon: '📧', app: 'kenaz',
+      action: async () => {
+        try {
+          await window.raido.crossAppFetch('http://localhost:3141/api/navigate', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'focus-thread', threadId: task.kenaz_thread_id }),
+          });
+        } catch { window.raido.notify('Kenaz', 'Could not open thread — is Kenaz running?'); }
+      },
+    });
+    if (task.hubspot_deal_id) items.push({
+      label: 'HubSpot Deal', value: task.hubspot_deal_id, icon: '💼', app: 'hubspot',
+      action: () => {},
+    });
+    if (task.vault_path) items.push({
+      label: 'Vault Note', value: 'Open in Laguz', icon: '📝', app: 'laguz',
+      action: async () => {
+        try {
+          await window.raido.crossAppFetch('http://localhost:3144/api/navigate', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'focus-note', path: task.vault_path }),
+          });
+        } catch { window.raido.notify('Laguz', 'Could not open note — is Laguz running?'); }
+      },
+    });
+    if (task.calendar_event_id) items.push({
+      label: 'Calendar Event', value: 'Open in Dagaz', icon: '📅', app: 'dagaz',
+      action: async () => {
+        try {
+          await window.raido.crossAppFetch('http://localhost:3143/api/navigate', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'focus-event', eventId: task.calendar_event_id }),
+          });
+        } catch { window.raido.notify('Dagaz', 'Could not open event — is Dagaz running?'); }
+      },
+    });
     return items;
   }, [task]);
 
@@ -210,11 +247,53 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
         {links.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 mt-3 ml-9">
             {links.map(link => (
-              <span key={link.label} className="text-[10px] text-text-muted flex items-center gap-1 px-2 py-0.5 rounded bg-bg-tertiary">
+              <button
+                key={link.label}
+                onClick={link.action}
+                className="text-[10px] flex items-center gap-1 px-2 py-0.5 rounded bg-bg-tertiary transition-colors hover:bg-accent-primary/15 hover:text-accent-primary text-text-muted"
+                title={link.label}
+              >
                 <span>{link.icon}</span>
-                <span className="truncate max-w-[120px]">{link.value}</span>
-              </span>
+                <span>{link.value}</span>
+                <svg className="w-2.5 h-2.5 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </button>
             ))}
+          </div>
+        )}
+
+        {/* Attachments */}
+        {attachments.length > 0 && (
+          <div className="mt-3 ml-9">
+            <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1.5">Attachments</div>
+            <div className="flex flex-wrap gap-1.5">
+              {attachments.map(att => (
+                <div key={att.id} className="group flex items-center gap-1.5 text-[11px] px-2 py-1 rounded bg-bg-tertiary border border-border-subtle">
+                  <span className="text-text-muted">{getFileIcon(att.mime_type)}</span>
+                  <button
+                    onClick={() => window.raido.openAttachment(task.id, att.id)}
+                    className="text-text-secondary hover:text-accent-primary transition-colors truncate max-w-[140px]"
+                    title={`${att.filename} (${formatFileSize(att.size)})`}
+                  >
+                    {att.filename}
+                  </button>
+                  <span className="text-[9px] text-text-muted">{formatFileSize(att.size)}</span>
+                  <button
+                    onClick={async () => {
+                      await window.raido.deleteAttachment(task.id, att.id);
+                      setAttachments(prev => prev.filter(a => a.id !== att.id));
+                    }}
+                    className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-accent-danger transition-all p-0.5"
+                    title="Remove attachment"
+                  >
+                    <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -248,7 +327,22 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
 }
 
 function renderMarkdown(text: string): string {
-  // Normalize literal \n sequences (common from MCP/AI clients) to real newlines
   const normalized = text.replace(/\\n/g, '\n');
   return marked.parse(normalized, { async: false }) as string;
+}
+
+function getFileIcon(mimeType: string): string {
+  if (mimeType.startsWith('image/')) return '🖼';
+  if (mimeType === 'application/pdf') return '📄';
+  if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('csv')) return '📊';
+  if (mimeType.includes('presentation') || mimeType.includes('powerpoint')) return '📽';
+  if (mimeType.includes('document') || mimeType.includes('word') || mimeType.includes('text/')) return '📃';
+  if (mimeType.includes('zip') || mimeType.includes('archive') || mimeType.includes('compress')) return '📦';
+  return '📎';
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }

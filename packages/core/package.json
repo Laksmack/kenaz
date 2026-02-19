@@ -1,15 +1,27 @@
 {
   "name": "@futhark/core",
-  "version": "0.1.0",
+  "version": "0.3.1",
   "private": true,
   "main": "index.ts",
+  "scripts": {
+    "build:mcp": "esbuild mcp/futhark-mcp.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/mcp/futhark-mcp.js && esbuild mcp/installer.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/mcp/installer.js --external:electron"
+  },
   "exports": {
     "./styles/*": "./styles/*",
     "./components/*": "./components/*",
     "./hooks/*": "./hooks/*",
     "./lib/*": "./lib/*",
     "./types": "./types/index.ts",
-    "./tailwind.preset": "./tailwind.preset.mjs"
+    "./mcp/installer": "./mcp/installer.ts",
+    "./tailwind.preset": "./tailwind.preset.mjs",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0"
   },
   "peerDependencies": {
     "react": "^18.2.0"

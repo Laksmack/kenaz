@@ -1,8 +1,9 @@
 import Database from 'better-sqlite3';
 import path from 'path';
+import fs from 'fs';
 import { app } from 'electron';
 import crypto from 'crypto';
-import type { Task, TaskGroup, Tag, TaskStats } from '../shared/types';
+import type { Task, TaskAttachment, TaskGroup, Tag, TaskStats } from '../shared/types';
 import { extractGroup } from '../shared/types';
 
 export class TaskStore {
@@ -50,6 +51,20 @@ export class TaskStore {
 
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
       CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
+
+      CREATE TABLE IF NOT EXISTS task_attachments (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        mime_type TEXT DEFAULT 'application/octet-stream',
+        size INTEGER DEFAULT 0,
+        source TEXT DEFAULT 'upload',
+        source_ref TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_task_attachments_task ON task_attachments(task_id);
     `);
 
     this.migrateDropProjects();
@@ -418,6 +433,67 @@ export class TaskStore {
       ORDER BY tk.status, tk.sort_order, tk.created_at
     `).all(tagName) as any[];
     return rows.map(r => this.enrichTask(r));
+  }
+
+  // ── Attachments ─────────────────────────────────────────────
+
+  private getAttachmentsDir(taskId: string): string {
+    const dir = path.join(app.getPath('userData'), 'attachments', taskId);
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  }
+
+  getAttachments(taskId: string): TaskAttachment[] {
+    return this.db.prepare(
+      'SELECT * FROM task_attachments WHERE task_id = ? ORDER BY created_at ASC'
+    ).all(taskId) as TaskAttachment[];
+  }
+
+  addAttachment(taskId: string, filename: string, buffer: Buffer, opts?: {
+    mimeType?: string;
+    source?: 'email' | 'upload' | 'vault';
+    sourceRef?: string;
+  }): TaskAttachment {
+    const id = this.genId();
+    const dir = this.getAttachmentsDir(taskId);
+    const filePath = path.join(dir, `${id}_${filename}`);
+    fs.writeFileSync(filePath, buffer);
+
+    this.db.prepare(`
+      INSERT INTO task_attachments (id, task_id, filename, mime_type, size, source, source_ref, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      id, taskId, filename,
+      opts?.mimeType || 'application/octet-stream',
+      buffer.length,
+      opts?.source || 'upload',
+      opts?.sourceRef || null,
+      this.now(),
+    );
+
+    return this.db.prepare('SELECT * FROM task_attachments WHERE id = ?').get(id) as TaskAttachment;
+  }
+
+  getAttachmentPath(taskId: string, attachmentId: string): string | null {
+    const att = this.db.prepare(
+      'SELECT * FROM task_attachments WHERE id = ? AND task_id = ?'
+    ).get(attachmentId, taskId) as TaskAttachment | undefined;
+    if (!att) return null;
+
+    const dir = path.join(app.getPath('userData'), 'attachments', taskId);
+    const filePath = path.join(dir, `${attachmentId}_${att.filename}`);
+    return fs.existsSync(filePath) ? filePath : null;
+  }
+
+  deleteAttachment(taskId: string, attachmentId: string): boolean {
+    const filePath = this.getAttachmentPath(taskId, attachmentId);
+    if (filePath) {
+      try { fs.unlinkSync(filePath); } catch {}
+    }
+    const result = this.db.prepare(
+      'DELETE FROM task_attachments WHERE id = ? AND task_id = ?'
+    ).run(attachmentId, taskId);
+    return result.changes > 0;
   }
 
   // ── Cleanup ───────────────────────────────────────────────

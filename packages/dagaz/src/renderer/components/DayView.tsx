@@ -1,7 +1,8 @@
 import React, { useMemo, useRef, useEffect, useCallback, useState } from 'react';
 import type { CalendarEvent, OverlayEvent } from '../../shared/types';
 import { EventBlock } from './EventBlock';
-import { isSameDay, formatTime, dateKey } from '../lib/utils';
+import { isSameDay, formatTime, dateKey, getUse24HourClock } from '../lib/utils';
+import { useEventDrag, type DragMode } from '../hooks/useEventDrag';
 
 interface Props {
   currentDate: Date;
@@ -10,6 +11,7 @@ interface Props {
   selectedEvent: CalendarEvent | null;
   onSelectEvent: (event: CalendarEvent) => void;
   onCreateEvent: (start: Date, end: Date) => void;
+  onUpdateEvent?: (event: CalendarEvent, newStart: Date, newEnd: Date) => void;
   onRSVP?: (eventId: string, response: 'accepted' | 'declined' | 'tentative') => void;
 }
 
@@ -57,17 +59,29 @@ function computeLayouts(items: LayoutItem[]): Map<string, EventLayout> {
     const durs = cluster.map(it => { const m = getMins(it.start_time, it.end_time); return m.end - m.start; });
     const medDur = [...durs].sort((a, b) => a - b)[Math.floor(durs.length / 2)];
 
-    const bg: LayoutItem[] = [], fg: LayoutItem[] = [];
+    const bgCand: LayoutItem[] = [], fg: LayoutItem[] = [];
     for (const it of cluster) {
       const m = getMins(it.start_time, it.end_time);
       const dur = m.end - m.start;
       const oc = cluster.filter(o => o.id !== it.id && overlap(it, o)).length;
-      if (!it.isOverlay && dur >= 180 && dur >= medDur * 2 && oc >= 2) bg.push(it);
+      if (!it.isOverlay && dur >= 180 && dur >= medDur * 2 && oc >= 2) bgCand.push(it);
       else fg.push(it);
     }
 
-    if (bg.length > 0 && fg.length > 0) {
-      for (const it of bg) layouts.set(it.id, { isBackground: true, column: 0, totalColumns: 1 });
+    // At most 1 background item (the longest); rest become foreground columns
+    let bgItem: LayoutItem | null = null;
+    if (bgCand.length > 0 && fg.length > 0) {
+      bgCand.sort((a, b) => {
+        const am = getMins(a.start_time, a.end_time);
+        const bm = getMins(b.start_time, b.end_time);
+        return (bm.end - bm.start) - (am.end - am.start);
+      });
+      bgItem = bgCand[0];
+      for (let i = 1; i < bgCand.length; i++) fg.push(bgCand[i]);
+    }
+
+    if (bgItem && fg.length > 0) {
+      layouts.set(bgItem.id, { isBackground: true, column: 0, totalColumns: 1 });
       assignCols(fg, layouts);
     } else {
       assignCols(cluster, layouts);
@@ -106,10 +120,47 @@ function assignCols(items: LayoutItem[], layouts: Map<string, EventLayout>) {
   }
 }
 
-export function DayView({ currentDate, events, overlayEvents = [], selectedEvent, onSelectEvent, onCreateEvent, onRSVP }: Props) {
+function overlayToEvent(oe: OverlayEvent): CalendarEvent {
+  return {
+    id: `overlay-${oe.personEmail}::${oe.id}`,
+    google_id: null, calendar_id: oe.personEmail,
+    summary: oe.summary, description: '', location: '',
+    start_time: oe.start_time, end_time: oe.end_time,
+    start_date: oe.start_date ?? null, end_date: oe.end_date ?? null,
+    all_day: oe.all_day, time_zone: null,
+    status: oe.status as 'confirmed' | 'tentative' | 'cancelled',
+    self_response: null, organizer_email: oe.personEmail, organizer_name: null,
+    is_organizer: false, recurrence_rule: null, recurring_event_id: null,
+    html_link: null, hangout_link: null, conference_data: null,
+    transparency: 'opaque', visibility: 'default', color_id: null,
+    reminders: null, etag: null, local_only: true,
+    pending_action: null, pending_payload: null,
+    created_at: '', updated_at: '',
+    calendar_color: oe.personColor,
+  };
+}
+
+export function DayView({ currentDate, events, overlayEvents = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const today = useMemo(() => new Date(), []);
   const isToday = isSameDay(currentDate, today);
+
+  // Drag-to-move / resize
+  const handleDragEnd = useCallback((event: CalendarEvent, newStart: Date, newEnd: Date, _dayIndex: number) => {
+    if (!onUpdateEvent) return;
+    const finalStart = new Date(currentDate);
+    finalStart.setHours(newStart.getHours(), newStart.getMinutes(), 0, 0);
+    const finalEnd = new Date(currentDate);
+    finalEnd.setHours(newEnd.getHours(), newEnd.getMinutes(), 0, 0);
+    onUpdateEvent(event, finalStart, finalEnd);
+  }, [onUpdateEvent, currentDate]);
+
+  const { dragState, isDragging, startDrag, getGhostStyle, getGhostLabel } = useEventDrag(handleDragEnd);
+
+  const handleEventDragStart = useCallback((event: CalendarEvent, mode: DragMode, mouseY: number) => {
+    if (!scrollRef.current) return;
+    startDrag(event, mode, mouseY, 0, scrollRef.current, '[data-day-column]');
+  }, [startDrag]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -137,7 +188,7 @@ export function DayView({ currentDate, events, overlayEvents = [], selectedEvent
   // Unified layout: user + overlay events together
   const allLayouts = useMemo(() => {
     const userItems: LayoutItem[] = timedEvents.map(e => ({ id: e.id, start_time: e.start_time, end_time: e.end_time, isOverlay: false }));
-    const overlayItems: LayoutItem[] = dayOverlay.map(oe => ({ id: `overlay-${oe.id}`, start_time: oe.start_time, end_time: oe.end_time, isOverlay: true }));
+    const overlayItems: LayoutItem[] = dayOverlay.map(oe => ({ id: `overlay-${oe.personEmail}::${oe.id}`, start_time: oe.start_time, end_time: oe.end_time, isOverlay: true }));
     return computeLayouts([...userItems, ...overlayItems]);
   }, [timedEvents, dayOverlay]);
 
@@ -186,6 +237,7 @@ export function DayView({ currentDate, events, overlayEvents = [], selectedEvent
   }, [isToday]);
 
   const handleTimeSlotClick = useCallback((e: React.MouseEvent) => {
+    if (isDragging) return;
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     const y = e.clientY - rect.top + (scrollRef.current?.scrollTop || 0);
     const hour = Math.floor(y / HOUR_HEIGHT);
@@ -195,7 +247,7 @@ export function DayView({ currentDate, events, overlayEvents = [], selectedEvent
     const end = new Date(start);
     end.setHours(start.getHours() + 1);
     onCreateEvent(start, end);
-  }, [currentDate, onCreateEvent]);
+  }, [currentDate, onCreateEvent, isDragging]);
 
   const dateLabel = currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -224,7 +276,11 @@ export function DayView({ currentDate, events, overlayEvents = [], selectedEvent
             ))}
           </div>
 
-          <div className={`flex-1 relative border-l border-border-subtle ${isToday ? 'bg-accent-primary/[0.02]' : ''}`} onClick={handleTimeSlotClick}>
+          <div
+            data-day-column
+            className={`flex-1 relative border-l border-border-subtle ${isToday ? 'bg-accent-primary/[0.02]' : ''}`}
+            onClick={handleTimeSlotClick}
+          >
             {HOURS.map(hour => (
               <div key={hour} className="hour-slot absolute left-0 right-0" style={{ top: `${hour * HOUR_HEIGHT}px`, height: `${HOUR_HEIGHT}px` }} />
             ))}
@@ -232,11 +288,16 @@ export function DayView({ currentDate, events, overlayEvents = [], selectedEvent
 
             {/* Overlay events — with column layout */}
             {dayOverlay.map(oe => {
-              const lid = `overlay-${oe.id}`;
+              const lid = `overlay-${oe.personEmail}::${oe.id}`;
               return (
-                <div key={lid} style={getStyle(lid, oe.start_time, oe.end_time)} title={`${oe.personEmail}: ${oe.summary}`}>
+                <div
+                  key={lid}
+                  style={getStyle(lid, oe.start_time, oe.end_time)}
+                  title={`${oe.personEmail}: ${oe.summary}`}
+                  onClick={(e) => { e.stopPropagation(); onSelectEvent(overlayToEvent(oe)); }}
+                >
                   <div
-                    className="h-full rounded-md px-1.5 py-0.5 text-[10px] font-medium leading-tight overflow-hidden border"
+                    className="h-full rounded-md px-1.5 py-0.5 text-[10px] font-medium leading-tight overflow-hidden border cursor-pointer hover:brightness-125 transition-all"
                     style={{ backgroundColor: oe.personColor + '25', borderColor: oe.personColor + '60', color: oe.personColor }}
                   >
                     <div className="truncate">{oe.summary}</div>
@@ -248,10 +309,37 @@ export function DayView({ currentDate, events, overlayEvents = [], selectedEvent
 
             {/* User events */}
             {timedEvents.map(event => (
-              <div key={event.id} style={getStyle(event.id, event.start_time, event.end_time)}>
-                <EventBlock event={event} selected={selectedEvent?.id === event.id} onClick={onSelectEvent} onRSVP={onRSVP} />
+              <div
+                key={event.id}
+                style={{
+                  ...getStyle(event.id, event.start_time, event.end_time),
+                  ...(isDragging && dragState?.event.id === event.id ? { opacity: 0.35 } : {}),
+                }}
+              >
+                <EventBlock
+                  event={event}
+                  selected={selectedEvent?.id === event.id}
+                  onClick={onSelectEvent}
+                  onRSVP={onRSVP}
+                  onDragStart={onUpdateEvent ? (ev, mode, mouseY) => handleEventDragStart(ev, mode, mouseY) : undefined}
+                />
               </div>
             ))}
+
+            {/* Drag ghost */}
+            {dragState && (() => {
+              const ghostStyle = getGhostStyle(HOUR_HEIGHT);
+              return ghostStyle ? (
+                <div style={ghostStyle} className="drag-ghost flex items-start px-2 py-1">
+                  <span className="text-[10px] font-medium text-accent-primary">
+                    {dragState.event.summary}
+                  </span>
+                  <span className="text-[9px] text-text-muted ml-auto whitespace-nowrap">
+                    {getGhostLabel(getUse24HourClock())}
+                  </span>
+                </div>
+              ) : null;
+            })()}
           </div>
         </div>
       </div>
