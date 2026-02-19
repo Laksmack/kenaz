@@ -358,7 +358,7 @@ export function startApiServer(
 
   app.post('/api/sync/trigger', async (_req, res) => {
     try {
-      await sync.incrementalSync();
+      await sync.fullSync();
       res.json({ success: true, status: sync.getStatus() });
     } catch (e: any) {
       res.status(500).json({ error: e.message });

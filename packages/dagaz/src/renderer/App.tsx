@@ -523,13 +523,6 @@ export default function App() {
 
           {/* Toolbar buttons */}
           <div className="titlebar-no-drag flex items-center gap-1.5">
-            {/* Sync indicator */}
-            {syncState.status === 'syncing' && !loading && (
-              <svg className="w-3.5 h-3.5 animate-spin text-text-muted" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-            )}
             {syncState.status === 'offline' && (
               <span className="text-[10px] text-text-muted bg-bg-tertiary px-1.5 py-0.5 rounded">Offline</span>
             )}

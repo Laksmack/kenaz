@@ -12,6 +12,7 @@ export class SyncEngine {
 
   private _status: SyncStatus = 'synced';
   private syncInterval: ReturnType<typeof setInterval> | null = null;
+  private fullSyncInterval: ReturnType<typeof setInterval> | null = null;
   private isRunning: boolean = false;
   private lastSync: string | null = null;
 
@@ -41,6 +42,15 @@ export class SyncEngine {
       }
     }, 60000);
 
+    // Full sync every 8 hours to reconcile stale/deleted events
+    const FULL_SYNC_INTERVAL = 8 * 60 * 60 * 1000;
+    this.fullSyncInterval = setInterval(() => {
+      if (this.connectivity.isOnline) {
+        console.log('[Dagaz Sync] Periodic full sync (8h)');
+        this.fullSync().catch(e => console.error('[Dagaz Sync] Periodic full sync failed:', e));
+      }
+    }, FULL_SYNC_INTERVAL);
+
     // Process offline queue when coming online
     this.connectivity.on('online', () => {
       this.processQueue().catch(e => console.error('[Dagaz Sync] Queue processing failed:', e));
@@ -53,6 +63,10 @@ export class SyncEngine {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
+    }
+    if (this.fullSyncInterval) {
+      clearInterval(this.fullSyncInterval);
+      this.fullSyncInterval = null;
     }
   }
 
@@ -121,7 +135,7 @@ export class SyncEngine {
           }
 
           // Remove local events that no longer exist on Google
-          this.cache.reconcileCalendarEvents(cal.id, liveGoogleIds);
+          this.cache.reconcileCalendarEvents(cal.id, liveGoogleIds, timeMin, timeMax);
 
           if (nextSyncToken) {
             this.cache.updateCalendarSyncToken(cal.id, nextSyncToken);

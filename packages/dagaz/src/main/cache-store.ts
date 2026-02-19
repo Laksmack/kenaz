@@ -274,6 +274,7 @@ export class CacheStore {
       JOIN calendars c ON e.calendar_id = c.id
       WHERE c.visible = 1
         AND e.status != 'cancelled'
+        AND (e.self_response IS NULL OR e.self_response != 'declined')
         AND (
           (e.all_day = 0 AND e.start_time < ? AND e.end_time > ?)
           OR (e.all_day = 1 AND e.start_date < ? AND e.end_date > ?)
@@ -385,10 +386,15 @@ export class CacheStore {
     }
   }
 
-  reconcileCalendarEvents(calendarId: string, liveGoogleIds: Set<string>): number {
-    const localRows = this.db.prepare(
-      'SELECT id, google_id FROM events WHERE calendar_id = ? AND local_only = 0 AND pending_action IS NULL'
-    ).all() as { id: string; google_id: string }[];
+  reconcileCalendarEvents(calendarId: string, liveGoogleIds: Set<string>, timeMin: string, timeMax: string): number {
+    const localRows = this.db.prepare(`
+      SELECT id, google_id FROM events
+      WHERE calendar_id = ? AND local_only = 0 AND pending_action IS NULL
+        AND (
+          (all_day = 0 AND start_time >= ? AND start_time < ?)
+          OR (all_day = 1 AND start_date >= ? AND start_date < ?)
+        )
+    `).all(calendarId, timeMin, timeMax, timeMin.split('T')[0], timeMax.split('T')[0]) as { id: string; google_id: string }[];
 
     let removed = 0;
     for (const row of localRows) {
