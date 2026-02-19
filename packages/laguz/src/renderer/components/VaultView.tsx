@@ -1,17 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { NoteList } from './NoteList';
-import { NoteDetail } from './NoteDetail';
 import { useSearch, useRecent } from '../hooks/useNotes';
 import type { NoteSummary } from '../types';
 
 interface VaultViewProps {
   searchQuery: string;
+  activeFilePath: string | null;
+  onOpenFile: (path: string, inNewTab?: boolean) => void;
 }
 
-export function VaultView({ searchQuery }: VaultViewProps) {
+export function VaultView({ searchQuery, activeFilePath, onOpenFile }: VaultViewProps) {
   const { results: searchResults, loading: searchLoading, search } = useSearch();
-  const { notes: recentNotes, loading: recentLoading } = useRecent();
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const { notes: recentNotes, loading: recentLoading, refresh: refreshRecent } = useRecent();
+  const [newFileRequested, setNewFileRequested] = useState(false);
 
   useEffect(() => {
     if (searchQuery.trim()) {
@@ -24,31 +25,39 @@ export function VaultView({ searchQuery }: VaultViewProps) {
   const loading = isSearching ? searchLoading : recentLoading;
 
   const handleSelect = useCallback((note: NoteSummary) => {
-    setSelectedPath(note.path);
-  }, []);
+    onOpenFile(note.path);
+  }, [onOpenFile]);
 
   return (
-    <div className="flex-1 flex overflow-hidden">
-      {/* Note list */}
-      <div className="w-2/5 min-w-[280px] max-w-[450px] border-r border-border-subtle flex flex-col">
-        <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-text-primary">
-            {isSearching ? 'Search Results' : 'Recent Notes'}
-          </h2>
+    <div className="w-2/5 min-w-[280px] max-w-[450px] border-r border-border-subtle flex flex-col flex-shrink-0">
+      <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-text-primary">
+          {isSearching ? 'Search Results' : 'Recent Notes'}
+        </h2>
+        <div className="flex items-center gap-2">
           <span className="text-xs text-text-muted">{notes.length} notes</span>
+          <button
+            onClick={() => setNewFileRequested(true)}
+            className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-text-primary transition-colors"
+            title="New File"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+          </button>
         </div>
-        <NoteList
-          notes={notes}
-          selectedPath={selectedPath}
-          onSelect={handleSelect}
-          loading={loading}
-          emptyMessage={isSearching ? 'No results' : 'No notes in vault'}
-          showCompany
-        />
       </div>
-
-      {/* Note detail */}
-      <NoteDetail notePath={selectedPath} />
+      <NoteList
+        notes={notes}
+        selectedPath={activeFilePath}
+        onSelect={handleSelect}
+        loading={loading}
+        emptyMessage={isSearching ? 'No results' : 'No notes in vault'}
+        showCompany
+        onRefresh={refreshRecent}
+        newFileRequested={newFileRequested}
+        onNewFileDone={() => setNewFileRequested(false)}
+      />
     </div>
   );
 }

@@ -1,6 +1,6 @@
 {
   "name": "@futhark/laguz",
-  "version": "0.6.1",
+  "version": "0.9.0",
   "description": "Laguz ᛚ — Notes and vault browser",
   "main": "dist/main/main/main.js",
   "private": true,
@@ -41,10 +41,398 @@
       ],
       "darkModeSupport": true
     },
+    "fileAssociations": [
+      {
+        "ext": "md",
+        "name": "Markdown",
+        "role": "Editor",
+        "mimeType": "text/markdown"
+      },
+      {
+        "ext": "markdown",
+        "name": "Markdown",
+        "role": "Editor",
+        "mimeType": "text/markdown"
+      },
+      {
+        "ext": "txt",
+        "name": "Plain Text",
+        "role": "Editor",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "json",
+        "name": "JSON",
+        "role": "Editor",
+        "mimeType": "application/json"
+      },
+      {
+        "ext": "jsonl",
+        "name": "JSON Lines",
+        "role": "Editor",
+        "mimeType": "application/x-ndjson"
+      },
+      {
+        "ext": "yaml",
+        "name": "YAML",
+        "role": "Editor",
+        "mimeType": "text/yaml"
+      },
+      {
+        "ext": "yml",
+        "name": "YAML",
+        "role": "Editor",
+        "mimeType": "text/yaml"
+      },
+      {
+        "ext": "toml",
+        "name": "TOML",
+        "role": "Editor",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "xml",
+        "name": "XML",
+        "role": "Editor",
+        "mimeType": "text/xml"
+      },
+      {
+        "ext": "html",
+        "name": "HTML",
+        "role": "Editor",
+        "mimeType": "text/html"
+      },
+      {
+        "ext": "htm",
+        "name": "HTML",
+        "role": "Editor",
+        "mimeType": "text/html"
+      },
+      {
+        "ext": "css",
+        "name": "CSS",
+        "role": "Editor",
+        "mimeType": "text/css"
+      },
+      {
+        "ext": "scss",
+        "name": "SCSS",
+        "role": "Editor",
+        "mimeType": "text/x-scss"
+      },
+      {
+        "ext": "less",
+        "name": "Less",
+        "role": "Editor",
+        "mimeType": "text/x-less"
+      },
+      {
+        "ext": "js",
+        "name": "JavaScript",
+        "role": "Editor",
+        "mimeType": "text/javascript"
+      },
+      {
+        "ext": "mjs",
+        "name": "JavaScript Module",
+        "role": "Editor",
+        "mimeType": "text/javascript"
+      },
+      {
+        "ext": "jsx",
+        "name": "JSX",
+        "role": "Editor",
+        "mimeType": "text/javascript"
+      },
+      {
+        "ext": "ts",
+        "name": "TypeScript",
+        "role": "Editor",
+        "mimeType": "text/typescript"
+      },
+      {
+        "ext": "tsx",
+        "name": "TSX",
+        "role": "Editor",
+        "mimeType": "text/typescript"
+      },
+      {
+        "ext": "py",
+        "name": "Python",
+        "role": "Editor",
+        "mimeType": "text/x-python"
+      },
+      {
+        "ext": "rb",
+        "name": "Ruby",
+        "role": "Editor",
+        "mimeType": "text/x-ruby"
+      },
+      {
+        "ext": "rs",
+        "name": "Rust",
+        "role": "Editor",
+        "mimeType": "text/x-rustsrc"
+      },
+      {
+        "ext": "go",
+        "name": "Go",
+        "role": "Editor",
+        "mimeType": "text/x-go"
+      },
+      {
+        "ext": "java",
+        "name": "Java",
+        "role": "Editor",
+        "mimeType": "text/x-java"
+      },
+      {
+        "ext": "kt",
+        "name": "Kotlin",
+        "role": "Editor",
+        "mimeType": "text/x-kotlin"
+      },
+      {
+        "ext": "swift",
+        "name": "Swift",
+        "role": "Editor",
+        "mimeType": "text/x-swift"
+      },
+      {
+        "ext": "c",
+        "name": "C",
+        "role": "Editor",
+        "mimeType": "text/x-csrc"
+      },
+      {
+        "ext": "h",
+        "name": "C Header",
+        "role": "Editor",
+        "mimeType": "text/x-chdr"
+      },
+      {
+        "ext": "cpp",
+        "name": "C++",
+        "role": "Editor",
+        "mimeType": "text/x-c++src"
+      },
+      {
+        "ext": "hpp",
+        "name": "C++ Header",
+        "role": "Editor",
+        "mimeType": "text/x-c++hdr"
+      },
+      {
+        "ext": "cs",
+        "name": "C#",
+        "role": "Editor",
+        "mimeType": "text/x-csharp"
+      },
+      {
+        "ext": "php",
+        "name": "PHP",
+        "role": "Editor",
+        "mimeType": "text/x-php"
+      },
+      {
+        "ext": "sql",
+        "name": "SQL",
+        "role": "Editor",
+        "mimeType": "text/x-sql"
+      },
+      {
+        "ext": "sh",
+        "name": "Shell Script",
+        "role": "Editor",
+        "mimeType": "text/x-sh"
+      },
+      {
+        "ext": "bash",
+        "name": "Bash Script",
+        "role": "Editor",
+        "mimeType": "text/x-sh"
+      },
+      {
+        "ext": "zsh",
+        "name": "Zsh Script",
+        "role": "Editor",
+        "mimeType": "text/x-sh"
+      },
+      {
+        "ext": "fish",
+        "name": "Fish Script",
+        "role": "Editor",
+        "mimeType": "text/x-sh"
+      },
+      {
+        "ext": "lua",
+        "name": "Lua",
+        "role": "Editor",
+        "mimeType": "text/x-lua"
+      },
+      {
+        "ext": "r",
+        "name": "R",
+        "role": "Editor",
+        "mimeType": "text/x-rsrc"
+      },
+      {
+        "ext": "scala",
+        "name": "Scala",
+        "role": "Editor",
+        "mimeType": "text/x-scala"
+      },
+      {
+        "ext": "clj",
+        "name": "Clojure",
+        "role": "Editor",
+        "mimeType": "text/x-clojure"
+      },
+      {
+        "ext": "ex",
+        "name": "Elixir",
+        "role": "Editor",
+        "mimeType": "text/x-elixir"
+      },
+      {
+        "ext": "exs",
+        "name": "Elixir Script",
+        "role": "Editor",
+        "mimeType": "text/x-elixir"
+      },
+      {
+        "ext": "erl",
+        "name": "Erlang",
+        "role": "Editor",
+        "mimeType": "text/x-erlang"
+      },
+      {
+        "ext": "hs",
+        "name": "Haskell",
+        "role": "Editor",
+        "mimeType": "text/x-haskell"
+      },
+      {
+        "ext": "ml",
+        "name": "OCaml",
+        "role": "Editor",
+        "mimeType": "text/x-ocaml"
+      },
+      {
+        "ext": "dart",
+        "name": "Dart",
+        "role": "Editor",
+        "mimeType": "text/x-dart"
+      },
+      {
+        "ext": "vue",
+        "name": "Vue",
+        "role": "Editor",
+        "mimeType": "text/x-vue"
+      },
+      {
+        "ext": "svelte",
+        "name": "Svelte",
+        "role": "Editor",
+        "mimeType": "text/x-svelte"
+      },
+      {
+        "ext": "graphql",
+        "name": "GraphQL",
+        "role": "Editor",
+        "mimeType": "text/x-graphql"
+      },
+      {
+        "ext": "proto",
+        "name": "Protocol Buffers",
+        "role": "Editor",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "dockerfile",
+        "name": "Dockerfile",
+        "role": "Editor",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "tf",
+        "name": "Terraform",
+        "role": "Editor",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "ini",
+        "name": "INI Config",
+        "role": "Editor",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "conf",
+        "name": "Config",
+        "role": "Editor",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "cfg",
+        "name": "Config",
+        "role": "Editor",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "env",
+        "name": "Environment",
+        "role": "Editor",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "log",
+        "name": "Log File",
+        "role": "Viewer",
+        "mimeType": "text/plain"
+      },
+      {
+        "ext": "csv",
+        "name": "CSV",
+        "role": "Editor",
+        "mimeType": "text/csv"
+      },
+      {
+        "ext": "tsv",
+        "name": "TSV",
+        "role": "Editor",
+        "mimeType": "text/tab-separated-values"
+      },
+      {
+        "ext": "tex",
+        "name": "LaTeX",
+        "role": "Editor",
+        "mimeType": "text/x-latex"
+      },
+      {
+        "ext": "rst",
+        "name": "reStructuredText",
+        "role": "Editor",
+        "mimeType": "text/x-rst"
+      },
+      {
+        "ext": "org",
+        "name": "Org Mode",
+        "role": "Editor",
+        "mimeType": "text/x-org"
+      },
+      {
+        "ext": "mdx",
+        "name": "MDX",
+        "role": "Editor",
+        "mimeType": "text/mdx"
+      }
+    ],
     "asarUnpack": [],
     "npmRebuild": true
   },
   "dependencies": {
+    "@codemirror/language-data": "^6.5.2",
+    "@codemirror/search": "^6.6.0",
     "@futhark/core": "*",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "better-sqlite3": "^12.6.2",

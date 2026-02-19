@@ -382,6 +382,15 @@ export class VaultStore {
     };
   }
 
+  readFile(filePath: string): { path: string; content: string; modified: string } | null {
+    const abs = filePath.startsWith('/') ? filePath : path.join(config.vaultPath, filePath);
+    try {
+      const stat = fs.statSync(abs);
+      const content = fs.readFileSync(abs, 'utf-8');
+      return { path: filePath, content, modified: stat.mtime.toISOString() };
+    } catch { return null; }
+  }
+
   getMeetings(company: string, since?: string): NoteSummary[] {
     let sql = "SELECT * FROM notes WHERE type = 'meeting' AND company = ?";
     const params: any[] = [company];

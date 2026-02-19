@@ -1,5 +1,7 @@
-import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, shell, ipcMain, dialog, Menu } from 'electron';
 import path from 'path';
+import fs from 'fs';
+import { execSync } from 'child_process';
 
 import { config } from './config';
 import { startApiServer } from './api-server';
@@ -11,6 +13,7 @@ let mainWindow: BrowserWindow | null = null;
 let store: VaultStore;
 let watcher: VaultWatcher;
 let configManager: LaguzConfigManager;
+let pendingFilePath: string | null = null;
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -124,6 +127,43 @@ function registerIpcHandlers() {
     return store.getCompanies();
   });
 
+  ipcMain.handle('laguz:readFile', async (_event, filePath: string) => {
+    return store.readFile(filePath);
+  });
+
+  ipcMain.handle('laguz:writeFile', async (_event, filePath: string, content: string) => {
+    const abs = filePath.startsWith('/') ? filePath : require('path').join(config.vaultPath, filePath);
+    require('fs').writeFileSync(abs, content, 'utf-8');
+    return { success: true };
+  });
+
+  ipcMain.handle('laguz:createFile', async (_event, filePath: string, content?: string) => {
+    const abs = filePath.startsWith('/') ? filePath : path.join(config.vaultPath, filePath);
+    const dir = path.dirname(abs);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(abs, content ?? '', 'utf-8');
+    if (/\.(md|markdown|mdx)$/i.test(filePath)) {
+      store.writeNote(filePath, content ?? '');
+      return store.getNote(filePath);
+    }
+    return { path: filePath, success: true };
+  });
+
+  ipcMain.handle('laguz:renameFile', async (_event, oldPath: string, newPath: string) => {
+    const absOld = oldPath.startsWith('/') ? oldPath : path.join(config.vaultPath, oldPath);
+    const absNew = newPath.startsWith('/') ? newPath : path.join(config.vaultPath, newPath);
+    const dir = path.dirname(absNew);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.renameSync(absOld, absNew);
+    return { oldPath, newPath, success: true };
+  });
+
+  ipcMain.handle('laguz:deleteFile', async (_event, filePath: string) => {
+    const abs = filePath.startsWith('/') ? filePath : path.join(config.vaultPath, filePath);
+    fs.unlinkSync(abs);
+    return { path: filePath, success: true };
+  });
+
   ipcMain.handle('laguz:getRecent', async (_event, limit?: number) => {
     return store.getRecent(limit);
   });
@@ -160,6 +200,116 @@ async function initServices() {
   await watcher.start();
 }
 
+// ── Open File Handler ─────────────────────────────────────────
+
+function sendFileToRenderer(filePath: string) {
+  const abs = path.resolve(filePath);
+  const vaultPath = config.vaultPath;
+  const relative = abs.startsWith(vaultPath + '/')
+    ? abs.slice(vaultPath.length + 1)
+    : abs;
+  if (mainWindow?.webContents) {
+    mainWindow.webContents.send('laguz:open-file', relative);
+  } else {
+    pendingFilePath = relative;
+  }
+}
+
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  sendFileToRenderer(filePath);
+});
+
+// ── Default .md Viewer ────────────────────────────────────────
+
+function getAppBundlePath(): string | null {
+  if (process.platform !== 'darwin') return null;
+  const exePath = app.getPath('exe');
+  const match = exePath.match(/^(.+\.app)\//);
+  return match ? match[1] : null;
+}
+
+function isDefaultMdViewer(): boolean {
+  if (process.platform !== 'darwin') return false;
+  const appBundle = getAppBundlePath();
+  if (!appBundle) return false;
+  try {
+    const result = execSync(
+      `swift -e 'import AppKit; import UniformTypeIdentifiers; if let t = UTType(filenameExtension: "md"), let u = NSWorkspace.shared.urlForApplication(toOpen: t) { print(u.path) }'`,
+      { encoding: 'utf8', timeout: 10000 }
+    ).trim();
+    return result === appBundle;
+  } catch { return false; }
+}
+
+function setDefaultMdViewer(): boolean {
+  if (process.platform !== 'darwin') return false;
+  const appBundle = getAppBundlePath();
+  if (!appBundle) return false;
+  try {
+    execSync(
+      `swift -e '
+import AppKit
+import UniformTypeIdentifiers
+let app = URL(fileURLWithPath: "${appBundle}")
+let types: [UTType] = [.init(filenameExtension: "md")!, .init(filenameExtension: "markdown")!].compactMap { $0 }
+let group = DispatchGroup()
+for t in types {
+    group.enter()
+    NSWorkspace.shared.setDefaultApplication(at: app, toOpenContentType: t) { _ in group.leave() }
+}
+group.wait()
+'`,
+      { encoding: 'utf8', timeout: 15000 }
+    );
+    return true;
+  } catch (e: any) {
+    console.error('[Laguz] Failed to set default .md viewer:', e.message);
+    return false;
+  }
+}
+
+// ── App Menu ──────────────────────────────────────────────────
+
+function buildAppMenu() {
+  const isMac = process.platform === 'darwin';
+  const isDefault = isDefaultMdViewer();
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' as const },
+        { type: 'separator' as const },
+        {
+          label: isDefault ? 'Default .md Viewer \u2713' : 'Make Default .md Viewer',
+          enabled: !isDefault,
+          click: () => {
+            if (setDefaultMdViewer()) {
+              buildAppMenu();
+            }
+          },
+        },
+        { type: 'separator' as const },
+        { role: 'services' as const },
+        { type: 'separator' as const },
+        { role: 'hide' as const },
+        { role: 'hideOthers' as const },
+        { role: 'unhide' as const },
+        { type: 'separator' as const },
+        { role: 'quit' as const },
+      ],
+    }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
 // ── App Lifecycle ────────────────────────────────────────────
 
 async function installFutharkMcp() {
@@ -194,7 +344,18 @@ app.whenReady().then(async () => {
   }
   registerIpcHandlers();
   createWindow();
+  buildAppMenu();
   installFutharkMcp();
+
+  // Send any file that was opened before the window was ready
+  if (mainWindow && pendingFilePath) {
+    mainWindow.webContents.on('did-finish-load', () => {
+      if (pendingFilePath) {
+        mainWindow?.webContents.send('laguz:open-file', pendingFilePath);
+        pendingFilePath = null;
+      }
+    });
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

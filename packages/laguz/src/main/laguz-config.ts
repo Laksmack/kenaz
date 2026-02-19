@@ -28,9 +28,14 @@ interface FlatSection extends SectionBase {
 
 export type Section = BuiltinSection | GroupedSection | FlatSection;
 
+export interface EditorConfig {
+  lineNumbers: 'auto' | 'on' | 'off';
+}
+
 export interface LaguzConfig {
   vaultPath: string;
   sections: Section[];
+  editor?: EditorConfig;
 }
 
 // ── Defaults ──────────────────────────────────────────────────

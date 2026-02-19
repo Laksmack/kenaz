@@ -46,9 +46,14 @@ interface FlatSection extends SectionBase {
 
 export type Section = BuiltinSection | GroupedSection | FlatSection;
 
+export interface EditorConfig {
+  lineNumbers: 'auto' | 'on' | 'off';
+}
+
 export interface LaguzConfig {
   vaultPath: string;
   sections: Section[];
+  editor?: EditorConfig;
 }
 
 export interface SelectedItem {
@@ -70,9 +75,15 @@ declare global {
       writeNote: (path: string, content: string) => Promise<NoteDetail>;
       getCompanies: () => Promise<string[]>;
       getRecent: (limit?: number) => Promise<NoteSummary[]>;
+      readFile: (filePath: string) => Promise<{ path: string; content: string; modified: string } | null>;
+      writeFile: (filePath: string, content: string) => Promise<{ success: boolean }>;
+      createFile: (filePath: string, content?: string) => Promise<any>;
+      renameFile: (oldPath: string, newPath: string) => Promise<{ oldPath: string; newPath: string; success: boolean }>;
+      deleteFile: (filePath: string) => Promise<{ path: string; success: boolean }>;
       getConfig: () => Promise<LaguzConfig>;
       saveConfig: (config: LaguzConfig) => Promise<LaguzConfig>;
       crossAppFetch: (url: string, options?: any) => Promise<any>;
+      onOpenFile: (cb: (path: string) => void) => () => void;
     };
   }
 }

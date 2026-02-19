@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { LaguzConfig, Section } from '../types';
 
-type SettingsTab = 'general' | 'sections' | 'api';
+type SettingsTab = 'general' | 'editor' | 'sections' | 'api';
 
 interface Props {
   config: LaguzConfig;
@@ -46,6 +46,7 @@ export function SettingsModal({ config, onSave, onClose }: Props) {
 
   const tabs: { id: SettingsTab; label: string; icon: string }[] = [
     { id: 'general', label: 'General', icon: '⚙️' },
+    { id: 'editor', label: 'Editor', icon: '✏️' },
     { id: 'sections', label: 'Sections', icon: '📂' },
     { id: 'api', label: 'API', icon: '🔌' },
   ];
@@ -80,6 +81,9 @@ export function SettingsModal({ config, onSave, onClose }: Props) {
         <div key={activeTab} className="flex-1 p-6 overflow-y-auto animate-fadeIn">
           {activeTab === 'general' && (
             <GeneralTab config={localConfig} onSave={handleSave} saving={saving} saved={saved} />
+          )}
+          {activeTab === 'editor' && (
+            <EditorTab config={localConfig} onSave={handleSave} saving={saving} saved={saved} />
           )}
           {activeTab === 'sections' && (
             <SectionsTab config={localConfig} onSave={handleSave} saving={saving} saved={saved} />
@@ -400,6 +404,71 @@ function SectionEditForm({
         >
           Cancel
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ── Editor Tab ────────────────────────────────────────────────
+
+function EditorTab({
+  config,
+  onSave,
+  saving,
+  saved,
+}: {
+  config: LaguzConfig;
+  onSave: (c: LaguzConfig) => void;
+  saving: boolean;
+  saved: boolean;
+}) {
+  const [lineNumbers, setLineNumbers] = useState<'auto' | 'on' | 'off'>(config.editor?.lineNumbers ?? 'auto');
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-text-primary mb-4">Editor</h3>
+      <div className="space-y-4">
+        <SettingsField label="Line Numbers" description="Show line numbers in the editor gutter. 'Auto' shows them for code files but not markdown.">
+          <div className="flex gap-2">
+            {(['auto', 'on', 'off'] as const).map((val) => (
+              <button
+                key={val}
+                onClick={() => setLineNumbers(val)}
+                className={`px-3 py-1.5 rounded text-[11px] font-medium transition-colors capitalize ${
+                  lineNumbers === val
+                    ? 'bg-accent-primary/15 text-accent-primary border border-accent-primary/30'
+                    : 'bg-bg-primary text-text-muted border border-border-subtle hover:text-text-primary'
+                }`}
+              >
+                {val}
+              </button>
+            ))}
+          </div>
+        </SettingsField>
+
+        <div className="p-3 rounded-lg bg-bg-primary border border-border-subtle">
+          <div className="text-xs font-medium text-text-secondary mb-2">Keyboard Shortcuts</div>
+          <div className="grid grid-cols-2 gap-y-1 text-[11px]">
+            <span className="text-text-muted">Find & Replace</span>
+            <span className="text-text-secondary font-mono text-[10px]">Cmd+F / Cmd+H</span>
+            <span className="text-text-muted">Find Next / Previous</span>
+            <span className="text-text-secondary font-mono text-[10px]">Cmd+G / Shift+Cmd+G</span>
+            <span className="text-text-muted">Add Cursor</span>
+            <span className="text-text-secondary font-mono text-[10px]">Alt+Click</span>
+            <span className="text-text-muted">Select Next Occurrence</span>
+            <span className="text-text-secondary font-mono text-[10px]">Cmd+D</span>
+            <span className="text-text-muted">Save</span>
+            <span className="text-text-secondary font-mono text-[10px]">Cmd+S</span>
+            <span className="text-text-muted">Undo / Redo</span>
+            <span className="text-text-secondary font-mono text-[10px]">Cmd+Z / Shift+Cmd+Z</span>
+          </div>
+        </div>
+
+        <SaveButton
+          onClick={() => onSave({ ...config, editor: { lineNumbers } })}
+          saving={saving}
+          saved={saved}
+        />
       </div>
     </div>
   );

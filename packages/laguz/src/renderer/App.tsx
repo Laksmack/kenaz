@@ -1,11 +1,29 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ScratchView } from './components/ScratchView';
 import { VaultView } from './components/VaultView';
 import { AccountsView } from './components/AccountsView';
 import { FolderView } from './components/FolderView';
+import { TabBar } from './components/TabBar';
+import { NoteDetail } from './components/NoteDetail';
 import { SettingsModal } from './components/SettingsModal';
-import type { ViewType, LaguzConfig, SelectedItem } from './types';
+import type { ViewType, LaguzConfig, SelectedItem, EditorConfig } from './types';
+
+// ── Editor Config Context ─────────────────────────────────────
+const defaultEditor: EditorConfig = { lineNumbers: 'auto' };
+export const EditorConfigContext = createContext<EditorConfig>(defaultEditor);
+export function useEditorConfig() { return useContext(EditorConfigContext); }
+
+// ── Tab Types ──────────────────────────────────────────────────
+export interface Tab {
+  id: string;
+  filePath: string;
+  label: string;
+  isDirty?: boolean;
+}
+
+let nextTabId = 1;
+function makeTabId() { return `tab-${nextTabId++}`; }
 
 export default function App() {
   const [config, setConfig] = useState<LaguzConfig | null>(null);
@@ -17,6 +35,58 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // ── Tab State ────────────────────────────────────────────────
+  const [tabs, setTabs] = useState<Tab[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [splitTabId, setSplitTabId] = useState<string | null>(null);
+  const [splitRatio, setSplitRatio] = useState(0.5);
+
+  const activeTab = tabs.find(t => t.id === activeTabId) ?? null;
+  const splitTab = tabs.find(t => t.id === splitTabId) ?? null;
+
+  const openFile = useCallback((filePath: string, inNewTab = false) => {
+    const label = filePath.split('/').pop() || filePath;
+    setTabs(prev => {
+      const existing = prev.find(t => t.filePath === filePath);
+      if (existing) {
+        setActiveTabId(existing.id);
+        return prev;
+      }
+      if (inNewTab || prev.length === 0) {
+        const id = makeTabId();
+        setActiveTabId(id);
+        return [...prev, { id, filePath, label }];
+      }
+      const activeIdx = prev.findIndex(t => t.id === activeTabId);
+      if (activeIdx >= 0) {
+        const updated = [...prev];
+        updated[activeIdx] = { ...updated[activeIdx], filePath, label };
+        return updated;
+      }
+      const id = makeTabId();
+      setActiveTabId(id);
+      return [...prev, { id, filePath, label }];
+    });
+  }, [activeTabId]);
+
+  const closeTab = useCallback((tabId: string) => {
+    setTabs(prev => {
+      const idx = prev.findIndex(t => t.id === tabId);
+      if (idx < 0) return prev;
+      const next = prev.filter(t => t.id !== tabId);
+      if (tabId === activeTabId) {
+        const newActive = next[Math.min(idx, next.length - 1)];
+        setActiveTabId(newActive?.id ?? null);
+      }
+      if (tabId === splitTabId) setSplitTabId(null);
+      return next;
+    });
+  }, [activeTabId, splitTabId]);
+
+  const setTabDirty = useCallback((tabId: string, dirty: boolean) => {
+    setTabs(prev => prev.map(t => t.id === tabId ? { ...t, isDirty: dirty } : t));
+  }, []);
+
   // Load config on mount
   useEffect(() => {
     window.laguz.getConfig().then((cfg) => {
@@ -24,6 +94,16 @@ export default function App() {
       loadSubfolders(cfg);
     });
   }, []);
+
+  // Listen for files opened from Finder / command line
+  useEffect(() => {
+    return window.laguz.onOpenFile((filePath) => {
+      setCurrentView('vault');
+      setSelectedItem(null);
+      setSearchQuery('');
+      openFile(filePath, true);
+    });
+  }, [openFile]);
 
   const loadSubfolders = useCallback(async (cfg: LaguzConfig) => {
     const grouped = cfg.sections.filter(s => s.type === 'grouped' && s.enabled);
@@ -99,6 +179,25 @@ export default function App() {
         return;
       }
 
+      // ⌘W close active tab
+      if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
+        e.preventDefault();
+        if (activeTabId) closeTab(activeTabId);
+        return;
+      }
+
+      // ⌘\ toggle split
+      if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+        e.preventDefault();
+        if (splitTabId) {
+          setSplitTabId(null);
+        } else if (tabs.length >= 2 && activeTabId) {
+          const other = tabs.find(t => t.id !== activeTabId);
+          if (other) setSplitTabId(other.id);
+        }
+        return;
+      }
+
       if (isInput) {
         if (e.key === 'Escape') {
           (target as HTMLInputElement).blur();
@@ -140,7 +239,7 @@ export default function App() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [handleViewChange, settingsOpen]);
+  }, [handleViewChange, settingsOpen, activeTabId, closeTab, splitTabId, tabs]);
 
   if (!config) {
     return (
@@ -151,6 +250,7 @@ export default function App() {
   }
 
   return (
+    <EditorConfigContext.Provider value={config.editor ?? defaultEditor}>
     <div className="h-screen flex bg-bg-primary">
       {/* Sidebar */}
       <div className="w-56 min-w-[200px] border-r border-border-subtle flex-shrink-0 titlebar-drag">
@@ -234,11 +334,68 @@ export default function App() {
         {/* Content area */}
         <div className="flex-1 flex overflow-hidden">
           {currentView === 'scratch' && <ScratchView />}
-          {currentView === 'vault' && <VaultView searchQuery={searchQuery} />}
-          {currentView === 'grouped' && (
-            <AccountsView path={getGroupedPath()} entity={getGroupedEntity()} />
+          {currentView !== 'scratch' && (
+            <>
+              {/* List pane */}
+              {currentView === 'vault' && (
+                <VaultView
+                  searchQuery={searchQuery}
+                  activeFilePath={activeTab?.filePath ?? null}
+                  onOpenFile={openFile}
+                />
+              )}
+              {currentView === 'grouped' && (
+                <AccountsView
+                  path={getGroupedPath()}
+                  entity={getGroupedEntity()}
+                  activeFilePath={activeTab?.filePath ?? null}
+                  onOpenFile={openFile}
+                />
+              )}
+              {currentView === 'flat' && (
+                <FolderView
+                  path={getFlatPath()}
+                  activeFilePath={activeTab?.filePath ?? null}
+                  onOpenFile={openFile}
+                />
+              )}
+
+              {/* Detail area with tabs */}
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {tabs.length > 0 && (
+                  <TabBar
+                    tabs={tabs}
+                    activeTabId={activeTabId}
+                    splitTabId={splitTabId}
+                    onActivate={setActiveTabId}
+                    onClose={closeTab}
+                    onSplit={(tabId) => setSplitTabId(splitTabId === tabId ? null : tabId)}
+                  />
+                )}
+
+                {tabs.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center text-text-muted">
+                    <div className="text-center">
+                      <div className="text-4xl mb-3 opacity-40">ᛚ</div>
+                      <div className="text-sm">Select a note to view</div>
+                    </div>
+                  </div>
+                ) : splitTab ? (
+                  <div className="flex-1 flex overflow-hidden">
+                    <div className="overflow-hidden flex flex-col" style={{ width: `${splitRatio * 100}%` }}>
+                      <NoteDetail notePath={activeTab?.filePath ?? null} />
+                    </div>
+                    <SplitHandle onResize={setSplitRatio} />
+                    <div className="overflow-hidden flex flex-col flex-1">
+                      <NoteDetail notePath={splitTab.filePath} />
+                    </div>
+                  </div>
+                ) : (
+                  <NoteDetail notePath={activeTab?.filePath ?? null} />
+                )}
+              </div>
+            </>
           )}
-          {currentView === 'flat' && <FolderView path={getFlatPath()} />}
         </div>
       </div>
 
@@ -251,5 +408,33 @@ export default function App() {
         />
       )}
     </div>
+    </EditorConfigContext.Provider>
+  );
+}
+
+// ── Split Handle ──────────────────────────────────────────────
+function SplitHandle({ onResize }: { onResize: (ratio: number) => void }) {
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = (e.target as HTMLElement).parentElement!;
+    const containerRect = container.getBoundingClientRect();
+
+    const onMove = (ev: MouseEvent) => {
+      const ratio = Math.max(0.2, Math.min(0.8, (ev.clientX - containerRect.left) / containerRect.width));
+      onResize(ratio);
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [onResize]);
+
+  return (
+    <div
+      className="w-1 flex-shrink-0 bg-border-subtle hover:bg-accent-primary/40 cursor-col-resize transition-colors"
+      onMouseDown={handleMouseDown}
+    />
   );
 }

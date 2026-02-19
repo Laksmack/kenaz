@@ -67,6 +67,28 @@ export function useNote(notePath: string | null) {
   return { note, loading, refresh: fetch };
 }
 
+export function useFile(filePath: string | null) {
+  const [file, setFile] = useState<{ path: string; content: string; modified: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const fetch = useCallback(async () => {
+    if (!filePath) { setFile(null); return; }
+    setLoading(true);
+    try {
+      const result = await window.laguz.readFile(filePath);
+      setFile(result);
+    } catch (e) {
+      console.error('Failed to read file:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [filePath]);
+
+  useEffect(() => { fetch(); }, [fetch]);
+
+  return { file, loading, refresh: fetch };
+}
+
 export function useMeetings(company: string | null) {
   const [meetings, setMeetings] = useState<NoteSummary[]>([]);
   const [loading, setLoading] = useState(false);
