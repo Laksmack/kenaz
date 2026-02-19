@@ -128,6 +128,10 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     }
   }, [fetchThreads]);
 
+  const removeThread = useCallback((threadId: string) => {
+    setThreads((prev) => prev.filter((t) => t.id !== threadId));
+  }, []);
+
   const markRead = useCallback(async (threadId: string) => {
     try {
       await window.kenaz.markAsRead(threadId);
@@ -159,6 +163,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     refresh: fetchThreads,
     loadMore,
     archiveThread,
+    removeThread,
     labelThread,
     markRead,
   };

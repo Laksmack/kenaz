@@ -55,6 +55,12 @@ export function startApiServer(
     text: z.string().min(1),
   });
 
+  // ── Helper: resolve event by local ID or google_id ────────
+
+  function resolveEvent(id: string) {
+    return cache.getEvent(id) || cache.getEventByGoogleId(id);
+  }
+
   // ── Helper: archive invite email in Kenaz ─────────────────
 
   const KENAZ_API = 'http://localhost:3141';
@@ -180,7 +186,7 @@ export function startApiServer(
 
   app.get('/api/events/:id', (req, res) => {
     try {
-      const event = cache.getEvent(req.params.id);
+      const event = resolveEvent(req.params.id);
       if (!event) return res.status(404).json({ error: 'Event not found' });
       res.json(event);
     } catch (e: any) {
@@ -225,7 +231,7 @@ export function startApiServer(
   app.put('/api/events/:id', async (req, res) => {
     try {
       const updates = updateEventSchema.parse(req.body);
-      const event = cache.getEvent(req.params.id);
+      const event = resolveEvent(req.params.id);
       if (!event) return res.status(404).json({ error: 'Event not found' });
 
       if (connectivity.isOnline && google.isAuthorized() && event.google_id) {
@@ -242,7 +248,7 @@ export function startApiServer(
         }
       }
 
-      const updated = cache.getEvent(req.params.id);
+      const updated = resolveEvent(req.params.id);
       res.json(updated);
     } catch (e: any) {
       if (e instanceof z.ZodError) {
@@ -254,7 +260,7 @@ export function startApiServer(
 
   app.delete('/api/events/:id', async (req, res) => {
     try {
-      const event = cache.getEvent(req.params.id);
+      const event = resolveEvent(req.params.id);
       if (!event) return res.status(404).json({ error: 'Event not found' });
 
       if (connectivity.isOnline && google.isAuthorized() && event.google_id) {
@@ -277,7 +283,7 @@ export function startApiServer(
   app.post('/api/events/:id/rsvp', async (req, res) => {
     try {
       const { response } = rsvpSchema.parse(req.body);
-      const event = cache.getEvent(req.params.id);
+      const event = resolveEvent(req.params.id);
       if (!event) return res.status(404).json({ error: 'Event not found' });
 
       if (connectivity.isOnline && google.isAuthorized() && event.google_id) {
@@ -394,7 +400,7 @@ export function startApiServer(
 
   app.get('/api/events/:id/context', async (req, res) => {
     try {
-      const event = cache.getEvent(req.params.id);
+      const event = resolveEvent(req.params.id);
       if (!event) return res.status(404).json({ error: 'Event not found' });
 
       const attendees = event.attendees || [];

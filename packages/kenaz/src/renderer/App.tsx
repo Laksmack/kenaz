@@ -79,6 +79,7 @@ export default function App() {
     refresh,
     loadMore,
     archiveThread,
+    removeThread,
     labelThread,
     markRead,
   } = useEmails(currentView, searchQuery, authenticated === true, views);
@@ -377,12 +378,7 @@ export default function App() {
 
   const handleDeleteDraft = useCallback(async (thread: EmailThread) => {
     try {
-      const drafts = await window.kenaz.listDrafts();
-      const draft = drafts.find((d: any) => d.threadId === thread.id);
-      if (draft) {
-        await window.kenaz.deleteDraft(draft.id);
-      }
-      // Move selection to next thread
+      // Move selection to next thread and remove from list immediately
       const idx = threads.findIndex((t) => t.id === thread.id);
       const next = findNextThread(idx, [thread.id]);
       if (next) {
@@ -391,11 +387,18 @@ export default function App() {
       } else {
         setSelectedThread(null);
       }
-      refresh();
+      removeThread(thread.id);
+
+      const drafts = await window.kenaz.listDrafts();
+      const draft = drafts.find((d: any) => d.threadId === thread.id);
+      if (draft) {
+        await window.kenaz.deleteDraft(draft.id);
+      }
     } catch (e) {
       console.error('Failed to delete draft:', e);
+      refresh();
     }
-  }, [threads, findNextThread, refresh]);
+  }, [threads, findNextThread, removeThread, refresh]);
 
   // ── Undo infrastructure ──────────────────────────────────
   const addUndo = useCallback((message: string, onUndo: () => void, duration = 5000) => {
@@ -660,7 +663,7 @@ export default function App() {
 
       handleSent(payload, draftDetail.id);
 
-      // Move to next thread
+      // Move to next thread and remove sent draft from list
       const idx = threads.findIndex((t) => t.id === thread.id);
       const next = threads[idx + 1] || threads[idx - 1] || null;
       if (next) {
@@ -669,10 +672,11 @@ export default function App() {
       } else {
         setSelectedThread(null);
       }
+      removeThread(thread.id);
     } catch (e) {
       console.error('Failed to send draft:', e);
     }
-  }, [threads, handleSent]);
+  }, [threads, handleSent, removeThread]);
 
   const handleReply = useCallback(() => {
     if (!selectedThread) return;

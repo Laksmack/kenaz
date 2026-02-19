@@ -516,7 +516,7 @@ server.tool(
   'kenaz_calendar_rsvp',
   'RSVP to a calendar event (via Kenaz)',
   {
-    event_id: z.string().describe('Calendar event ID'),
+    event_id: z.string().describe('Calendar event ID (local UUID or Google Calendar ID)'),
     response: z.enum(['accepted', 'tentative', 'declined']).describe('RSVP response'),
   },
   async ({ event_id, response }) => {
@@ -585,7 +585,7 @@ server.tool(
 server.tool(
   'dagaz_get_event',
   'Get full event details including attendees, conferencing, and description',
-  { event_id: z.string().describe('Event ID') },
+  { event_id: z.string().describe('Event ID (local UUID or Google Calendar ID — either works)') },
   async ({ event_id }) => {
     const data = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}`);
     return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
@@ -702,7 +702,7 @@ server.tool(
   'dagaz_update_event',
   'Update an existing event. Only pass fields you want to change.',
   {
-    event_id: z.string().describe('Event ID'),
+    event_id: z.string().describe('Event ID (local UUID or Google Calendar ID)'),
     summary: z.string().optional(),
     start: z.string().optional(),
     end: z.string().optional(),
@@ -726,7 +726,7 @@ server.tool(
   'dagaz_reschedule_event',
   'Reschedule an event to a new time. Automatically notifies attendees.',
   {
-    event_id: z.string().describe('Event ID'),
+    event_id: z.string().describe('Event ID (local UUID or Google Calendar ID)'),
     new_start: z.string().describe('New start time (ISO datetime)'),
     new_end: z.string().describe('New end time (ISO datetime)'),
     note: z.string().optional().describe('Optional note to attendees about why'),
@@ -791,7 +791,7 @@ server.tool(
 server.tool(
   'dagaz_delete_event',
   'Delete a calendar event',
-  { event_id: z.string().describe('Event ID') },
+  { event_id: z.string().describe('Event ID (local UUID or Google Calendar ID)') },
   async ({ event_id }) => {
     const data = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}`, { method: 'DELETE' });
     return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
@@ -802,7 +802,7 @@ server.tool(
   'dagaz_rsvp_event',
   'RSVP to a calendar event',
   {
-    event_id: z.string().describe('Event ID'),
+    event_id: z.string().describe('Event ID (local UUID or Google Calendar ID)'),
     response: z.enum(['accepted', 'declined', 'tentative']),
   },
   async ({ event_id, response }) => {
@@ -833,7 +833,7 @@ server.tool(
 server.tool(
   'dagaz_get_event_context',
   'Get rich context for an event: attendee details, recent email threads (from Kenaz), CRM data (from HubSpot). Perfect for meeting prep.',
-  { event_id: z.string().describe('Event ID') },
+  { event_id: z.string().describe('Event ID (local UUID or Google Calendar ID — either works)') },
   async ({ event_id }) => {
     const data = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}/context`);
     return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
@@ -843,7 +843,7 @@ server.tool(
 server.tool(
   'dagaz_get_meeting_prep',
   'Comprehensive meeting prep: attendee profiles (HubSpot), email history (Kenaz), related tasks (Raidō). Returns a structured briefing.',
-  { event_id: z.string().describe('Event ID') },
+  { event_id: z.string().describe('Event ID (local UUID or Google Calendar ID — either works)') },
   async ({ event_id }) => {
     const contextData = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}/context`);
     let relatedTasks: any[] = [];
