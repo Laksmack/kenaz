@@ -8,11 +8,11 @@ Futhark is a collection of native macOS desktop apps that share a common design 
 
 **Kenaz** ᚲ (torch/fire) is a Gmail client with HubSpot CRM and Google Calendar baked into the sidebar. Every email thread has instant context - deal stage, contact history, upcoming meetings - without switching apps. It composes in markdown, runs a local API on localhost:3141, and has a full MCP server so Claude can search, read, draft, and send emails on your behalf.
 
-**Raidō** ᚱ (journey/ride) is a task manager with a dead-simple philosophy: every task has a due date or it lives in Inbox until you commit to one. No "someday" purgatory. SQLite-backed, Express API on localhost:3142, and its own MCP server with 17 tools that mirror the Things workflow you already know. Tasks can link directly to Kenaz email threads, HubSpot deals, Laguz notes, and calendar events.
+**Raidō** ᚱ (journey/ride) is a task manager with a dead-simple philosophy: every task has a due date or it lives in Inbox until you commit to one. No "someday" purgatory. SQLite-backed, Express API on localhost:3142, with 13 MCP tools that mirror the Things workflow you already know. Tasks can link directly to Kenaz email threads, HubSpot deals, Laguz notes, and calendar events.
 
 **Dagaz** ᛞ (day/dawn) is a calendar app that layers your Google Calendar events alongside your tasks and email context. Unified day view, meeting prep from a single click, and an MCP server that lets Claude find free time, schedule meetings, and surface what matters today.
 
-**Laguz** ᛚ (water/flow) is a native markdown notes app - a full replacement for Obsidian that was built for the suite from the ground up. It has a proper UI with a configurable sidebar, vault search, scratch pad, accounts view, and folder browser. Notes are plain markdown with YAML frontmatter on disk, indexed into SQLite with FTS5 full-text search so queries are instant. It watches your vault for changes and re-indexes automatically. The Express API runs on localhost:3144 and the MCP server lets Claude search notes by content, filter by company, type, date, or tags, retrieve full note content, surface account history, and write new notes back to disk. It looks and feels like a notes app. It just happens to be fully AI-operable from the outside.
+**Laguz** ᛚ (water/flow) is a native markdown notes app built for the suite from the ground up. It has a configurable sidebar, vault search, scratch pad, accounts view, and folder browser. Notes are plain markdown with YAML frontmatter on disk, indexed into SQLite with FTS5 full-text search so queries are instant. It watches your vault for changes and re-indexes automatically. Notes render as rich markdown by default with a one-click toggle into a full CodeMirror 6 editor for editing. The Express API runs on localhost:3144 and the MCP server lets Claude search notes by content, filter by company, type, date, or tags, retrieve full note content, surface account history, and write new notes back to disk.
 
 ---
 
@@ -50,12 +50,12 @@ The apps talk to each other through localhost HTTP at runtime but never import e
 
 ## The suite today
 
-| App | Rune | Purpose | Port | Status |
-|-----|------|---------|------|--------|
-| Kenaz | ᚲ | Email + CRM | 3141 | Live (v0.11) |
-| Raidō | ᚱ | Tasks | 3142 | Live (v0.1) |
-| Dagaz | ᛞ | Calendar | 3143 | In progress |
-| Laguz | ᛚ | Notes + Vault | 3144 | Live |
+| App | Rune | Purpose | Port | MCP Tools | Version |
+|-----|------|---------|------|-----------|---------|
+| Kenaz | ᚲ | Email + CRM | 3141 | 28 | 0.17.2 |
+| Raidō | ᚱ | Tasks | 3142 | 13 | 0.9.0 |
+| Dagaz | ᛞ | Calendar | 3143 | 19 | 0.10.3 |
+| Laguz | ᛚ | Notes + Vault | 3144 | 6 | 0.6.1 |
 
 ---
 
@@ -64,11 +64,12 @@ The apps talk to each other through localhost HTTP at runtime but never import e
 ```
 futhark/
 ├── packages/
-│   ├── core/          # @futhark/core - shared design system, types, components
-│   ├── kenaz/         # @futhark/kenaz - email (port 3141)
+│   ├── core/          # @futhark/core - design system, MCP server, cross-app helpers
+│   ├── kenaz/         # @futhark/kenaz - email + CRM (port 3141)
 │   ├── raido/         # @futhark/raido - tasks (port 3142)
 │   ├── dagaz/         # @futhark/dagaz - calendar (port 3143)
-│   └── laguz/         # @futhark/laguz - notes/vault (port 3144)
+│   └── laguz/         # @futhark/laguz - notes + vault (port 3144)
+├── deploy.sh          # Parallel build & deploy script
 ├── turbo.json         # Turborepo workspace config
 └── package.json       # Workspace root
 ```
@@ -76,9 +77,10 @@ futhark/
 Each app is an independent Electron process with:
 - React 18 + TypeScript renderer
 - Express API server on a dedicated port
-- SQLite database or in-memory index (Laguz watches markdown, others use better-sqlite3)
-- MCP server (stdio, for Claude Desktop)
+- SQLite database (better-sqlite3) or file-backed index (Laguz watches markdown on disk)
 - Shared design system via @futhark/core Tailwind preset
+
+A single unified MCP server (`@futhark/core/mcp/futhark-mcp.ts`) exposes 67 tools across all four apps via stdio for Claude Desktop. It talks to each app through their localhost HTTP APIs — no direct code imports between apps. The `@futhark/core` package also provides cross-app fetch helpers, shared types, and the design system.
 
 ---
 
