@@ -42,6 +42,9 @@ interface DagazAPI {
   getDayPlan(date?: string): Promise<{ events: any[]; tasks: any[]; date: string }>;
   getEventContext(eventId: string): Promise<any>;
 
+  // Pending Invites
+  getPendingInvites(): Promise<import('../shared/types').PendingInvite[]>;
+
   // MCP
   getMcpStatus(): Promise<any>;
 

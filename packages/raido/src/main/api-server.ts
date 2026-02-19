@@ -3,7 +3,7 @@ import type { TaskStore } from './task-store';
 
 export function startApiServer(store: TaskStore, port: number) {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
 
   // ── Today ─────────────────────────────────────────────────
 
@@ -188,6 +188,18 @@ export function startApiServer(store: TaskStore, port: number) {
     try {
       const ok = store.deleteAttachment(req.params.id, req.params.attachmentId);
       res.json({ success: ok });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/task/:id/attachment', (req, res) => {
+    try {
+      const { filename, data } = req.body;
+      if (!filename || !data) return res.status(400).json({ error: 'filename and data (base64) required' });
+      const buffer = Buffer.from(data, 'base64');
+      const att = store.addAttachment(req.params.id, filename, buffer, { source: 'upload' });
+      res.json({ attachment: att });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

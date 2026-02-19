@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useCallback, useState } from 'react';
-import type { CalendarEvent, OverlayEvent } from '../../shared/types';
+import type { CalendarEvent, OverlayEvent, PendingInvite } from '../../shared/types';
 import { EventBlock } from './EventBlock';
 import { isSameDay, formatTime, dateKey, getUse24HourClock } from '../lib/utils';
 import { useEventDrag, type DragMode } from '../hooks/useEventDrag';
@@ -8,6 +8,7 @@ interface Props {
   currentDate: Date;
   events: CalendarEvent[];
   overlayEvents?: OverlayEvent[];
+  pendingInvites?: PendingInvite[];
   selectedEvent: CalendarEvent | null;
   onSelectEvent: (event: CalendarEvent) => void;
   onCreateEvent: (start: Date, end: Date) => void;
@@ -88,7 +89,11 @@ function overlayToEvent(oe: OverlayEvent): CalendarEvent {
   };
 }
 
-export function DayView({ currentDate, events, overlayEvents = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP }: Props) {
+function timeOverlaps(s1: string, e1: string, s2: string, e2: string): boolean {
+  return new Date(s1).getTime() < new Date(e2).getTime() && new Date(s2).getTime() < new Date(e1).getTime();
+}
+
+export function DayView({ currentDate, events, overlayEvents = [], pendingInvites = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const today = useMemo(() => new Date(), []);
   const isToday = isSameDay(currentDate, today);
@@ -132,6 +137,26 @@ export function DayView({ currentDate, events, overlayEvents = [], selectedEvent
     const key = dateKey(currentDate);
     return overlayEvents.filter(oe => !oe.all_day && dateKey(new Date(oe.start_time)) === key);
   }, [overlayEvents, currentDate]);
+
+  const dayPendingInvites = useMemo(() => {
+    const key = dateKey(currentDate);
+    return pendingInvites.filter(inv =>
+      inv.startTime && inv.endTime && dateKey(new Date(inv.startTime)) === key
+    );
+  }, [pendingInvites, currentDate]);
+
+  const conflictingEventIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const inv of dayPendingInvites) {
+      if (!inv.startTime || !inv.endTime) continue;
+      for (const ev of timedEvents) {
+        if (timeOverlaps(inv.startTime, inv.endTime, ev.start_time, ev.end_time)) {
+          ids.add(ev.id);
+        }
+      }
+    }
+    return ids;
+  }, [dayPendingInvites, timedEvents]);
 
   // Unified layout: user + overlay events together
   const allLayouts = useMemo(() => {
@@ -178,6 +203,23 @@ export function DayView({ currentDate, events, overlayEvents = [], selectedEvent
     const timer = setInterval(update, 60_000);
     return () => clearInterval(timer);
   }, [isToday]);
+
+  const getInviteStyle = useCallback((startTime: string, endTime: string): React.CSSProperties => {
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    const startMins = start.getHours() * 60 + start.getMinutes();
+    let endMins = end.getHours() * 60 + end.getMinutes();
+    if (endMins <= startMins && end.getTime() > start.getTime()) endMins = 24 * 60;
+    const dur = Math.max(endMins - startMins, 15);
+    return {
+      position: 'absolute',
+      top: `${(startMins / 60) * HOUR_HEIGHT}px`,
+      height: `${Math.max((dur / 60) * HOUR_HEIGHT - 2, 18)}px`,
+      left: '2px', right: '2px',
+      zIndex: 8,
+      pointerEvents: 'none',
+    };
+  }, []);
 
   const handleTimeSlotClick = useCallback((e: React.MouseEvent) => {
     if (isDragging) return;
@@ -250,6 +292,39 @@ export function DayView({ currentDate, events, overlayEvents = [], selectedEvent
               );
             })}
 
+            {/* Pending invite ghost blocks */}
+            {dayPendingInvites.map(inv => {
+              if (!inv.startTime || !inv.endTime) return null;
+              const hasConflict = timedEvents.some(ev =>
+                timeOverlaps(inv.startTime!, inv.endTime!, ev.start_time, ev.end_time)
+              );
+              return (
+                <div key={`invite-${inv.threadId}`} style={getInviteStyle(inv.startTime, inv.endTime)}>
+                  <div
+                    className="h-full rounded-md px-1.5 py-0.5 text-[10px] leading-tight overflow-hidden"
+                    style={{
+                      backgroundColor: 'var(--accent-primary-rgb, 74 154 194 / 0.15)',
+                      border: '1.5px dashed var(--accent-primary, #4A9AC2)',
+                      opacity: 0.55,
+                    }}
+                  >
+                    <div className="flex items-center gap-1 truncate text-text-muted font-medium">
+                      <span>📨</span>
+                      <span className="truncate">{inv.title}</span>
+                      {hasConflict && <span className="flex-shrink-0">⚠️</span>}
+                    </div>
+                    <div className="truncate text-text-muted opacity-70">{formatTime(inv.startTime)}</div>
+                  </div>
+                  {hasConflict && (
+                    <div
+                      className="absolute inset-0 rounded-md pointer-events-none"
+                      style={{ backgroundColor: 'rgba(245, 158, 11, 0.06)' }}
+                    />
+                  )}
+                </div>
+              );
+            })}
+
             {/* User events */}
             {timedEvents.map(event => (
               <div
@@ -266,6 +341,12 @@ export function DayView({ currentDate, events, overlayEvents = [], selectedEvent
                   onRSVP={onRSVP}
                   onDragStart={onUpdateEvent ? (ev, mode, mouseY) => handleEventDragStart(ev, mode, mouseY) : undefined}
                 />
+                {conflictingEventIds.has(event.id) && (
+                  <div
+                    className="absolute top-1 right-1 w-3 h-3 rounded-full bg-amber-500/80 flex items-center justify-center text-[7px] text-white font-bold"
+                    title="Conflicts with a pending invite"
+                  >!</div>
+                )}
               </div>
             ))}
 

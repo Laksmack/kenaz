@@ -9,6 +9,7 @@ import { QuickCreate } from './components/QuickCreate';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthScreen } from './components/AuthScreen';
 import { useCalendar, useSync } from './hooks/useCalendar';
+import { usePendingInvites } from './hooks/usePendingInvites';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { isSameDay, formatDayHeader, dateKey, setUse24HourClock } from './lib/utils';
 import type { ViewType, CalendarEvent, AppConfig, CreateEventInput, OverlayPerson, OverlayEvent } from '../shared/types';
@@ -40,6 +41,12 @@ export default function App() {
   const weekDays = appConfig?.weekViewDays || 5;
   const { events: rawEvents, calendars, loading, refresh, fetchCalendars } = useCalendar(currentView, currentDate, weekDays as 5 | 7);
   const syncState = useSync();
+  const {
+    invites: pendingInvites,
+    isLoading: pendingInvitesLoading,
+    refresh: refreshPendingInvites,
+    dismissInvite: dismissPendingInvite,
+  } = usePendingInvites(appConfig?.pendingInviteCheckInterval);
 
   // Filter out declined events when setting is enabled
   const events = useMemo(() => {
@@ -462,6 +469,10 @@ export default function App() {
             todayEvents={todayEvents}
             currentView={currentView}
             onViewChange={setCurrentView}
+            pendingInvites={pendingInvites}
+            pendingInvitesLoading={pendingInvitesLoading}
+            onRefreshInvites={refreshPendingInvites}
+            onDismissInvite={dismissPendingInvite}
           >
             <PeopleOverlay
               people={overlayPeople}
@@ -587,6 +598,7 @@ export default function App() {
                 currentDate={currentDate}
                 events={events}
                 overlayEvents={overlayEvents}
+                pendingInvites={pendingInvites}
                 selectedEvent={selectedEvent}
                 onSelectEvent={setSelectedEvent}
                 onCreateEvent={(start, end) => openQuickCreate(start, end)}
@@ -600,6 +612,7 @@ export default function App() {
                 currentDate={currentDate}
                 events={events}
                 overlayEvents={overlayEvents}
+                pendingInvites={pendingInvites}
                 selectedEvent={selectedEvent}
                 onSelectEvent={setSelectedEvent}
                 onCreateEvent={(start, end) => openQuickCreate(start, end)}

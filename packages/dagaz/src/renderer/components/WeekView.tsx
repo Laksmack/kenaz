@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useCallback, useState } from 'react';
-import type { CalendarEvent, OverlayEvent } from '../../shared/types';
+import type { CalendarEvent, OverlayEvent, PendingInvite } from '../../shared/types';
 import { EventBlock } from './EventBlock';
 import { getWeekDates, isSameDay, formatTime, dateKey, getUse24HourClock } from '../lib/utils';
 import { useEventDrag, type DragMode } from '../hooks/useEventDrag';
@@ -8,12 +8,17 @@ interface Props {
   currentDate: Date;
   events: CalendarEvent[];
   overlayEvents?: OverlayEvent[];
+  pendingInvites?: PendingInvite[];
   selectedEvent: CalendarEvent | null;
   onSelectEvent: (event: CalendarEvent) => void;
   onCreateEvent: (start: Date, end: Date) => void;
   onUpdateEvent?: (event: CalendarEvent, newStart: Date, newEnd: Date) => void;
   onRSVP?: (eventId: string, response: 'accepted' | 'declined' | 'tentative') => void;
   weekDays: 5 | 7;
+}
+
+function timeOverlaps(s1: string, e1: string, s2: string, e2: string): boolean {
+  return new Date(s1).getTime() < new Date(e2).getTime() && new Date(s2).getTime() < new Date(e1).getTime();
 }
 
 const HOUR_HEIGHT = 60;
@@ -135,7 +140,7 @@ function overlayToEvent(oe: OverlayEvent): CalendarEvent {
   };
 }
 
-export function WeekView({ currentDate, events, overlayEvents = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP, weekDays }: Props) {
+export function WeekView({ currentDate, events, overlayEvents = [], pendingInvites = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP, weekDays }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const today = useMemo(() => new Date(), []);
   const weekDates = useMemo(() => getWeekDates(currentDate, weekDays), [currentDate, weekDays]);
@@ -200,6 +205,35 @@ export function WeekView({ currentDate, events, overlayEvents = [], selectedEven
     return map;
   }, [overlayEvents, weekDates]);
 
+  // Group pending invites by day
+  const invitesByDay = useMemo(() => {
+    const map = new Map<string, PendingInvite[]>();
+    for (const d of weekDates) map.set(dateKey(d), []);
+    for (const inv of pendingInvites) {
+      if (!inv.startTime || !inv.endTime) continue;
+      const key = dateKey(new Date(inv.startTime));
+      if (map.has(key)) map.get(key)!.push(inv);
+    }
+    return map;
+  }, [pendingInvites, weekDates]);
+
+  // Conflict detection: which confirmed event IDs overlap with pending invites
+  const conflictingEventIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const [key, dayData] of eventsByDay.entries()) {
+      const dayInvites = invitesByDay.get(key) || [];
+      for (const inv of dayInvites) {
+        if (!inv.startTime || !inv.endTime) continue;
+        for (const ev of dayData.timed) {
+          if (timeOverlaps(inv.startTime, inv.endTime, ev.start_time, ev.end_time)) {
+            ids.add(ev.id);
+          }
+        }
+      }
+    }
+    return ids;
+  }, [eventsByDay, invitesByDay]);
+
   // Unified layout: user events + overlay events in same column algorithm
   const layoutsByDay = useMemo(() => {
     const result = new Map<string, Map<string, EventLayout>>();
@@ -262,6 +296,23 @@ export function WeekView({ currentDate, events, overlayEvents = [], selectedEven
     const timer = setInterval(update, 60_000);
     return () => clearInterval(timer);
   }, [weekDates]);
+
+  const getInviteStyle = useCallback((startTime: string, endTime: string): React.CSSProperties => {
+    const start = new Date(startTime);
+    const end = new Date(endTime);
+    const startMins = start.getHours() * 60 + start.getMinutes();
+    let endMins = end.getHours() * 60 + end.getMinutes();
+    if (endMins <= startMins && end.getTime() > start.getTime()) endMins = 24 * 60;
+    const dur = Math.max(endMins - startMins, 15);
+    return {
+      position: 'absolute',
+      top: `${(startMins / 60) * HOUR_HEIGHT}px`,
+      height: `${Math.max((dur / 60) * HOUR_HEIGHT - 2, 18)}px`,
+      left: '2px', right: '2px',
+      zIndex: 8,
+      pointerEvents: 'none',
+    };
+  }, []);
 
   const handleTimeSlotClick = useCallback((dayDate: Date, e: React.MouseEvent) => {
     if (isDragging) return;
@@ -369,6 +420,38 @@ export function WeekView({ currentDate, events, overlayEvents = [], selectedEven
                   );
                 })}
 
+                {/* Pending invite ghost blocks */}
+                {(invitesByDay.get(key) || []).map(inv => {
+                  if (!inv.startTime || !inv.endTime) return null;
+                  const hasConflict = timedEvents.some(ev =>
+                    timeOverlaps(inv.startTime!, inv.endTime!, ev.start_time, ev.end_time)
+                  );
+                  return (
+                    <div key={`invite-${inv.threadId}`} style={getInviteStyle(inv.startTime, inv.endTime)}>
+                      <div
+                        className="h-full rounded-md px-1 py-0.5 text-[9px] leading-tight overflow-hidden"
+                        style={{
+                          backgroundColor: 'var(--accent-primary-rgb, 74 154 194 / 0.15)',
+                          border: '1.5px dashed var(--accent-primary, #4A9AC2)',
+                          opacity: 0.55,
+                        }}
+                      >
+                        <div className="flex items-center gap-0.5 truncate text-text-muted font-medium">
+                          <span>📨</span>
+                          <span className="truncate">{inv.title}</span>
+                          {hasConflict && <span className="flex-shrink-0">⚠️</span>}
+                        </div>
+                      </div>
+                      {hasConflict && (
+                        <div
+                          className="absolute inset-0 rounded-md pointer-events-none"
+                          style={{ backgroundColor: 'rgba(245, 158, 11, 0.06)' }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+
                 {/* User events */}
                 {timedEvents.map(event => (
                   <div
@@ -385,6 +468,12 @@ export function WeekView({ currentDate, events, overlayEvents = [], selectedEven
                       onRSVP={onRSVP}
                       onDragStart={onUpdateEvent ? (ev, mode, mouseY) => handleEventDragStart(ev, mode, mouseY, dayIdx) : undefined}
                     />
+                    {conflictingEventIds.has(event.id) && (
+                      <div
+                        className="absolute top-1 right-1 w-3 h-3 rounded-full bg-amber-500/80 flex items-center justify-center text-[7px] text-white font-bold z-20"
+                        title="Conflicts with a pending invite"
+                      >!</div>
+                    )}
                   </div>
                 ))}
 

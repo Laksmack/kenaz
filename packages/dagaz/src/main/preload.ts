@@ -79,6 +79,9 @@ const api = {
   // MCP
   getMcpStatus: () => ipcRenderer.invoke(IPC.MCP_STATUS),
 
+  // Pending Invites
+  getPendingInvites: () => ipcRenderer.invoke('pending-invites:list'),
+
   // Cross-app
   crossAppFetch: (url: string, options?: any) => ipcRenderer.invoke('cross-app:fetch', url, options),
 

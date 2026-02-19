@@ -103,22 +103,92 @@ async function initServices() {
 // ── MCP ─────────────────────────────────────────────────────
 // Unified Futhark MCP server installed to ~/.futhark/ on startup.
 
+// ── Pending Invites from Kenaz ──────────────────────────────
+
+const KENAZ_BASE = 'http://localhost:3141';
+const INVITE_SEARCH_QUERY = 'has:attachment filename:invite.ics OR filename:*.ics is:unread';
+
+interface KenazThread {
+  id: string;
+  subject?: string;
+  from?: string;
+  snippet?: string;
+  date?: string;
+}
+
+function parseInviteSubject(subject: string): { title: string; dateStr: string | null } {
+  const match = subject.match(/^(?:Updated )?[Ii]nvitation:\s*(.+?)\s+@\s+(.+)$/);
+  if (match) return { title: match[1].trim(), dateStr: match[2].trim() };
+  const simple = subject.match(/^(?:Updated )?[Ii]nvitation:\s*(.+)$/);
+  if (simple) return { title: simple[1].trim(), dateStr: null };
+  return { title: subject, dateStr: null };
+}
+
+function parseFrom(from: string): { name: string; email: string } {
+  const match = from.match(/^(.+?)\s*<(.+?)>$/);
+  if (match) return { name: match[1].trim(), email: match[2].trim() };
+  return { name: from, email: from };
+}
+
+async function getPendingInvites(): Promise<import('../shared/types').PendingInvite[]> {
+  try {
+    const res = await fetch(
+      `${KENAZ_BASE}/api/search?q=${encodeURIComponent(INVITE_SEARCH_QUERY)}`,
+      { signal: AbortSignal.timeout(5000) },
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const threads: KenazThread[] = (Array.isArray(data) ? data : data.threads || []);
+
+    return threads.map(t => {
+      const subject = t.subject || '(No subject)';
+      const { title, dateStr } = parseInviteSubject(subject);
+      const { name, email } = parseFrom(t.from || '');
+      let startTime: string | null = null;
+      let endTime: string | null = null;
+
+      if (dateStr) {
+        const parsed = chrono.parse(dateStr, new Date(), { forwardDate: true });
+        if (parsed.length > 0) {
+          startTime = parsed[0].start.date().toISOString();
+          endTime = parsed[0].end
+            ? parsed[0].end.date().toISOString()
+            : new Date(parsed[0].start.date().getTime() + 60 * 60 * 1000).toISOString();
+        }
+      }
+
+      return {
+        threadId: t.id,
+        subject,
+        title,
+        organizer: name,
+        organizerEmail: email,
+        startTime,
+        endTime,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 // ── Badge Management ─────────────────────────────────────────
 
-function updateDockBadge() {
+async function updateDockBadge() {
   if (process.platform !== 'darwin' || !app.dock) return;
   const appConfig = config.get();
   if (!appConfig.dockBadgeEnabled) {
     app.dock.setBadge('');
     return;
   }
-  const count = cache.getUpcomingEventCount(15);
-  app.dock.setBadge(count > 0 ? count.toString() : '');
+  const invites = await getPendingInvites();
+  app.dock.setBadge(invites.length > 0 ? invites.length.toString() : '');
 }
 
 function startBadgeMonitor() {
   updateDockBadge();
-  badgeInterval = setInterval(updateDockBadge, 60000);
+  const interval = config.get().pendingInviteCheckInterval || 300000;
+  badgeInterval = setInterval(updateDockBadge, interval);
 }
 
 // ── Dynamic Dock Icon ───────────────────────────────────────
@@ -549,6 +619,11 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.OVERLAY_SEARCH_CONTACTS, async (_event, query: string) => {
     if (!query || query.length < 2) return [];
     return cache.searchContacts(query, 8);
+  });
+
+  // Pending Invites (from Kenaz)
+  ipcMain.handle(IPC.PENDING_INVITES, async () => {
+    return getPendingInvites();
   });
 
   // Cross-app

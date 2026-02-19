@@ -1,0 +1,19 @@
+---
+description: Bump MCP_VERSION when MCP tools change
+globs: packages/core/mcp/futhark-mcp.ts
+alwaysApply: false
+---
+
+# MCP Version Gate
+
+When adding, removing, or changing tool definitions in `packages/core/mcp/futhark-mcp.ts`, you **must** also bump `MCP_VERSION` in `packages/core/mcp/installer.ts`.
+
+The installer at `~/.futhark/` compares this version against `~/.futhark/version.json` to decide whether to copy the new bundle. If the version doesn't change, the updated tools will never reach Claude Desktop — the installer silently skips the copy.
+
+## Steps
+
+1. Edit tools in `packages/core/mcp/futhark-mcp.ts`
+2. Bump `MCP_VERSION` in `packages/core/mcp/installer.ts` (semver: minor for new/removed tools, patch for tool description/schema changes)
+3. Bump version in `packages/core/package.json`
+4. Rebuild: `npm run build:mcp -w @futhark/core`
+5. The bundle gets installed to `~/.futhark/mcp-server.js` on next Futhark app launch, or manually via `cp packages/core/dist/mcp/futhark-mcp.js ~/.futhark/mcp-server.js`

@@ -247,7 +247,22 @@ export const IPC = {
   OVERLAY_FETCH: 'overlay:fetch',
   OVERLAY_CHECK: 'overlay:check',
   OVERLAY_SEARCH_CONTACTS: 'overlay:search-contacts',
+
+  // Pending Invites (from Kenaz)
+  PENDING_INVITES: 'pending-invites:list',
 } as const;
+
+// ── Pending Invites ─────────────────────────────────────────
+
+export interface PendingInvite {
+  threadId: string;
+  subject: string;
+  title: string;
+  organizer: string;
+  organizerEmail: string;
+  startTime: string | null;
+  endTime: string | null;
+}
 
 // ── Config ──────────────────────────────────────────────────
 
@@ -264,6 +279,7 @@ export interface AppConfig {
   notificationsEnabled: boolean;
   reminderMinutes: number;
   dockBadgeEnabled: boolean;
+  pendingInviteCheckInterval: number;
   timeZones: string[];
   use24HourClock: boolean;
   dynamicDockIcon: boolean;
@@ -286,6 +302,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   notificationsEnabled: false,
   reminderMinutes: 15,
   dockBadgeEnabled: false,
+  pendingInviteCheckInterval: 300000,
   timeZones: [],
   use24HourClock: false,
   dynamicDockIcon: false,

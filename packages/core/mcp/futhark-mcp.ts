@@ -1108,6 +1108,44 @@ server.tool(
   }
 );
 
+// ── Attachments ──
+
+server.tool(
+  'raido_attach_file',
+  'Attach a local file to an existing task. Accepts any file path on disk.',
+  {
+    task_id: z.string().describe('Task ID to attach the file to'),
+    file_path: z.string().describe('Absolute path to the file on disk'),
+  },
+  async ({ task_id, file_path }) => {
+    if (!existsSync(file_path)) throw new Error(`File not found: ${file_path}`);
+    const stat = statSync(file_path);
+    if (!stat.isFile()) throw new Error(`Not a file: ${file_path}`);
+    if (stat.size > 50 * 1024 * 1024) throw new Error(`File too large (${(stat.size / 1024 / 1024).toFixed(1)} MB). Max 50 MB.`);
+    const buffer = readFileSync(file_path);
+    const filename = basename(file_path);
+    const data = await api('raido', `/api/task/${task_id}/attachment`, {
+      method: 'POST',
+      body: JSON.stringify({ filename, data: buffer.toString('base64') }),
+    });
+    return { content: [{ type: 'text', text: `Attached "${filename}" (${(stat.size / 1024).toFixed(1)} KB) to task ${task_id}\n${JSON.stringify(data.attachment, null, 2)}` }] };
+  }
+);
+
+server.tool(
+  'raido_list_attachments',
+  'List all file attachments on a task',
+  {
+    task_id: z.string().describe('Task ID'),
+  },
+  async ({ task_id }) => {
+    const data = await api('raido', `/api/task/${task_id}/attachments`);
+    const atts = data.attachments || [];
+    if (atts.length === 0) return { content: [{ type: 'text', text: 'No attachments on this task.' }] };
+    return { content: [{ type: 'text', text: JSON.stringify(atts, null, 2) }] };
+  }
+);
+
 // ═══════════════════════════════════════════════════════════
 // LAGUZ — Notes & Vault (port 3144)
 // ═══════════════════════════════════════════════════════════

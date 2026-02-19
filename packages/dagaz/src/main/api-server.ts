@@ -207,6 +207,15 @@ export function startApiServer(
         }
       }
 
+      // Auto-add organizer to attendees so they appear in the guest list
+      const selfEmail = cache.getPrimaryCalendarId();
+      if (selfEmail && parsed.attendees && parsed.attendees.length > 0) {
+        const lower = selfEmail.toLowerCase();
+        if (!parsed.attendees.some(e => e.toLowerCase() === lower)) {
+          parsed.attendees.push(selfEmail);
+        }
+      }
+
       if (connectivity.isOnline && google.isAuthorized()) {
         const result = await google.createEvent(calendarId, parsed);
         const localId = cache.upsertEvent(result);

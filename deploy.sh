@@ -25,22 +25,15 @@ LAUNCH=false
 MCP_ONLY=false
 SERIAL=false
 
-# Parse args
-TARGETS=()
-for arg in "$@"; do
-  case "$arg" in
-    --launch)   LAUNCH=true ;;
-    --mcp-only) MCP_ONLY=true ;;
-    --serial)   SERIAL=true ;;
-    all)        TARGETS=("${APPS[@]}") ;;
-    *)          TARGETS+=("$arg") ;;
-  esac
-done
-
-if [ ${#TARGETS[@]} -eq 0 ] && [ "$MCP_ONLY" = false ]; then
+show_help() {
   echo "Usage: ./deploy.sh [all | app1 app2 ...] [--launch] [--mcp-only] [--serial]"
   echo ""
   echo "Apps: kenaz, raido, dagaz, laguz"
+  echo ""
+  echo "Flags:"
+  echo "  --launch     Open apps in /Applications/ after successful build"
+  echo "  --mcp-only   Only rebuild the unified MCP server (no app builds)"
+  echo "  --serial     Build sequentially instead of in parallel"
   echo ""
   echo "Examples:"
   echo "  ./deploy.sh all              Build all apps in parallel"
@@ -48,7 +41,45 @@ if [ ${#TARGETS[@]} -eq 0 ] && [ "$MCP_ONLY" = false ]; then
   echo "  ./deploy.sh kenaz            Build and install Kenaz only"
   echo "  ./deploy.sh kenaz --launch   Build, install, and open Kenaz"
   echo "  ./deploy.sh --mcp-only       Only rebuild the unified MCP server"
-  exit 1
+  exit 0
+}
+
+is_valid_app() {
+  for a in "${APPS[@]}"; do
+    [ "$a" = "$1" ] && return 0
+  done
+  return 1
+}
+
+# Parse args — reject unknown flags, validate app names
+TARGETS=()
+for arg in "$@"; do
+  case "$arg" in
+    -h|--help)  show_help ;;
+    --launch)   LAUNCH=true ;;
+    --mcp-only) MCP_ONLY=true ;;
+    --serial)   SERIAL=true ;;
+    --*)
+      echo "Error: Unknown flag '$arg'"
+      echo "Run ./deploy.sh --help for usage."
+      exit 1
+      ;;
+    all)        TARGETS=("${APPS[@]}") ;;
+    *)
+      if is_valid_app "$arg"; then
+        TARGETS+=("$arg")
+      else
+        echo "Error: Unknown app '$arg'"
+        echo "Valid apps: ${APPS[*]}"
+        echo "Run ./deploy.sh --help for usage."
+        exit 1
+      fi
+      ;;
+  esac
+done
+
+if [ ${#TARGETS[@]} -eq 0 ] && [ "$MCP_ONLY" = false ]; then
+  show_help
 fi
 
 get_display_name() {

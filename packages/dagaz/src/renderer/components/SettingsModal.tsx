@@ -57,7 +57,10 @@ export function SettingsModal({ onClose }: Props) {
               />
             </label>
             <label className="flex items-center justify-between py-1.5">
-              <span className="text-xs text-text-secondary">Dock badge</span>
+              <div>
+                <span className="text-xs text-text-secondary block">Dock badge (pending invites)</span>
+                <span className="text-[10px] text-text-muted">Show unresponded invite count on dock icon</span>
+              </div>
               <ToggleSwitch
                 checked={config.dockBadgeEnabled}
                 onChange={v => updateConfig({ dockBadgeEnabled: v })}
