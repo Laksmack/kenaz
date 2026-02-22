@@ -48,11 +48,18 @@ if [ "$LOCAL" = "$REMOTE" ]; then
   exit 0
 fi
 
+git pull --quiet
+
+# Check if any app code actually changed (skip admin-only or docs-only commits)
+CHANGED=$(git diff --name-only "$LOCAL" "$REMOTE" -- packages/ signing/ package.json package-lock.json)
+if [ -z "$CHANGED" ]; then
+  echo "$(date '+%Y-%m-%d %H:%M:%S') — pulled but no app changes, skipping build"
+  exit 0
+fi
+
 echo ""
 echo "━━━ Build Runner: $(date '+%Y-%m-%d %H:%M:%S') ━━━"
 echo "  new commits detected ($LOCAL → $REMOTE)"
-
-git pull --quiet
 
 # Load notarization credentials
 if [ -f "$REPO_ROOT/.env.notarize" ]; then
