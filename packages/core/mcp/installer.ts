@@ -38,7 +38,7 @@ const LEGACY_ENTRIES = ['kenaz', 'raido', 'dagaz', 'laguz'];
 
 // The version embedded in the built MCP server bundle.
 // Bump this when the tool surface changes.
-const MCP_VERSION = '1.1.0';
+const MCP_VERSION = '1.5.4';
 
 export interface InstallerOptions {
   /** Path to the built futhark-mcp.js bundle (caller resolves this based on dev vs packaged) */

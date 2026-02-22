@@ -4,11 +4,11 @@ import type { GmailService } from './gmail';
 import type { HubSpotService } from './hubspot';
 import type { ViewStore, RuleStore } from './stores';
 import type { View, Rule } from '../shared/types';
-
 import type { CalendarService } from './calendar';
 import type { ConfigStore } from './config';
+import type { CacheStore } from './cache-store';
 
-export function startApiServer(gmail: GmailService, hubspot: HubSpotService, port: number, viewStore?: ViewStore, ruleStore?: RuleStore, calendar?: CalendarService, configStore?: ConfigStore, getMainWindow?: () => import('electron').BrowserWindow | null) {
+export function startApiServer(gmail: GmailService, hubspot: HubSpotService, port: number, viewStore?: ViewStore, ruleStore?: RuleStore, calendar?: CalendarService, configStore?: ConfigStore, getMainWindow?: () => import('electron').BrowserWindow | null, cacheStore?: CacheStore) {
   const app = express();
   app.use(express.json({ limit: '50mb' }));
 
@@ -56,6 +56,21 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
       const q = (req.query.q as string) || '';
       const result = await gmail.fetchThreads(q, 50);
       res.json({ threads: result.threads });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Pending Invites (from local cache) ─────────────────────
+
+  app.get('/api/pending-invites', (_req, res) => {
+    if (!cacheStore) {
+      res.status(503).json({ error: 'Cache not available' });
+      return;
+    }
+    try {
+      const invites = cacheStore.getPendingInvites();
+      res.json({ invites });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -131,6 +146,7 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
 
   app.post('/api/archive/:id', async (req, res) => {
     try {
+      cacheStore?.updateThreadLabels(req.params.id, [], ['INBOX']);
       await gmail.archiveThread(req.params.id);
       res.json({ success: true });
     } catch (e: any) {
@@ -153,6 +169,7 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
       if (!Array.isArray(threadIds)) {
         return res.status(400).json({ error: 'threadIds must be an array' });
       }
+      for (const id of threadIds) cacheStore?.updateThreadLabels(id, [], ['INBOX']);
       await Promise.all(threadIds.map((id: string) => gmail.archiveThread(id)));
       res.json({ success: true, archived: threadIds.length });
     } catch (e: any) {

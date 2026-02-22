@@ -100,9 +100,9 @@ export function startApiServer(store: TaskStore, port: number) {
 
   app.post('/api/task/:id/complete', (req, res) => {
     try {
-      const task = store.completeTask(req.params.id);
-      if (!task) return res.status(404).json({ error: 'Task not found' });
-      res.json(task);
+      const result = store.completeTask(req.params.id);
+      if (!result.task) return res.status(404).json({ error: 'Task not found' });
+      res.json(result);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
@@ -158,6 +158,47 @@ export function startApiServer(store: TaskStore, port: number) {
     try {
       const stats = store.getStats();
       res.json(stats);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Checklist Items ──────────────────────────────────────────
+
+  app.get('/api/task/:id/checklist', (req, res) => {
+    try {
+      const items = store.getChecklistItems(req.params.id);
+      res.json({ items });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/task/:id/checklist', (req, res) => {
+    try {
+      const { title } = req.body;
+      if (!title) return res.status(400).json({ error: 'title required' });
+      const item = store.addChecklistItem(req.params.id, title);
+      res.json(item);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put('/api/checklist/:id', (req, res) => {
+    try {
+      const item = store.updateChecklistItem(req.params.id, req.body);
+      if (!item) return res.status(404).json({ error: 'Item not found' });
+      res.json(item);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete('/api/checklist/:id', (req, res) => {
+    try {
+      const ok = store.deleteChecklistItem(req.params.id);
+      res.json({ success: ok });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

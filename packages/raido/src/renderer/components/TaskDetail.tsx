@@ -1,8 +1,17 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { marked } from 'marked';
-import type { Task, TaskAttachment } from '../../shared/types';
+import type { Task, TaskAttachment, ChecklistItem } from '../../shared/types';
 import { extractGroup } from '../../shared/types';
 import { cn, isOverdue, isToday, formatDateLabel } from '../lib/utils';
+
+const RECURRENCE_OPTIONS = [
+  { value: '', label: 'None' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekdays', label: 'Weekdays' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'biweekly', label: 'Biweekly' },
+  { value: 'monthly', label: 'Monthly' },
+] as const;
 
 // Configure marked for a clean, safe output
 marked.setOptions({
@@ -24,6 +33,10 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
   const [editingNotes, setEditingNotes] = useState(false);
   const [tagInput, setTagInput] = useState('');
   const [attachments, setAttachments] = useState<TaskAttachment[]>([]);
+  const [checklist, setChecklist] = useState<ChecklistItem[]>([]);
+  const [newItemTitle, setNewItemTitle] = useState('');
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editingItemTitle, setEditingItemTitle] = useState('');
 
   useEffect(() => {
     if (task) {
@@ -31,9 +44,11 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
       setNotes(task.notes || '');
       setEditingTitle(false);
       setEditingNotes(false);
+      setChecklist(task.checklist || []);
       window.raido.getAttachments(task.id).then(setAttachments).catch(() => setAttachments([]));
     } else {
       setAttachments([]);
+      setChecklist([]);
     }
   }, [task?.id]);
 
@@ -214,6 +229,23 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
               <span className="text-[10px] text-text-muted italic">No date — task is in Inbox</span>
             )}
           </div>
+
+          {/* Recurrence */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-text-muted">Repeat:</span>
+            <select
+              value={task.recurrence || ''}
+              onChange={(e) => onUpdate(task.id, { recurrence: e.target.value || null } as any)}
+              className="bg-bg-tertiary border border-border-subtle rounded px-2 py-1 outline-none text-text-secondary text-xs"
+            >
+              {RECURRENCE_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+            {task.recurrence && (
+              <span className="text-[11px] text-accent-primary">🔁</span>
+            )}
+          </div>
         </div>
 
         {/* Tags */}
@@ -264,9 +296,24 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
         )}
 
         {/* Attachments */}
-        {attachments.length > 0 && (
-          <div className="mt-3 ml-9">
-            <div className="text-[10px] text-text-muted uppercase tracking-wider mb-1.5">Attachments</div>
+        <div className="mt-3 ml-9">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[10px] text-text-muted uppercase tracking-wider">Attachments</span>
+            <button
+              onClick={async () => {
+                const att = await window.raido.addAttachment(task.id);
+                if (att) setAttachments(prev => [...prev, att]);
+              }}
+              className="text-[10px] flex items-center gap-0.5 text-text-muted hover:text-accent-primary transition-colors"
+              title="Attach file"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+              </svg>
+              <span>Attach</span>
+            </button>
+          </div>
+          {attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {attachments.map(att => (
                 <div key={att.id} className="group flex items-center gap-1.5 text-[11px] px-2 py-1 rounded bg-bg-tertiary border border-border-subtle">
@@ -294,9 +341,107 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
+
+      {/* Checklist */}
+      {(checklist.length > 0 || task.status === 'open') && (
+        <div className="px-6 py-3 border-b border-border-subtle">
+          <div className="text-[10px] text-text-muted uppercase tracking-wider mb-2">
+            Checklist
+            {checklist.length > 0 && (
+              <span className="ml-1.5 normal-case tracking-normal">
+                ({checklist.filter(i => i.completed).length}/{checklist.length})
+              </span>
+            )}
+          </div>
+          <div className="space-y-1">
+            {checklist.map(item => (
+              <div key={item.id} className="group flex items-center gap-2 py-0.5">
+                <button
+                  onClick={async () => {
+                    const updated = await window.raido.updateChecklistItem(item.id, { completed: !item.completed });
+                    if (updated) setChecklist(prev => prev.map(i => i.id === item.id ? updated : i));
+                  }}
+                  className={cn(
+                    'w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors',
+                    item.completed
+                      ? 'border-accent-primary bg-accent-primary/20'
+                      : 'border-[#3a3228] hover:border-accent-primary'
+                  )}
+                >
+                  {item.completed && (
+                    <svg className="w-2.5 h-2.5 text-accent-primary" viewBox="0 0 16 16" fill="currentColor">
+                      <path d="M6.5 11.5L3 8l1-1 2.5 2.5 5-5 1 1-6 6z" />
+                    </svg>
+                  )}
+                </button>
+                {editingItemId === item.id ? (
+                  <input
+                    className="flex-1 bg-transparent border-none outline-none text-xs text-text-primary"
+                    value={editingItemTitle}
+                    onChange={(e) => setEditingItemTitle(e.target.value)}
+                    onBlur={async () => {
+                      if (editingItemTitle.trim() && editingItemTitle !== item.title) {
+                        const updated = await window.raido.updateChecklistItem(item.id, { title: editingItemTitle.trim() });
+                        if (updated) setChecklist(prev => prev.map(i => i.id === item.id ? updated : i));
+                      }
+                      setEditingItemId(null);
+                    }}
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                      if (e.key === 'Escape') setEditingItemId(null);
+                    }}
+                    autoFocus
+                  />
+                ) : (
+                  <span
+                    className={cn(
+                      'flex-1 text-xs cursor-text',
+                      item.completed && 'line-through text-text-muted'
+                    )}
+                    onClick={() => { setEditingItemId(item.id); setEditingItemTitle(item.title); }}
+                  >
+                    {item.title}
+                  </span>
+                )}
+                <button
+                  onClick={async () => {
+                    await window.raido.deleteChecklistItem(item.id);
+                    setChecklist(prev => prev.filter(i => i.id !== item.id));
+                  }}
+                  className="opacity-0 group-hover:opacity-100 text-text-muted hover:text-accent-danger transition-all p-0.5"
+                >
+                  <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+          {task.status === 'open' && (
+            <div className="flex items-center gap-2 mt-1.5">
+              <span className="w-4 h-4 flex items-center justify-center text-text-muted text-xs">+</span>
+              <input
+                type="text"
+                value={newItemTitle}
+                onChange={(e) => setNewItemTitle(e.target.value)}
+                onKeyDown={async (e) => {
+                  if (e.key === 'Enter' && newItemTitle.trim()) {
+                    const item = await window.raido.addChecklistItem(task.id, newItemTitle.trim());
+                    setChecklist(prev => [...prev, item]);
+                    setNewItemTitle('');
+                  }
+                  if (e.key === 'Escape') setNewItemTitle('');
+                }}
+                placeholder="Add item..."
+                className="flex-1 bg-transparent border-none outline-none text-xs text-text-muted placeholder-text-muted/50"
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Notes */}
       <div className="flex-1 overflow-y-auto px-6 py-4 scrollbar-hide">

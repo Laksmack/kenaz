@@ -104,7 +104,7 @@ function readFileAsAttachment(filePath: string): { filename: string; mimeType: s
 
 const server = new McpServer({
   name: 'futhark',
-  version: '1.0.1',
+  version: '1.5.4',
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -113,16 +113,26 @@ const server = new McpServer({
 
 server.tool(
   'futhark_status',
-  'Check which Futhark apps are currently running. Returns reachability status for Kenaz (email), Raidō (tasks), Dagaz (calendar), and Laguz (notes).',
+  'Check which Futhark apps are currently running. Returns reachability status for Kenaz (email), Raidō (tasks), Dagaz (calendar), and Laguz (notes). Also returns vault path for Laguz if running.',
   {},
   async () => {
     const results = await Promise.all(
-      (Object.keys(APPS) as AppName[]).map(async (app) => ({
-        app: APPS[app].name,
-        description: APPS[app].desc,
-        port: portFor(app),
-        running: await isReachable(app),
-      }))
+      (Object.keys(APPS) as AppName[]).map(async (app) => {
+        const running = await isReachable(app);
+        const entry: any = {
+          app: APPS[app].name,
+          description: APPS[app].desc,
+          port: portFor(app),
+          running,
+        };
+        if (app === 'laguz' && running) {
+          try {
+            const health = await api('laguz', '/api/health');
+            if (health.vault_path) entry.vault_path = health.vault_path;
+          } catch { /* ignore */ }
+        }
+        return entry;
+      })
     );
     return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
   }
@@ -274,19 +284,27 @@ server.tool(
   async (params) => {
     const { attachment_paths, ...emailParams } = params;
     const payload: any = { ...emailParams };
+    let attachmentMeta: { filename: string; size_bytes: number }[] = [];
 
     if (attachment_paths && attachment_paths.length > 0) {
-      payload.attachments = attachment_paths.map(readFileAsAttachment);
+      const attachments = attachment_paths.map(readFileAsAttachment);
+      attachmentMeta = attachments.map(a => ({ filename: a.filename, size_bytes: a.size }));
+      payload.attachments = attachments;
     }
 
     const data = await api('kenaz', '/api/draft', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-    const attInfo = payload.attachments
-      ? `\nAttachments: ${payload.attachments.map((a: any) => `${a.filename} (${(a.size / 1024).toFixed(1)} KB)`).join(', ')}`
-      : '';
-    return { content: [{ type: 'text', text: `Draft created: ${data.draftId}${attInfo}` }] };
+
+    const result: any = {
+      drafted: true,
+      draft_id: data.draftId,
+      subject: params.subject,
+      to: params.to,
+    };
+    if (attachmentMeta.length > 0) result.attachments = attachmentMeta;
+    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
   }
 );
 
@@ -306,19 +324,28 @@ server.tool(
   async (params) => {
     const { attachment_paths, ...emailParams } = params;
     const payload: any = { ...emailParams };
+    let attachmentMeta: { filename: string; size_bytes: number }[] = [];
 
     if (attachment_paths && attachment_paths.length > 0) {
-      payload.attachments = attachment_paths.map(readFileAsAttachment);
+      const attachments = attachment_paths.map(readFileAsAttachment);
+      attachmentMeta = attachments.map(a => ({ filename: a.filename, size_bytes: a.size }));
+      payload.attachments = attachments;
     }
 
     const data = await api('kenaz', '/api/send', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
-    const attInfo = payload.attachments
-      ? `\nAttachments: ${payload.attachments.map((a: any) => `${a.filename} (${(a.size / 1024).toFixed(1)} KB)`).join(', ')}`
-      : '';
-    return { content: [{ type: 'text', text: `Email sent. Message ID: ${data.id}, Thread ID: ${data.threadId}${attInfo}` }] };
+
+    const result: any = {
+      sent: true,
+      message_id: data.id,
+      thread_id: data.threadId,
+      subject: params.subject,
+      to: params.to,
+    };
+    if (attachmentMeta.length > 0) result.attachments = attachmentMeta;
+    return { content: [{ type: 'text', text: JSON.stringify(result) }] };
   }
 );
 
@@ -999,6 +1026,7 @@ server.tool(
     due_date: z.string().optional().describe('Due date (YYYY-MM-DD). Tasks without a due date go to Inbox.'),
     tags: z.array(z.string()).optional().describe('Tags to apply'),
     priority: z.number().min(0).max(3).optional().describe('Priority: 0=none, 1=low, 2=medium, 3=high'),
+    recurrence: z.enum(['daily', 'weekdays', 'weekly', 'biweekly', 'monthly']).optional().describe('Repeat pattern. When completed, a new instance is auto-created with the next due date.'),
     kenaz_thread_id: z.string().optional().describe('Linked Kenaz email thread ID'),
     hubspot_deal_id: z.string().optional().describe('Linked HubSpot deal ID'),
     vault_path: z.string().optional().describe('Linked Laguz vault path'),
@@ -1023,6 +1051,7 @@ server.tool(
     completed: z.boolean().optional().describe('Mark as completed'),
     canceled: z.boolean().optional().describe('Mark as canceled'),
     priority: z.number().min(0).max(3).optional(),
+    recurrence: z.enum(['daily', 'weekdays', 'weekly', 'biweekly', 'monthly']).nullable().optional().describe('Set or clear repeat pattern'),
     tags: z.array(z.string()).optional().describe('Replace tags'),
   },
   async ({ id, completed, canceled, ...updates }) => {
@@ -1146,6 +1175,53 @@ server.tool(
   }
 );
 
+// ── Checklist Items ──
+
+server.tool(
+  'raido_add_checklist_item',
+  'Add a checklist item (sub-step) to an existing task',
+  {
+    task_id: z.string().describe('Task ID'),
+    title: z.string().describe('Checklist item text'),
+  },
+  async ({ task_id, title }) => {
+    const data = await api('raido', `/api/task/${task_id}/checklist`, {
+      method: 'POST',
+      body: JSON.stringify({ title }),
+    });
+    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+server.tool(
+  'raido_update_checklist_item',
+  'Update a checklist item (toggle completed, edit title)',
+  {
+    item_id: z.string().describe('Checklist item ID'),
+    title: z.string().optional().describe('New title'),
+    completed: z.boolean().optional().describe('Toggle completed state'),
+  },
+  async ({ item_id, ...updates }) => {
+    const data = await api('raido', `/api/checklist/${item_id}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    });
+    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+server.tool(
+  'raido_delete_checklist_item',
+  'Delete a checklist item from a task',
+  {
+    item_id: z.string().describe('Checklist item ID'),
+  },
+  async ({ item_id }) => {
+    const data = await api('raido', `/api/checklist/${item_id}`, { method: 'DELETE' });
+    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
 // ═══════════════════════════════════════════════════════════
 // LAGUZ — Notes & Vault (port 3144)
 // ═══════════════════════════════════════════════════════════
@@ -1241,12 +1317,333 @@ server.tool(
   }
 );
 
+server.tool(
+  'laguz_get_fields',
+  'Extract specific fields from a markdown note without loading the full file. Checks YAML frontmatter first, then falls back to markdown section headers (## Next Steps → next_steps). Frontmatter wins if a field appears in both.',
+  {
+    path: z.string().describe('Vault-relative path, e.g. "meetings/Tesla/2026-02-20 - EBIF AI Session.md"'),
+    fields: z.array(z.string()).describe('Field names to extract. Matched against frontmatter keys and section headers via snake_case normalization.'),
+  },
+  async ({ path: notePath, fields }) => {
+    const data = await api('laguz', '/api/note/fields', {
+      method: 'POST',
+      body: JSON.stringify({ path: notePath, fields }),
+    });
+    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+server.tool(
+  'laguz_update_frontmatter',
+  'Update specific YAML frontmatter fields in a markdown note without rewriting the entire file. Set a field to null to remove it. Re-indexes after update.',
+  {
+    path: z.string().describe('Vault-relative path, e.g. "meetings/2026-02-17 - Tesla Sync.md"'),
+    fields: z.record(z.any()).describe('Key-value pairs to set or update in the frontmatter. Set a value to null to remove the field.'),
+  },
+  async ({ path: notePath, fields }) => {
+    const data = await api('laguz', '/api/note/frontmatter', {
+      method: 'POST',
+      body: JSON.stringify({ path: notePath, fields }),
+    });
+    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+// ── Laguz: PDF ──────────────────────────────────────────────
+
+server.tool(
+  'laguz_read_pdf',
+  'Extract full text from a PDF. Returns page-by-page text content for analysis. Accepts vault-relative or absolute paths (e.g. from kenaz_download_attachment).',
+  {
+    path: z.string().describe('Path to the PDF — vault-relative (e.g. "contracts/Acme NDA.pdf") or absolute (e.g. "/Users/.../Downloads/doc.pdf")'),
+  },
+  async ({ path: pdfPath }) => {
+    const data = await api('laguz', `/api/pdf/text?path=${encodeURIComponent(pdfPath)}`);
+    return { content: [{ type: 'text', text: data.text || '[No text extracted]' }] };
+  }
+);
+
+server.tool(
+  'laguz_get_pdf_info',
+  'Get PDF metadata: page count, title, author, dates. Accepts vault-relative or absolute paths.',
+  {
+    path: z.string().describe('Path to the PDF — vault-relative or absolute'),
+  },
+  async ({ path: pdfPath }) => {
+    const data = await api('laguz', `/api/pdf/info?path=${encodeURIComponent(pdfPath)}`);
+    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+server.tool(
+  'laguz_get_pdf_fields',
+  'Detect blank fields in a PDF (e.g. [Company Name], ___, [Date]). Returns field IDs, labels, and page positions for filling. Accepts vault-relative or absolute paths.',
+  {
+    path: z.string().describe('Path to the PDF — vault-relative or absolute'),
+  },
+  async ({ path: pdfPath }) => {
+    const data = await api('laguz', `/api/pdf/fields?path=${encodeURIComponent(pdfPath)}`);
+    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+server.tool(
+  'laguz_add_annotation',
+  'Add an annotation to a PDF (highlight, underline, text note, or text box). Coordinates use PDF coordinate system (bottom-left origin). Accepts vault-relative or absolute paths.',
+  {
+    path: z.string().describe('Path to the PDF — vault-relative or absolute'),
+    page: z.number().describe('Zero-based page index'),
+    type: z.enum(['highlight', 'underline', 'text-note', 'text-box']).describe('Annotation type'),
+    rect: z.object({
+      x: z.number(),
+      y: z.number(),
+      width: z.number(),
+      height: z.number(),
+    }).describe('Bounding rectangle in PDF coordinates'),
+    text: z.string().optional().describe('Text content for text-note or text-box annotations'),
+    color: z.string().optional().describe('Hex color, defaults to teal (#4AA89A) for Claude annotations'),
+  },
+  async ({ path: pdfPath, page, type, rect, text, color }) => {
+    await api('laguz', '/api/pdf/annotate', {
+      method: 'POST',
+      body: JSON.stringify({
+        path: pdfPath,
+        annotation: {
+          id: `ann-${Date.now()}`,
+          type,
+          page,
+          rect,
+          text,
+          color: color || '#4AA89A',
+          author: 'claude',
+        },
+      }),
+    });
+    return { content: [{ type: 'text', text: `Annotation added to page ${page + 1}` }] };
+  }
+);
+
+server.tool(
+  'laguz_fill_field',
+  'Fill a detected field in a PDF with a text value. Places text at the specified coordinates. Accepts vault-relative or absolute paths.',
+  {
+    path: z.string().describe('Path to the PDF — vault-relative or absolute'),
+    field_rect: z.object({
+      page: z.number().describe('Zero-based page index'),
+      x: z.number(),
+      y: z.number(),
+      width: z.number(),
+      height: z.number(),
+    }).describe('Position from field detection or manual coordinates'),
+    value: z.string().describe('Text value to fill in'),
+  },
+  async ({ path: pdfPath, field_rect, value }) => {
+    await api('laguz', '/api/pdf/fill-field', {
+      method: 'POST',
+      body: JSON.stringify({ path: pdfPath, field_rect, value }),
+    });
+    return { content: [{ type: 'text', text: `Field filled with "${value}" on page ${field_rect.page + 1}` }] };
+  }
+);
+
+server.tool(
+  'laguz_place_signature',
+  'Stamp the user\'s stored signature onto a PDF page at the specified position. Accepts vault-relative or absolute paths. Typical cross-app workflow: kenaz_download_attachment → laguz_fill_field → laguz_place_signature → laguz_flatten_pdf → kenaz_draft_email with attachment.',
+  {
+    path: z.string().describe('Path to the PDF — vault-relative or absolute'),
+    page: z.number().describe('Zero-based page index'),
+    rect: z.object({
+      x: z.number(),
+      y: z.number(),
+      width: z.number(),
+      height: z.number(),
+    }).describe('Position and size for the signature in PDF coordinates'),
+    signature_name: z.string().optional().describe('Name of the stored signature to use. Uses default if omitted.'),
+  },
+  async ({ path: pdfPath, page, rect, signature_name }) => {
+    await api('laguz', '/api/pdf/sign', {
+      method: 'POST',
+      body: JSON.stringify({ path: pdfPath, page, rect, signature_name }),
+    });
+    return { content: [{ type: 'text', text: `Signature placed on page ${page + 1}` }] };
+  }
+);
+
+server.tool(
+  'laguz_flatten_pdf',
+  'Bake all annotations into the PDF and save a final copy. Creates a "(signed).pdf" file alongside the original. Returns the output path (absolute if input was absolute) — pass this to kenaz_draft_email attachment_paths.',
+  {
+    path: z.string().describe('Path to the annotated PDF — vault-relative or absolute'),
+    output_path: z.string().optional().describe('Optional output path. Defaults to same name with "(signed)" suffix.'),
+  },
+  async ({ path: pdfPath, output_path }) => {
+    const data = await api('laguz', '/api/pdf/flatten', {
+      method: 'POST',
+      body: JSON.stringify({ path: pdfPath, output_path }),
+    });
+    return { content: [{ type: 'text', text: `Flattened PDF saved to: ${data.output_path}` }] };
+  }
+);
+
+server.tool(
+  'laguz_get_sidecar',
+  'Read the companion .md sidecar note for a PDF. Returns null if no sidecar exists.',
+  {
+    path: z.string().describe('Path to the PDF — vault-relative or absolute'),
+  },
+  async ({ path: pdfPath }) => {
+    const data = await api('laguz', `/api/pdf/sidecar?path=${encodeURIComponent(pdfPath)}`);
+    return { content: [{ type: 'text', text: data.content || '[No sidecar notes]' }] };
+  }
+);
+
+server.tool(
+  'laguz_write_sidecar',
+  'Write or update the companion .md sidecar note for a PDF.',
+  {
+    path: z.string().describe('Path to the PDF — vault-relative or absolute'),
+    content: z.string().describe('Markdown content for the sidecar note'),
+  },
+  async ({ path: pdfPath, content }) => {
+    await api('laguz', '/api/pdf/sidecar', {
+      method: 'POST',
+      body: JSON.stringify({ path: pdfPath, content }),
+    });
+    return { content: [{ type: 'text', text: 'Sidecar note updated' }] };
+  }
+);
+
+// ── Laguz: Read Attachment ───────────────────────────────────
+
+server.tool(
+  'laguz_read_attachment',
+  'Read the content of an attachment file in the Laguz vault. Supports PDF (text extraction with optional page range), DOCX (plain text), images (metadata only — no base64), and CSV/TXT (raw text, truncated at 50KB). Always returns text only — never binary or base64.',
+  {
+    path: z.string().describe('Path to the attachment — either vault-relative (e.g. "_attachments/report.pdf") or absolute'),
+    page_range: z.string().optional().describe('For PDFs only: page range like "1-3" or "5" to read specific pages. Omit to read all pages.'),
+  },
+  async ({ path: filePath, page_range }) => {
+    const params = new URLSearchParams({ path: filePath });
+    if (page_range) params.set('page_range', page_range);
+    const data = await api('laguz', `/api/attachment/read?${params}`);
+    const parts: string[] = [];
+
+    if (data.type === 'pdf') {
+      parts.push(`**PDF:** ${filePath} (${data.page_count} pages)`);
+      if (data.text) parts.push(data.text);
+    } else if (data.type === 'docx') {
+      parts.push(`**DOCX:** ${filePath}`);
+      if (data.text) parts.push(data.text);
+      if (data.truncated) parts.push(`\n_${data.note}_`);
+    } else if (data.type === 'image') {
+      parts.push(`**Image:** ${data.filename}`);
+      parts.push(`- Extension: ${data.extension}`);
+      parts.push(`- Size: ${data.size_human} (${data.size_bytes} bytes)`);
+      parts.push(`- Path: ${data.path}`);
+      parts.push(data.note);
+    } else {
+      parts.push(`**File:** ${filePath}`);
+      if (data.text) parts.push(data.text);
+      if (data.truncated) parts.push(`\n_${data.note}_`);
+    }
+
+    return { content: [{ type: 'text', text: parts.join('\n') }] };
+  }
+);
+
+// ── Laguz: Context ──────────────────────────────────────────
+
+server.tool(
+  'laguz_get_context',
+  'Get aggregated context for a vault folder: notes from Laguz, related email threads from Kenaz, related tasks from Raidō, and upcoming events from Dagaz. Ideal for answering "what\'s the latest on [Company]?"',
+  {
+    folder_name: z.string().describe('Folder name to look up, e.g. "Conagra". Matches vault subfolder names.'),
+  },
+  async ({ folder_name }) => {
+    const data = await api('laguz', `/api/context?name=${encodeURIComponent(folder_name)}`);
+    const sections: string[] = [];
+
+    sections.push(`# Context: ${folder_name}\nVault folder: ${data.folder}\n`);
+
+    if (data.notes?.length > 0) {
+      sections.push('## Notes');
+      for (const n of data.notes) {
+        sections.push(`- **${n.title}** (${n.type || 'note'}) — ${n.date || 'no date'} — ${n.word_count} words — \`${n.path}\``);
+      }
+    } else {
+      sections.push('## Notes\n_No notes found in this folder._');
+    }
+
+    if (data.emails?.length > 0) {
+      sections.push('\n## Recent Emails');
+      for (const e of data.emails) {
+        const from = e.from?.name || e.from?.email || 'Unknown';
+        sections.push(`- **${e.subject || '(no subject)'}** from ${from} — ${e.date || ''} — thread:${e.id}`);
+      }
+    } else {
+      sections.push('\n## Recent Emails\n_No related emails found (Kenaz may not be running)._');
+    }
+
+    if (data.tasks?.length > 0) {
+      sections.push('\n## Tasks');
+      for (const t of data.tasks) {
+        const status = t.status === 'completed' ? '\u2705' : '\u25CB';
+        sections.push(`- ${status} **${t.title}** — due: ${t.due_date || 'none'} — id:${t.id}`);
+      }
+    } else {
+      sections.push('\n## Tasks\n_No related tasks found (Raidō may not be running)._');
+    }
+
+    if (data.events?.length > 0) {
+      sections.push('\n## Upcoming Events');
+      for (const ev of data.events) {
+        const start = ev.start?.dateTime || ev.start?.date || ev.start || '';
+        sections.push(`- **${ev.summary || '(no title)'}** — ${start}${ev.location ? ` — ${ev.location}` : ''}`);
+      }
+    } else {
+      sections.push('\n## Upcoming Events\n_No related events found (Dagaz may not be running)._');
+    }
+
+    return { content: [{ type: 'text', text: sections.join('\n') }] };
+  }
+);
+
+server.tool(
+  'laguz_get_vault_folders',
+  'List all folders in the vault. Returns folder names and paths. Useful for discovering available folders before using laguz_get_context.',
+  {},
+  async () => {
+    const data = await api('laguz', '/api/folders');
+    return { content: [{ type: 'text', text: JSON.stringify(data.folders, null, 2) }] };
+  }
+);
+
+server.tool(
+  'laguz_get_vault_info',
+  'Get the vault root path and basic info. Call this first if you need to know where the vault is on disk.',
+  {},
+  async () => {
+    const data = await api('laguz', '/api/health');
+    const folders = await api('laguz', '/api/folders');
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          vault_path: data.vault_path,
+          folder_count: folders.folders?.length ?? 0,
+          attachments_dir: `${data.vault_path}/_attachments`,
+        }, null, 2),
+      }],
+    };
+  }
+);
+
 // ── Start Server ────────────────────────────────────────────
 
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('[Futhark MCP] Server started on stdio — 67 tools across 4 apps');
+  console.error('[Futhark MCP] Server started on stdio — 80 tools across 4 apps');
 }
 
 main().catch((e) => {

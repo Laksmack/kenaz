@@ -1,6 +1,6 @@
 {
   "name": "@futhark/kenaz",
-  "version": "0.17.2",
+  "version": "0.17.10",
   "description": "Kenaz ᚲ — Personal Gmail client with HubSpot CRM, Google Calendar, and Claude API",
   "main": "dist/main/main/main.js",
   "bin": {
@@ -102,6 +102,7 @@
     "better-sqlite3": "^12.6.2",
     "dompurify": "^3.3.1",
     "dotenv": "^17.2.4",
+    "electron-updater": "^6.8.3",
     "express": "^4.18.2",
     "googleapis": "^130.0.0",
     "react": "^18.2.0",

@@ -186,6 +186,56 @@
   .prose-laguz em { font-style: italic; }
   .prose-laguz del { text-decoration: line-through; color: rgb(var(--text-muted)); }
   .prose-laguz > :first-child { margin-top: 0; }
+
+  /* Interactive checkboxes in table cells */
+  .prose-laguz td .laguz-table-cb {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border: 1.5px solid rgb(var(--text-muted));
+    border-radius: 3px;
+    background: transparent;
+    cursor: pointer;
+    vertical-align: middle;
+    margin-right: 4px;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .prose-laguz td .laguz-table-cb:checked {
+    background: #4AA89A;
+    border-color: #4AA89A;
+  }
+  .prose-laguz td .laguz-table-cb:checked::after {
+    content: '\2713';
+    position: absolute;
+    top: -1px;
+    left: 1.5px;
+    font-size: 11px;
+    color: white;
+    font-weight: 700;
+  }
+  .prose-laguz td .laguz-table-cb:hover {
+    border-color: #4AA89A;
+  }
+
+  /* Wiki-links */
+  .prose-laguz .laguz-wikilink {
+    text-decoration: none;
+    cursor: pointer;
+    border-bottom: 1px dashed;
+    padding-bottom: 1px;
+  }
+  .prose-laguz .laguz-wikilink:hover {
+    color: rgb(var(--accent-warm)) !important;
+    border-bottom-style: solid;
+  }
+  .prose-laguz .laguz-wikilink-note {
+    color: var(--color-reference);
+  }
+  .prose-laguz .laguz-wikilink-folder {
+    color: #5CB8A5;
+  }
 }
 
 /* ── CodeMirror theme (matches Laguz design system) ──────── */
@@ -323,6 +373,49 @@
   font-size: 0.75rem;
   color: rgb(var(--text-muted));
   opacity: 0.6;
+}
+
+/* CodeMirror table checkbox widget */
+.cm-table-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1.5px solid rgb(var(--text-muted));
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+  vertical-align: middle;
+  position: relative;
+}
+.cm-table-checkbox:checked {
+  background: #4AA89A;
+  border-color: #4AA89A;
+}
+.cm-table-checkbox:checked::after {
+  content: '\2713';
+  position: absolute;
+  top: -1px;
+  left: 1.5px;
+  font-size: 11px;
+  color: white;
+  font-weight: 700;
+}
+
+/* CodeMirror wiki-link decoration */
+.cm-wikilink {
+  color: var(--color-reference);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--color-reference);
+  cursor: pointer;
+}
+.cm-wikilink:hover {
+  color: rgb(var(--accent-warm));
+  border-bottom-style: solid;
+}
+.cm-wikilink-folder {
+  color: #5CB8A5;
+  border-bottom-color: #5CB8A5;
 }
 
 /* Frontmatter fold styling */

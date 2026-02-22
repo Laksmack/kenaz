@@ -13,7 +13,12 @@ const IPC = {
   TASKS_LOGBOOK: 'tasks:logbook',
   TASKS_STATS: 'tasks:stats',
   TASKS_TAGGED: 'tasks:tagged',
+  CHECKLIST_LIST: 'checklist:list',
+  CHECKLIST_ADD: 'checklist:add',
+  CHECKLIST_UPDATE: 'checklist:update',
+  CHECKLIST_DELETE: 'checklist:delete',
   ATTACHMENTS_LIST: 'attachments:list',
+  ATTACHMENT_ADD: 'attachment:add',
   ATTACHMENT_OPEN: 'attachment:open',
   ATTACHMENT_DELETE: 'attachment:delete',
   GROUPS_LIST: 'groups:list',
@@ -41,8 +46,15 @@ const api = {
   getStats: () => ipcRenderer.invoke(IPC.TASKS_STATS),
   getTaggedTasks: (tagName: string) => ipcRenderer.invoke(IPC.TASKS_TAGGED, tagName),
 
+  // Checklist
+  getChecklistItems: (taskId: string) => ipcRenderer.invoke(IPC.CHECKLIST_LIST, taskId),
+  addChecklistItem: (taskId: string, title: string) => ipcRenderer.invoke(IPC.CHECKLIST_ADD, taskId, title),
+  updateChecklistItem: (id: string, updates: any) => ipcRenderer.invoke(IPC.CHECKLIST_UPDATE, id, updates),
+  deleteChecklistItem: (id: string) => ipcRenderer.invoke(IPC.CHECKLIST_DELETE, id),
+
   // Attachments
   getAttachments: (taskId: string) => ipcRenderer.invoke(IPC.ATTACHMENTS_LIST, taskId),
+  addAttachment: (taskId: string) => ipcRenderer.invoke(IPC.ATTACHMENT_ADD, taskId),
   openAttachment: (taskId: string, attachmentId: string) => ipcRenderer.invoke(IPC.ATTACHMENT_OPEN, taskId, attachmentId),
   deleteAttachment: (taskId: string, attachmentId: string) => ipcRenderer.invoke(IPC.ATTACHMENT_DELETE, taskId, attachmentId),
 

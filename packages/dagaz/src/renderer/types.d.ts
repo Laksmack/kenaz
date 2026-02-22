@@ -44,6 +44,7 @@ interface DagazAPI {
 
   // Pending Invites
   getPendingInvites(): Promise<import('../shared/types').PendingInvite[]>;
+  rsvpInvite(threadId: string, response: string): Promise<{ success: boolean; response: string; eventId: string }>;
 
   // MCP
   getMcpStatus(): Promise<any>;

@@ -15,13 +15,14 @@ interface Props {
   pendingInvitesLoading: boolean;
   onRefreshInvites: () => void;
   onDismissInvite: (threadId: string) => void;
+  onRsvpInvite: (invite: PendingInvite, response: 'accepted' | 'declined' | 'tentative') => Promise<void>;
   children?: React.ReactNode;
 }
 
 export function Sidebar({
   calendars, currentDate, onDateSelect, onCalendarToggle,
   todayEvents, currentView, onViewChange,
-  pendingInvites, pendingInvitesLoading, onRefreshInvites, onDismissInvite,
+  pendingInvites, pendingInvitesLoading, onRefreshInvites, onDismissInvite, onRsvpInvite,
   children,
 }: Props) {
   const [miniCalMonth, setMiniCalMonth] = useState(() => {
@@ -157,6 +158,7 @@ export function Sidebar({
         isLoading={pendingInvitesLoading}
         onRefresh={onRefreshInvites}
         onDismiss={onDismissInvite}
+        onRsvp={onRsvpInvite}
         confirmedEvents={todayEvents}
         onDateSelect={onDateSelect}
       />

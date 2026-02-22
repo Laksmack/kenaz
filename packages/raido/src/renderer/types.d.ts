@@ -1,4 +1,4 @@
-import type { Task, TaskGroup, Tag, TaskStats, AppConfig, TaskAttachment } from '../shared/types';
+import type { Task, TaskGroup, Tag, TaskStats, AppConfig, TaskAttachment, ChecklistItem } from '../shared/types';
 
 declare global {
   interface Window {
@@ -11,14 +11,21 @@ declare global {
       createTask: (data: Partial<Task>) => Promise<Task>;
       updateTask: (id: string, updates: Partial<Task>) => Promise<Task | null>;
       deleteTask: (id: string) => Promise<void>;
-      completeTask: (id: string) => Promise<Task | null>;
+      completeTask: (id: string) => Promise<{ task: Task | null; spawned: Task | null }>;
       searchTasks: (query: string) => Promise<Task[]>;
       getLogbook: (days?: number) => Promise<Task[]>;
       getStats: () => Promise<TaskStats>;
       getTaggedTasks: (tagName: string) => Promise<Task[]>;
 
+      // Checklist
+      getChecklistItems: (taskId: string) => Promise<ChecklistItem[]>;
+      addChecklistItem: (taskId: string, title: string) => Promise<ChecklistItem>;
+      updateChecklistItem: (id: string, updates: Partial<ChecklistItem>) => Promise<ChecklistItem | null>;
+      deleteChecklistItem: (id: string) => Promise<boolean>;
+
       // Attachments
       getAttachments: (taskId: string) => Promise<TaskAttachment[]>;
+      addAttachment: (taskId: string) => Promise<TaskAttachment | null>;
       openAttachment: (taskId: string, attachmentId: string) => Promise<void>;
       deleteAttachment: (taskId: string, attachmentId: string) => Promise<void>;
 

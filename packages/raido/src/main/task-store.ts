@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
 import crypto from 'crypto';
-import type { Task, TaskAttachment, TaskGroup, Tag, TaskStats } from '../shared/types';
+import type { Task, TaskAttachment, TaskGroup, Tag, TaskStats, ChecklistItem } from '../shared/types';
 import { extractGroup } from '../shared/types';
 
 export class TaskStore {
@@ -65,9 +65,22 @@ export class TaskStore {
       );
 
       CREATE INDEX IF NOT EXISTS idx_task_attachments_task ON task_attachments(task_id);
+
+      CREATE TABLE IF NOT EXISTS checklist_items (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        completed INTEGER DEFAULT 0,
+        sort_order REAL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_checklist_items_task ON checklist_items(task_id);
     `);
 
     this.migrateDropProjects();
+    this.migrateAddRecurrence();
   }
 
   private migrateDropProjects(): void {
@@ -148,6 +161,13 @@ export class TaskStore {
     console.log('[Raidō] Migration complete: projects removed, bracket groups active');
   }
 
+  private migrateAddRecurrence(): void {
+    const columns = this.db.pragma('table_info(tasks)') as { name: string }[];
+    if (columns.some(c => c.name === 'recurrence')) return;
+    this.db.exec(`ALTER TABLE tasks ADD COLUMN recurrence TEXT DEFAULT NULL`);
+    console.log('[Raidō] Migration: added recurrence column');
+  }
+
   private genId(): string {
     return crypto.randomUUID();
   }
@@ -168,7 +188,9 @@ export class TaskStore {
   private enrichTask(row: any): Task {
     return {
       ...row,
+      recurrence: row.recurrence || null,
       tags: this.getTagsForTask(row.id),
+      checklist: this.getChecklistItems(row.id),
     };
   }
 
@@ -233,6 +255,7 @@ export class TaskStore {
     notes?: string;
     due_date?: string;
     priority?: number;
+    recurrence?: string | null;
     tags?: string[];
     kenaz_thread_id?: string;
     hubspot_deal_id?: string;
@@ -242,16 +265,17 @@ export class TaskStore {
     const id = this.genId();
     const now = this.now();
     this.db.prepare(`
-      INSERT INTO tasks (id, title, notes, due_date, priority,
+      INSERT INTO tasks (id, title, notes, due_date, priority, recurrence,
                          kenaz_thread_id, hubspot_deal_id, vault_path, calendar_event_id,
                          created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       data.title,
       data.notes || '',
       data.due_date || null,
       data.priority || 0,
+      data.recurrence || null,
       data.kenaz_thread_id || null,
       data.hubspot_deal_id || null,
       data.vault_path || null,
@@ -274,6 +298,7 @@ export class TaskStore {
     priority: number;
     status: string;
     sort_order: number;
+    recurrence: string | null;
     tags: string[];
     kenaz_thread_id: string | null;
     hubspot_deal_id: string | null;
@@ -285,7 +310,7 @@ export class TaskStore {
 
     const allowedFields = [
       'title', 'notes', 'due_date',
-      'priority', 'status', 'sort_order',
+      'priority', 'status', 'sort_order', 'recurrence',
       'kenaz_thread_id', 'hubspot_deal_id', 'vault_path', 'calendar_event_id',
     ];
 
@@ -311,12 +336,56 @@ export class TaskStore {
     return this.getTask(id);
   }
 
-  completeTask(id: string): Task | null {
+  completeTask(id: string): { task: Task | null; spawned: Task | null } {
+    const existing = this.getTask(id);
     const now = this.now();
     this.db.prepare(`
       UPDATE tasks SET status = 'completed', completed_at = ?, updated_at = ? WHERE id = ?
     `).run(now, now, id);
-    return this.getTask(id);
+
+    let spawned: Task | null = null;
+    if (existing?.recurrence) {
+      const baseDue = existing.due_date || new Date().toISOString().split('T')[0];
+      const nextDue = this.computeNextDueDate(baseDue, existing.recurrence);
+      spawned = this.createTask({
+        title: existing.title,
+        notes: existing.notes,
+        priority: existing.priority,
+        recurrence: existing.recurrence,
+        due_date: nextDue,
+        tags: existing.tags,
+        kenaz_thread_id: existing.kenaz_thread_id ?? undefined,
+        hubspot_deal_id: existing.hubspot_deal_id ?? undefined,
+        vault_path: existing.vault_path ?? undefined,
+        calendar_event_id: existing.calendar_event_id ?? undefined,
+      });
+    }
+
+    return { task: this.getTask(id), spawned };
+  }
+
+  private computeNextDueDate(currentDue: string, pattern: string): string {
+    const d = new Date(currentDue + 'T12:00:00');
+    switch (pattern) {
+      case 'daily':
+        d.setDate(d.getDate() + 1);
+        break;
+      case 'weekdays': {
+        d.setDate(d.getDate() + 1);
+        while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+        break;
+      }
+      case 'weekly':
+        d.setDate(d.getDate() + 7);
+        break;
+      case 'biweekly':
+        d.setDate(d.getDate() + 14);
+        break;
+      case 'monthly':
+        d.setMonth(d.getMonth() + 1);
+        break;
+    }
+    return d.toISOString().split('T')[0];
   }
 
   deleteTask(id: string): void {
@@ -494,6 +563,52 @@ export class TaskStore {
       'DELETE FROM task_attachments WHERE id = ? AND task_id = ?'
     ).run(attachmentId, taskId);
     return result.changes > 0;
+  }
+
+  // ── Checklist Items ───────────────────────────────────────
+
+  getChecklistItems(taskId: string): ChecklistItem[] {
+    const rows = this.db.prepare(
+      'SELECT * FROM checklist_items WHERE task_id = ? ORDER BY sort_order ASC, created_at ASC'
+    ).all(taskId) as any[];
+    return rows.map(r => ({ ...r, completed: !!r.completed }));
+  }
+
+  addChecklistItem(taskId: string, title: string): ChecklistItem {
+    const id = this.genId();
+    const maxOrder = (this.db.prepare(
+      'SELECT MAX(sort_order) as m FROM checklist_items WHERE task_id = ?'
+    ).get(taskId) as any)?.m ?? 0;
+
+    this.db.prepare(`
+      INSERT INTO checklist_items (id, task_id, title, sort_order, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, taskId, title, maxOrder + 1, this.now());
+
+    const row = this.db.prepare('SELECT * FROM checklist_items WHERE id = ?').get(id) as any;
+    return { ...row, completed: !!row.completed };
+  }
+
+  updateChecklistItem(id: string, updates: Partial<{ title: string; completed: boolean; sort_order: number }>): ChecklistItem | null {
+    const fields: string[] = [];
+    const values: any[] = [];
+
+    if ('title' in updates) { fields.push('title = ?'); values.push(updates.title); }
+    if ('completed' in updates) { fields.push('completed = ?'); values.push(updates.completed ? 1 : 0); }
+    if ('sort_order' in updates) { fields.push('sort_order = ?'); values.push(updates.sort_order); }
+
+    if (fields.length > 0) {
+      values.push(id);
+      this.db.prepare(`UPDATE checklist_items SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+    }
+
+    const row = this.db.prepare('SELECT * FROM checklist_items WHERE id = ?').get(id) as any;
+    if (!row) return null;
+    return { ...row, completed: !!row.completed };
+  }
+
+  deleteChecklistItem(id: string): boolean {
+    return this.db.prepare('DELETE FROM checklist_items WHERE id = ?').run(id).changes > 0;
   }
 
   // ── Cleanup ───────────────────────────────────────────────

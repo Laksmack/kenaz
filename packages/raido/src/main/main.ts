@@ -124,9 +124,9 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle(IPC.TASK_COMPLETE, async (_event, id: string) => {
-    const task = store.completeTask(id);
+    const result = store.completeTask(id);
     notifyTasksChanged();
-    return task;
+    return result;
   });
 
   ipcMain.handle(IPC.TASKS_SEARCH, async (_event, query: string) => store.searchTasks(query));
@@ -179,6 +179,40 @@ function registerIpcHandlers() {
 
   ipcMain.handle(IPC.ATTACHMENT_DELETE, async (_event, taskId: string, attachmentId: string) => {
     return store.deleteAttachment(taskId, attachmentId);
+  });
+
+  ipcMain.handle(IPC.ATTACHMENT_ADD, async (_event, taskId: string) => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      title: 'Attach file to task',
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+
+    const filePath = result.filePaths[0];
+    const filename = path.basename(filePath);
+    const buffer = fs.readFileSync(filePath);
+    return store.addAttachment(taskId, filename, buffer, { source: 'upload' });
+  });
+
+  // Checklist
+  ipcMain.handle(IPC.CHECKLIST_LIST, async (_event, taskId: string) => store.getChecklistItems(taskId));
+
+  ipcMain.handle(IPC.CHECKLIST_ADD, async (_event, taskId: string, title: string) => {
+    const item = store.addChecklistItem(taskId, title);
+    notifyTasksChanged();
+    return item;
+  });
+
+  ipcMain.handle(IPC.CHECKLIST_UPDATE, async (_event, id: string, updates: any) => {
+    const item = store.updateChecklistItem(id, updates);
+    notifyTasksChanged();
+    return item;
+  });
+
+  ipcMain.handle(IPC.CHECKLIST_DELETE, async (_event, id: string) => {
+    const ok = store.deleteChecklistItem(id);
+    notifyTasksChanged();
+    return ok;
   });
 
   // Cross-app

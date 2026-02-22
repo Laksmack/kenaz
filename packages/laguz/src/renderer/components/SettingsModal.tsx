@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { LaguzConfig, Section } from '../types';
+import type { LaguzConfig, Section, CompScienceProfile } from '../types';
 
-type SettingsTab = 'general' | 'editor' | 'sections' | 'api';
+type SettingsTab = 'general' | 'editor' | 'sections' | 'profile' | 'api';
 
 interface Props {
   config: LaguzConfig;
@@ -48,6 +48,7 @@ export function SettingsModal({ config, onSave, onClose }: Props) {
     { id: 'general', label: 'General', icon: '⚙️' },
     { id: 'editor', label: 'Editor', icon: '✏️' },
     { id: 'sections', label: 'Sections', icon: '📂' },
+    { id: 'profile', label: 'Signing Profile', icon: '🖊' },
     { id: 'api', label: 'API', icon: '🔌' },
   ];
 
@@ -87,6 +88,9 @@ export function SettingsModal({ config, onSave, onClose }: Props) {
           )}
           {activeTab === 'sections' && (
             <SectionsTab config={localConfig} onSave={handleSave} saving={saving} saved={saved} />
+          )}
+          {activeTab === 'profile' && (
+            <ProfileTab />
           )}
           {activeTab === 'api' && (
             <ApiTab />
@@ -474,6 +478,98 @@ function EditorTab({
   );
 }
 
+// ── Profile Tab ──────────────────────────────────────────────
+
+function ProfileTab() {
+  const [profile, setProfile] = useState<CompScienceProfile>({
+    company: '',
+    address: '',
+    signatory: '',
+    title: '',
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    window.laguz.getProfile().then((p) => {
+      if (p) setProfile(p);
+      setLoading(false);
+    });
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    setSaving(true);
+    setSaved(false);
+    try {
+      await window.laguz.saveProfile(profile);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      console.error('Failed to save profile:', e);
+    } finally {
+      setSaving(false);
+    }
+  }, [profile]);
+
+  if (loading) {
+    return <div className="text-xs text-text-muted">Loading...</div>;
+  }
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-text-primary mb-1">Signing Profile</h3>
+      <p className="text-[11px] text-text-muted mb-4">
+        This information is used to auto-fill contract fields when Claude processes PDFs.
+      </p>
+
+      <div className="space-y-4">
+        <SettingsField label="Company Name" description="Legal entity name for contracts">
+          <input
+            type="text"
+            value={profile.company}
+            onChange={(e) => setProfile(p => ({ ...p, company: e.target.value }))}
+            className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary"
+            placeholder="CompScience, Inc."
+          />
+        </SettingsField>
+
+        <SettingsField label="Address" description="Company address for contracts">
+          <textarea
+            value={profile.address}
+            onChange={(e) => setProfile(p => ({ ...p, address: e.target.value }))}
+            className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary resize-none"
+            rows={3}
+            placeholder="123 Main St, Suite 100&#10;San Francisco, CA 94105"
+          />
+        </SettingsField>
+
+        <SettingsField label="Signatory Name" description="Name of the person who signs contracts">
+          <input
+            type="text"
+            value={profile.signatory}
+            onChange={(e) => setProfile(p => ({ ...p, signatory: e.target.value }))}
+            className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary"
+            placeholder="Martin Stenkilde"
+          />
+        </SettingsField>
+
+        <SettingsField label="Title" description="Official title for signature blocks">
+          <input
+            type="text"
+            value={profile.title}
+            onChange={(e) => setProfile(p => ({ ...p, title: e.target.value }))}
+            className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary"
+            placeholder="Director, Product & Business Development"
+          />
+        </SettingsField>
+
+        <SaveButton onClick={handleSave} saving={saving} saved={saved} />
+      </div>
+    </div>
+  );
+}
+
 // ── API Tab ───────────────────────────────────────────────────
 
 function ApiTab() {
@@ -534,6 +630,16 @@ POST /api/note  { "path": "...", "content": "..." }
           <div><span className="text-accent-primary">GET</span>  /api/companies</div>
           <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">Write</div>
           <div><span className="text-amber-400">POST</span> /api/note</div>
+          <div className="text-[9px] text-text-secondary font-semibold mt-2 mb-0.5 font-sans uppercase tracking-wider">PDF</div>
+          <div><span className="text-accent-primary">GET</span>  /api/pdf/text?path=...</div>
+          <div><span className="text-accent-primary">GET</span>  /api/pdf/info?path=...</div>
+          <div><span className="text-accent-primary">GET</span>  /api/pdf/fields?path=...</div>
+          <div><span className="text-accent-primary">GET</span>  /api/pdf/sidecar?path=...</div>
+          <div><span className="text-amber-400">POST</span> /api/pdf/annotate</div>
+          <div><span className="text-amber-400">POST</span> /api/pdf/fill-field</div>
+          <div><span className="text-amber-400">POST</span> /api/pdf/sign</div>
+          <div><span className="text-amber-400">POST</span> /api/pdf/flatten</div>
+          <div><span className="text-amber-400">POST</span> /api/pdf/sidecar</div>
         </div>
       </div>
     </div>

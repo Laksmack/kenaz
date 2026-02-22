@@ -58,8 +58,12 @@ export default function App() {
   }, []);
 
   const handleComplete = useCallback(async (id: string) => {
-    await window.raido.completeTask(id);
-    setSelectedTask(prev => prev?.id === id ? null : prev);
+    const result = await window.raido.completeTask(id);
+    if (result.spawned) {
+      setSelectedTask(result.spawned);
+    } else {
+      setSelectedTask(prev => prev?.id === id ? null : prev);
+    }
     refresh();
   }, [refresh]);
 
@@ -340,6 +344,7 @@ export default function App() {
               selectedId={selectedTask?.id || null}
               onSelect={setSelectedTask}
               onComplete={handleComplete}
+              onUpdate={handleUpdate}
               loading={loading}
               title={viewTitle}
             />

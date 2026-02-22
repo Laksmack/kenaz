@@ -194,6 +194,10 @@ export default function App() {
   // After archive/label, we stash the desired-next thread ID here.
   // The threads useEffect consumes it once to pick the right selection.
   const pendingSelectIdRef = useRef<string | null>(null);
+  const threadsRef = useRef(threads);
+  threadsRef.current = threads;
+  const selectedThreadRef = useRef(selectedThread);
+  selectedThreadRef.current = selectedThread;
 
   useEffect(() => {
     if (threads.length === 0) return;
@@ -594,6 +598,23 @@ export default function App() {
 
         // Auto-archive the thread if this was a reply and the setting is on
         if (shouldArchive) {
+          // Navigate to next thread if we're still viewing the replied thread
+          if (selectedThreadRef.current?.id === replyThreadId) {
+            const currentThreads = threadsRef.current;
+            const idx = currentThreads.findIndex((t) => t.id === replyThreadId);
+            if (idx >= 0) {
+              let nextThread: EmailThread | null = null;
+              for (let i = idx - 1; i >= 0; i--) {
+                if (currentThreads[i].id !== replyThreadId) { nextThread = currentThreads[i]; break; }
+              }
+              if (!nextThread) {
+                nextThread = currentThreads.find((t, i) => i > idx && t.id !== replyThreadId) ?? null;
+              }
+              pendingSelectIdRef.current = nextThread?.id ?? null;
+              setSelectedThread(nextThread);
+            }
+          }
+
           const managedLabels = getManagedLabels();
           const removedLabels = [...managedLabels];
           for (const label of managedLabels) {

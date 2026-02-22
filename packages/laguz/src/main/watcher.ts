@@ -24,15 +24,31 @@ export class VaultWatcher {
     });
 
     this.watcher
-      .on('add', (filePath) => this.debounce(filePath, () => this.store.indexNote(filePath)))
-      .on('change', (filePath) => this.debounce(filePath, () => this.store.indexNote(filePath)))
-      .on('unlink', (filePath) => this.debounce(filePath, () => this.store.removeNote(filePath)));
+      .on('add', (filePath) => this.debounce(filePath, () => this.handleAdd(filePath)))
+      .on('change', (filePath) => this.debounce(filePath, () => this.handleAdd(filePath)))
+      .on('unlink', (filePath) => this.debounce(filePath, () => this.handleRemove(filePath)));
 
     console.log(`[Laguz] Watching vault: ${config.vaultPath}`);
   }
 
+  private handleAdd(filePath: string): void {
+    if (filePath.endsWith('.md')) {
+      this.store.indexNote(filePath);
+    } else if (filePath.endsWith('.pdf')) {
+      this.store.indexFile(filePath);
+    }
+  }
+
+  private handleRemove(filePath: string): void {
+    if (filePath.endsWith('.md')) {
+      this.store.removeNote(filePath);
+    } else if (filePath.endsWith('.pdf')) {
+      this.store.removeFile(filePath);
+    }
+  }
+
   private debounce(filePath: string, fn: () => void): void {
-    if (!filePath.endsWith('.md')) return;
+    if (!filePath.endsWith('.md') && !filePath.endsWith('.pdf')) return;
     const existing = this.debounceTimers.get(filePath);
     if (existing) clearTimeout(existing);
     this.debounceTimers.set(filePath, setTimeout(() => {

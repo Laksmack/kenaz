@@ -158,7 +158,7 @@ async function initServices() {
 
   // Start the local API server if enabled
   if (appConfig.apiEnabled) {
-    startApiServer(gmail, hubspot, appConfig.apiPort, viewStore, ruleStore, calendar, config, () => mainWindow);
+    startApiServer(gmail, hubspot, appConfig.apiPort, viewStore, ruleStore, calendar, config, () => mainWindow, cache);
   }
 
 }

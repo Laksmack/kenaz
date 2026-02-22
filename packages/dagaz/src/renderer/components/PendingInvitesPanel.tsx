@@ -2,11 +2,14 @@ import React, { useState, useMemo } from 'react';
 import type { PendingInvite, CalendarEvent } from '../../shared/types';
 import { formatTime } from '../lib/utils';
 
+type RsvpResponse = 'accepted' | 'declined' | 'tentative';
+
 interface Props {
   invites: PendingInvite[];
   isLoading: boolean;
   onRefresh: () => void;
   onDismiss: (threadId: string) => void;
+  onRsvp: (invite: PendingInvite, response: RsvpResponse) => Promise<void>;
   confirmedEvents: CalendarEvent[];
   onDateSelect: (date: Date) => void;
 }
@@ -38,7 +41,7 @@ function formatInviteDate(startTime: string | null): string {
   return `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} ${timeStr}`;
 }
 
-export function PendingInvitesPanel({ invites, isLoading, onRefresh, onDismiss, confirmedEvents, onDateSelect }: Props) {
+export function PendingInvitesPanel({ invites, isLoading, onRefresh, onDismiss, onRsvp, confirmedEvents, onDateSelect }: Props) {
   const [collapsed, setCollapsed] = useState(false);
 
   const invitesWithConflicts = useMemo(
@@ -46,10 +49,13 @@ export function PendingInvitesPanel({ invites, isLoading, onRefresh, onDismiss, 
     [invites, confirmedEvents],
   );
 
-  const handleRsvp = (invite: PendingInvite, response: 'accepted' | 'tentative' | 'declined') => {
-    // TODO: Send RSVP via Gmail API through Kenaz — non-trivial, stubbed for now
-    console.log(`[Dagaz] RSVP stub: ${response} for thread ${invite.threadId} ("${invite.title}")`);
+  const handleRsvp = async (invite: PendingInvite, response: RsvpResponse) => {
     onDismiss(invite.threadId);
+    try {
+      await onRsvp(invite, response);
+    } catch (e: any) {
+      console.error(`[Dagaz] RSVP failed for "${invite.title}":`, e);
+    }
   };
 
   return (

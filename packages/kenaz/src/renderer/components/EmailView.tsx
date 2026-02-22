@@ -157,9 +157,23 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
         onDoubleClick={thread.labels.includes('DRAFT') && onEditDraft ? () => onEditDraft(thread) : undefined}
         style={thread.labels.includes('DRAFT') && onEditDraft ? { cursor: 'pointer' } : undefined}
       >
-        <h2 className="text-lg font-semibold text-text-primary leading-tight mb-2">
-          {thread.subject || '(no subject)'}
-        </h2>
+        <div className="flex items-center gap-1.5 mb-2">
+          <h2 className="text-lg font-semibold text-text-primary leading-tight">
+            {thread.subject || '(no subject)'}
+          </h2>
+          <button
+            onClick={() => {
+              const text = `[${thread.subject}] (thread:${thread.id})`;
+              navigator.clipboard.writeText(text);
+            }}
+            className="flex-shrink-0 p-1 rounded hover:bg-bg-hover text-text-muted/40 hover:text-text-secondary transition-colors"
+            title="Copy thread reference"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+            </svg>
+          </button>
+        </div>
         <div className="flex items-center gap-1 flex-wrap">
             <ActionButton
               label="Done"
@@ -690,9 +704,10 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
             overflow-wrap: break-word;
             overflow: hidden;
           }
-          img { max-width: 100%; height: auto; }
+          img { max-width: 100% !important; height: auto !important; width: auto !important; }
           table { max-width: 100% !important; width: auto !important; }
-          div, td, th { max-width: 100% !important; }
+          div, td, th { max-width: 100% !important; overflow: hidden; }
+          body { overflow-x: hidden !important; }
           blockquote { margin: 8px 0; padding-left: 12px; }
           pre, code { border-radius: 4px; padding: 2px 4px; font-size: 13px; }
           pre { padding: 12px; overflow-x: auto; }

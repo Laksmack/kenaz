@@ -5,6 +5,7 @@ import { DayView } from './components/DayView';
 import { MonthView } from './components/MonthView';
 import { EventBlock } from './components/EventBlock';
 import { EventDetail } from './components/EventDetail';
+import { InviteReviewPanel } from './components/InviteReviewPanel';
 import { QuickCreate } from './components/QuickCreate';
 import { SettingsModal } from './components/SettingsModal';
 import { AuthScreen } from './components/AuthScreen';
@@ -29,6 +30,7 @@ export default function App() {
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [overlayPeople, setOverlayPeople] = useState<OverlayPerson[]>([]);
   const [overlayEvents, setOverlayEvents] = useState<OverlayEvent[]>([]);
+  const [showInvitesPanel, setShowInvitesPanel] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -204,16 +206,47 @@ export default function App() {
   const handleRSVP = useCallback(async (id: string, response: 'accepted' | 'declined' | 'tentative') => {
     await window.dagaz.rsvpEvent(id, response);
     refresh({ full: false });
-    // Refresh the selected event detail
     const updated = await window.dagaz.getEvent(id);
     if (updated) setSelectedEvent(updated);
-  }, [refresh]);
+
+    // Archive the matching invite email in Kenaz
+    if (updated?.summary) {
+      const match = pendingInvites.find(inv => inv.title === updated.summary);
+      if (match) {
+        try {
+          await window.dagaz.rsvpInvite(match.threadId, 'done');
+          dismissPendingInvite(match.threadId);
+          refreshPendingInvites();
+        } catch {}
+      }
+    }
+  }, [refresh, pendingInvites, dismissPendingInvite, refreshPendingInvites]);
+
+  const handleInviteRsvp = useCallback(async (invite: { threadId: string; title: string; startTime: string | null }, response: 'accepted' | 'declined' | 'tentative') => {
+    // Find matching calendar event to RSVP on
+    const match = events.find(e =>
+      e.summary === invite.title ||
+      (invite.startTime && e.start_time === invite.startTime),
+    );
+    if (match) {
+      await window.dagaz.rsvpEvent(match.id, response);
+      refresh({ full: false });
+    }
+    // Archive in Kenaz
+    await window.dagaz.rsvpInvite(invite.threadId, 'done');
+    refreshPendingInvites();
+  }, [events, refresh, refreshPendingInvites]);
 
   const handleCalendarToggle = useCallback(async (id: string, visible: boolean) => {
     await window.dagaz.updateCalendar(id, { visible });
     fetchCalendars();
     refresh({ full: false });
   }, [fetchCalendars, refresh]);
+
+  const selectEvent = useCallback((event: CalendarEvent | null) => {
+    setSelectedEvent(event);
+    if (event) setShowInvitesPanel(false);
+  }, []);
 
   const openQuickCreate = useCallback((start?: Date, end?: Date) => {
     setQuickCreateStart(start);
@@ -473,6 +506,7 @@ export default function App() {
             pendingInvitesLoading={pendingInvitesLoading}
             onRefreshInvites={refreshPendingInvites}
             onDismissInvite={dismissPendingInvite}
+            onRsvpInvite={handleInviteRsvp}
           >
             <PeopleOverlay
               people={overlayPeople}
@@ -515,6 +549,18 @@ export default function App() {
 
           {/* View tabs */}
           <div className="titlebar-no-drag flex items-center gap-1 mr-3">
+            {pendingInvites.length > 0 && (
+              <button
+                onClick={() => { setShowInvitesPanel(true); setSelectedEvent(null); }}
+                className={`view-tab flex items-center gap-1.5 ${showInvitesPanel && !selectedEvent ? 'active' : ''}`}
+                title="Pending Invites"
+              >
+                Pending
+                <span className="px-1.5 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary text-[10px] font-semibold leading-none">
+                  {pendingInvites.length}
+                </span>
+              </button>
+            )}
             {([
               { key: 'day' as const, label: 'Day', shortcut: 'D' },
               { key: 'week' as const, label: 'Week', shortcut: 'W' },
@@ -523,8 +569,8 @@ export default function App() {
             ]).map(v => (
               <button
                 key={v.key}
-                onClick={() => { setCurrentView(v.key); setSelectedEvent(null); }}
-                className={`view-tab ${currentView === v.key ? 'active' : ''}`}
+                onClick={() => { setCurrentView(v.key); setSelectedEvent(null); setShowInvitesPanel(false); }}
+                className={`view-tab ${currentView === v.key && !showInvitesPanel ? 'active' : ''}`}
                 title={`${v.label} (${v.shortcut})`}
               >
                 {v.label}
@@ -600,7 +646,7 @@ export default function App() {
                 overlayEvents={overlayEvents}
                 pendingInvites={pendingInvites}
                 selectedEvent={selectedEvent}
-                onSelectEvent={setSelectedEvent}
+                onSelectEvent={selectEvent}
                 onCreateEvent={(start, end) => openQuickCreate(start, end)}
                 onUpdateEvent={handleUpdateEvent}
                 onRSVP={handleRSVP}
@@ -614,7 +660,7 @@ export default function App() {
                 overlayEvents={overlayEvents}
                 pendingInvites={pendingInvites}
                 selectedEvent={selectedEvent}
-                onSelectEvent={setSelectedEvent}
+                onSelectEvent={selectEvent}
                 onCreateEvent={(start, end) => openQuickCreate(start, end)}
                 onUpdateEvent={handleUpdateEvent}
                 onRSVP={handleRSVP}
@@ -625,21 +671,31 @@ export default function App() {
                 currentDate={currentDate}
                 events={events}
                 selectedEvent={selectedEvent}
-                onSelectEvent={setSelectedEvent}
+                onSelectEvent={selectEvent}
                 onDateSelect={handleDateSelect}
               />
             )}
             {currentView === 'agenda' && renderAgendaView()}
           </div>
 
-          {/* Event detail panel */}
-          {selectedEvent && (
+          {/* Right panel: event detail or pending invites */}
+          {selectedEvent ? (
             <EventDetail
               event={selectedEvent}
-              onClose={() => setSelectedEvent(null)}
+              onClose={() => { setSelectedEvent(null); if (pendingInvites.length > 0) setShowInvitesPanel(true); }}
               onDelete={handleDeleteEvent}
               onRSVP={handleRSVP}
               onEdit={() => { /* TODO */ }}
+            />
+          ) : (showInvitesPanel || pendingInvites.length > 0) && (
+            <InviteReviewPanel
+              invites={pendingInvites}
+              isLoading={pendingInvitesLoading}
+              onRefresh={refreshPendingInvites}
+              onDismiss={dismissPendingInvite}
+              onRsvp={handleInviteRsvp}
+              confirmedEvents={todayEvents}
+              onDateSelect={handleDateSelect}
             />
           )}
         </div>

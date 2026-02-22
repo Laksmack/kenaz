@@ -7,6 +7,7 @@ export function usePendingInvites(intervalMs?: number) {
   const [invites, setInvites] = useState<PendingInvite[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const mountedRef = useRef(true);
+  const dismissedRef = useRef(new Set<string>());
 
   useEffect(() => {
     mountedRef.current = true;
@@ -17,7 +18,17 @@ export function usePendingInvites(intervalMs?: number) {
     setIsLoading(true);
     try {
       const result = await window.dagaz.getPendingInvites();
-      if (mountedRef.current) setInvites(result || []);
+      if (mountedRef.current) {
+        const fresh = (result || []).filter(
+          (i: PendingInvite) => !dismissedRef.current.has(i.threadId),
+        );
+        // Prune dismissed IDs that are no longer in the source (archive propagated)
+        const freshIds = new Set((result || []).map((i: PendingInvite) => i.threadId));
+        for (const id of dismissedRef.current) {
+          if (!freshIds.has(id)) dismissedRef.current.delete(id);
+        }
+        setInvites(fresh);
+      }
     } catch {
       // Kenaz unreachable — keep existing state
     } finally {
@@ -32,9 +43,8 @@ export function usePendingInvites(intervalMs?: number) {
   }, [refresh, intervalMs]);
 
   const dismissInvite = useCallback((threadId: string) => {
+    dismissedRef.current.add(threadId);
     setInvites(prev => prev.filter(i => i.threadId !== threadId));
-    // Badge refresh: trigger a re-fetch after a short delay so the count
-    // catches up on next poll cycle
   }, []);
 
   return {

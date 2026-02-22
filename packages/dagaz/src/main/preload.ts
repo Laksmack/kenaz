@@ -81,6 +81,7 @@ const api = {
 
   // Pending Invites
   getPendingInvites: () => ipcRenderer.invoke('pending-invites:list'),
+  rsvpInvite: (threadId: string, response: string) => ipcRenderer.invoke('invite:rsvp', threadId, response),
 
   // Cross-app
   crossAppFetch: (url: string, options?: any) => ipcRenderer.invoke('cross-app:fetch', url, options),

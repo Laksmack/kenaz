@@ -9,6 +9,7 @@ export interface Task {
   due_date: string | null;
   completed_at: string | null;
   sort_order: number;
+  recurrence: 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly' | null;
   created_at: string;
   updated_at: string;
   kenaz_thread_id: string | null;
@@ -16,6 +17,16 @@ export interface Task {
   vault_path: string | null;
   calendar_event_id: string | null;
   tags?: string[];
+  checklist?: ChecklistItem[];
+}
+
+export interface ChecklistItem {
+  id: string;
+  task_id: string;
+  title: string;
+  completed: boolean;
+  sort_order: number;
+  created_at: string;
 }
 
 export interface TaskAttachment {
@@ -66,8 +77,15 @@ export const IPC = {
   TASKS_STATS: 'tasks:stats',
   TASKS_TAGGED: 'tasks:tagged',
 
+  // Checklist
+  CHECKLIST_LIST: 'checklist:list',
+  CHECKLIST_ADD: 'checklist:add',
+  CHECKLIST_UPDATE: 'checklist:update',
+  CHECKLIST_DELETE: 'checklist:delete',
+
   // Attachments
   ATTACHMENTS_LIST: 'attachments:list',
+  ATTACHMENT_ADD: 'attachment:add',
   ATTACHMENT_OPEN: 'attachment:open',
   ATTACHMENT_DELETE: 'attachment:delete',
 

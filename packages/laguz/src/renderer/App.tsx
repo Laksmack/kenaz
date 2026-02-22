@@ -4,6 +4,7 @@ import { ScratchView } from './components/ScratchView';
 import { VaultView } from './components/VaultView';
 import { AccountsView } from './components/AccountsView';
 import { FolderView } from './components/FolderView';
+import { FolderContextView } from './components/FolderContextView';
 import { TabBar } from './components/TabBar';
 import { NoteDetail } from './components/NoteDetail';
 import { SettingsModal } from './components/SettingsModal';
@@ -33,6 +34,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchFocused, setSearchFocused] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [contextFolder, setContextFolder] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   // ── Tab State ────────────────────────────────────────────────
@@ -40,6 +42,7 @@ export default function App() {
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [splitTabId, setSplitTabId] = useState<string | null>(null);
   const [splitRatio, setSplitRatio] = useState(0.5);
+  const [listCollapsed, setListCollapsed] = useState(false);
 
   const activeTab = tabs.find(t => t.id === activeTabId) ?? null;
   const splitTab = tabs.find(t => t.id === splitTabId) ?? null;
@@ -126,8 +129,23 @@ export default function App() {
   const handleViewChange = useCallback((view: ViewType) => {
     setCurrentView(view);
     setSelectedItem(null);
+    if (view !== 'context') setContextFolder(null);
     if (view === 'vault') setSearchQuery('');
   }, []);
+
+  const handleFolderNavigate = useCallback((folderName: string) => {
+    setCurrentView('context');
+    setContextFolder(folderName);
+    setSelectedItem(null);
+  }, []);
+
+  const handleNoteNavigate = useCallback((noteName: string) => {
+    window.laguz.search({ q: noteName }).then((notes) => {
+      if (notes.length > 0) {
+        openFile(notes[0].path);
+      }
+    }).catch(console.error);
+  }, [openFile]);
 
   const handleSelectItem = useCallback((sectionId: string, value: string) => {
     if (!config) return;
@@ -165,6 +183,32 @@ export default function App() {
     if (!selectedItem) return null;
     return selectedItem.value;
   };
+
+  // Prevent default file-drop navigation at window level
+  useEffect(() => {
+    const prevent = (e: DragEvent) => { e.preventDefault(); };
+    document.body.addEventListener('dragover', prevent);
+    document.body.addEventListener('drop', prevent);
+    return () => {
+      document.body.removeEventListener('dragover', prevent);
+      document.body.removeEventListener('drop', prevent);
+    };
+  }, []);
+
+  // Global file drop: copy to _attachments/ and open in a tab
+  const handleGlobalDrop = useCallback(async (e: React.DragEvent) => {
+    const files = e.dataTransfer?.files;
+    if (!files?.length) return;
+    e.preventDefault();
+
+    for (const file of Array.from(files)) {
+      const filePath = window.laguz.getPathForFile(file);
+      if (!filePath) continue;
+      const result = await window.laguz.copyAttachment(filePath);
+      setCurrentView('vault');
+      openFile(result.path, true);
+    }
+  }, [openFile]);
 
   // ── Keyboard shortcuts ────────────────────────────────────
   useEffect(() => {
@@ -251,7 +295,7 @@ export default function App() {
 
   return (
     <EditorConfigContext.Provider value={config.editor ?? defaultEditor}>
-    <div className="h-screen flex bg-bg-primary">
+    <div className="h-screen flex bg-bg-primary" onDragOver={(e) => e.preventDefault()} onDrop={handleGlobalDrop}>
       {/* Sidebar */}
       <div className="w-56 min-w-[200px] border-r border-border-subtle flex-shrink-0 titlebar-drag">
         <div className="titlebar-no-drag h-full">
@@ -262,6 +306,9 @@ export default function App() {
             subfolders={subfolders}
             selectedItem={selectedItem}
             onSelectItem={handleSelectItem}
+            onFolderNavigate={handleFolderNavigate}
+            onOpenFile={openFile}
+            contextFolder={contextFolder}
           />
         </div>
       </div>
@@ -337,28 +384,53 @@ export default function App() {
           {currentView !== 'scratch' && (
             <>
               {/* List pane */}
-              {currentView === 'vault' && (
-                <VaultView
-                  searchQuery={searchQuery}
-                  activeFilePath={activeTab?.filePath ?? null}
-                  onOpenFile={openFile}
-                />
+              {!listCollapsed && (
+                <>
+                  {currentView === 'vault' && (
+                    <VaultView
+                      searchQuery={searchQuery}
+                      activeFilePath={activeTab?.filePath ?? null}
+                      onOpenFile={openFile}
+                    />
+                  )}
+                  {currentView === 'grouped' && (
+                    <AccountsView
+                      path={getGroupedPath()}
+                      entity={getGroupedEntity()}
+                      activeFilePath={activeTab?.filePath ?? null}
+                      onOpenFile={openFile}
+                    />
+                  )}
+                  {currentView === 'flat' && (
+                    <FolderView
+                      path={getFlatPath()}
+                      activeFilePath={activeTab?.filePath ?? null}
+                      onOpenFile={openFile}
+                    />
+                  )}
+                  {currentView === 'context' && contextFolder && (
+                    <FolderContextView
+                      folderName={contextFolder}
+                      onOpenFile={openFile}
+                      onBack={() => handleViewChange('vault')}
+                    />
+                  )}
+                </>
               )}
-              {currentView === 'grouped' && (
-                <AccountsView
-                  path={getGroupedPath()}
-                  entity={getGroupedEntity()}
-                  activeFilePath={activeTab?.filePath ?? null}
-                  onOpenFile={openFile}
-                />
-              )}
-              {currentView === 'flat' && (
-                <FolderView
-                  path={getFlatPath()}
-                  activeFilePath={activeTab?.filePath ?? null}
-                  onOpenFile={openFile}
-                />
-              )}
+
+              {/* Collapse/expand toggle strip */}
+              <div
+                onClick={() => setListCollapsed(c => !c)}
+                className="w-5 flex-shrink-0 flex items-center justify-center border-r border-border-subtle hover:bg-bg-hover text-text-muted hover:text-text-primary cursor-pointer transition-colors"
+                title={listCollapsed ? 'Expand panel (⌘B)' : 'Collapse panel (⌘B)'}
+              >
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  {listCollapsed
+                    ? <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    : <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  }
+                </svg>
+              </div>
 
               {/* Detail area with tabs */}
               <div className="flex-1 flex flex-col overflow-hidden">
@@ -383,15 +455,15 @@ export default function App() {
                 ) : splitTab ? (
                   <div className="flex-1 flex overflow-hidden">
                     <div className="overflow-hidden flex flex-col" style={{ width: `${splitRatio * 100}%` }}>
-                      <NoteDetail notePath={activeTab?.filePath ?? null} />
+                      <NoteDetail notePath={activeTab?.filePath ?? null} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} />
                     </div>
                     <SplitHandle onResize={setSplitRatio} />
                     <div className="overflow-hidden flex flex-col flex-1">
-                      <NoteDetail notePath={splitTab.filePath} />
+                      <NoteDetail notePath={splitTab.filePath} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} />
                     </div>
                   </div>
                 ) : (
-                  <NoteDetail notePath={activeTab?.filePath ?? null} />
+                  <NoteDetail notePath={activeTab?.filePath ?? null} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} />
                 )}
               </div>
             </>

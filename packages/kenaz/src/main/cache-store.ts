@@ -399,6 +399,30 @@ export class CacheStore {
     }
   }
 
+  // ── Pending calendar invites ────────────────────────────
+
+  getPendingInvites(): { threadId: string; subject: string; fromName: string; fromEmail: string; date: string; isUnread: boolean }[] {
+    const rows = this.db.prepare(`
+      SELECT id, subject, from_name, from_email, last_date, is_unread, labels
+      FROM threads
+      WHERE (subject LIKE 'Invitation:%' OR subject LIKE 'Updated Invitation:%')
+        AND labels LIKE '%"INBOX"%'
+      ORDER BY last_date DESC
+      LIMIT 50
+    `).all() as any[];
+
+    console.log(`[Cache] getPendingInvites: ${rows.length} invite(s) in INBOX${rows.map((r: any) => `\n  - [${r.is_unread ? 'unread' : 'read'}] "${r.subject?.slice(0, 60)}"`).join('')}`);
+
+    return rows.map((r: any) => ({
+      threadId: r.id,
+      subject: r.subject || '',
+      fromName: r.from_name || '',
+      fromEmail: r.from_email || '',
+      date: r.last_date || '',
+      isUnread: r.is_unread === 1,
+    }));
+  }
+
   // ── Nudge tracking ─────────────────────────────────────
 
   /**

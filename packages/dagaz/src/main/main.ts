@@ -106,14 +106,13 @@ async function initServices() {
 // ── Pending Invites from Kenaz ──────────────────────────────
 
 const KENAZ_BASE = 'http://localhost:3141';
-const INVITE_SEARCH_QUERY = 'has:attachment filename:invite.ics OR filename:*.ics is:unread';
 
-interface KenazThread {
-  id: string;
-  subject?: string;
-  from?: string;
-  snippet?: string;
-  date?: string;
+interface KenazInvite {
+  threadId: string;
+  subject: string;
+  fromName: string;
+  fromEmail: string;
+  date: string;
 }
 
 function parseInviteSubject(subject: string): { title: string; dateStr: string | null } {
@@ -124,26 +123,21 @@ function parseInviteSubject(subject: string): { title: string; dateStr: string |
   return { title: subject, dateStr: null };
 }
 
-function parseFrom(from: string): { name: string; email: string } {
-  const match = from.match(/^(.+?)\s*<(.+?)>$/);
-  if (match) return { name: match[1].trim(), email: match[2].trim() };
-  return { name: from, email: from };
-}
-
 async function getPendingInvites(): Promise<import('../shared/types').PendingInvite[]> {
   try {
-    const res = await fetch(
-      `${KENAZ_BASE}/api/search?q=${encodeURIComponent(INVITE_SEARCH_QUERY)}`,
-      { signal: AbortSignal.timeout(5000) },
-    );
-    if (!res.ok) return [];
+    const url = `${KENAZ_BASE}/api/pending-invites`;
+    console.log('[Badge] Fetching invites from Kenaz cache...');
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) {
+      console.warn(`[Badge] Kenaz returned ${res.status} ${res.statusText}`);
+      return [];
+    }
     const data = await res.json();
-    const threads: KenazThread[] = (Array.isArray(data) ? data : data.threads || []);
+    const invites: KenazInvite[] = data.invites || [];
+    console.log(`[Badge] Kenaz returned ${invites.length} pending invite(s)${invites.map(i => `\n  - "${i.subject?.slice(0, 60)}"`).join('')}`);
 
-    return threads.map(t => {
-      const subject = t.subject || '(No subject)';
-      const { title, dateStr } = parseInviteSubject(subject);
-      const { name, email } = parseFrom(t.from || '');
+    return invites.map(inv => {
+      const { title, dateStr } = parseInviteSubject(inv.subject);
       let startTime: string | null = null;
       let endTime: string | null = null;
 
@@ -158,16 +152,17 @@ async function getPendingInvites(): Promise<import('../shared/types').PendingInv
       }
 
       return {
-        threadId: t.id,
-        subject,
+        threadId: inv.threadId,
+        subject: inv.subject,
         title,
-        organizer: name,
-        organizerEmail: email,
+        organizer: inv.fromName,
+        organizerEmail: inv.fromEmail,
         startTime,
         endTime,
       };
     });
-  } catch {
+  } catch (e) {
+    console.error('[Badge] Failed to fetch invites from Kenaz:', e);
     return [];
   }
 }
@@ -182,7 +177,9 @@ async function updateDockBadge() {
     return;
   }
   const invites = await getPendingInvites();
-  app.dock.setBadge(invites.length > 0 ? invites.length.toString() : '');
+  const badge = invites.length > 0 ? invites.length.toString() : '';
+  console.log(`[Badge] Setting dock badge to "${badge || '(clear)'}" (${invites.length} invite(s))`);
+  app.dock.setBadge(badge);
 }
 
 function startBadgeMonitor() {
@@ -450,6 +447,9 @@ function registerIpcHandlers() {
     ) {
       reinitDockIconSettings();
     }
+    if (updates.dockBadgeEnabled !== undefined) {
+      updateDockBadge();
+    }
     return result;
   });
 
@@ -624,6 +624,21 @@ function registerIpcHandlers() {
   // Pending Invites (from Kenaz)
   ipcMain.handle(IPC.PENDING_INVITES, async () => {
     return getPendingInvites();
+  });
+
+  ipcMain.handle('invite:rsvp', async (_event, threadId: string) => {
+    const url = `${KENAZ_BASE}/api/archive/${threadId}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(err.error || `Archive failed (${res.status})`);
+    }
+    updateDockBadge();
+    return res.json();
   });
 
   // Cross-app

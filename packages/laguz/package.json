@@ -1,6 +1,6 @@
 {
   "name": "@futhark/laguz",
-  "version": "0.9.0",
+  "version": "1.6.4",
   "description": "Laguz ᛚ — Notes and vault browser",
   "main": "dist/main/main/main.js",
   "private": true,
@@ -425,12 +425,19 @@
         "name": "MDX",
         "role": "Editor",
         "mimeType": "text/mdx"
+      },
+      {
+        "ext": "pdf",
+        "name": "PDF Document",
+        "role": "Viewer",
+        "mimeType": "application/pdf"
       }
     ],
     "asarUnpack": [],
     "npmRebuild": true
   },
   "dependencies": {
+    "@codemirror/commands": "^6.10.2",
     "@codemirror/language-data": "^6.5.2",
     "@codemirror/search": "^6.6.0",
     "@futhark/core": "*",
@@ -439,7 +446,10 @@
     "chokidar": "^4.0.0",
     "express": "^4.18.2",
     "gray-matter": "^4.0.3",
+    "mammoth": "^1.11.0",
     "marked": "^17.0.2",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^5.4.624",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "zod": "^3.22.0"

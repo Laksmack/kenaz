@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Futhark · Tools forged in runes</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0a;
+    color: #f0e6da;
+    font-family: 'Outfit', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.03;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-size: 256px;
+    z-index: 999;
+  }
+
+  .page { max-width: 1100px; margin: 0 auto; padding: 80px 40px 120px; }
+
+  /* Hero */
+  .suite-label {
+    font-size: 11px;
+    font-weight: 400;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: #444;
+    text-align: center;
+    margin-bottom: 16px;
+  }
+
+  h1 {
+    font-size: 52px;
+    font-weight: 300;
+    text-align: center;
+    letter-spacing: -1.5px;
+    margin-bottom: 14px;
+    color: #f0e6da;
+  }
+
+  .hero-sub {
+    font-size: 16px;
+    font-weight: 300;
+    color: #666;
+    text-align: center;
+    margin-bottom: 72px;
+    max-width: 500px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* Download section */
+  .download-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 100px;
+  }
+
+  .download-primary {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #f0e6da;
+    color: #0a0a0a;
+    text-decoration: none;
+    border-radius: 12px;
+    padding: 14px 28px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+    transition: background 0.2s, transform 0.15s;
+  }
+
+  .download-primary:hover { background: #fff; transform: translateY(-1px); }
+
+  .download-primary svg { opacity: 0.7; }
+
+  .download-individual {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .download-app {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    text-decoration: none;
+    border: 1px solid #1e1e1e;
+    border-radius: 10px;
+    padding: 9px 16px;
+    font-size: 13px;
+    color: #888;
+    transition: border-color 0.2s, color 0.2s;
+  }
+
+  .download-app:hover { color: #f0e6da; }
+  .download-app.kenaz:hover { border-color: #E8571F55; }
+  .download-app.raido:hover { border-color: #D4A57455; }
+  .download-app.dagaz:hover { border-color: #7AB8D455; }
+  .download-app.laguz:hover { border-color: #5CB8A555; }
+
+  .app-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .dot-kenaz { background: #E8571F; }
+  .dot-raido { background: #C2885A; }
+  .dot-dagaz { background: #4A9AC2; }
+  .dot-laguz { background: #4AA89A; }
+
+  .version-note {
+    font-size: 12px;
+    color: #444;
+    letter-spacing: 1px;
+  }
+
+  /* Update bar - what it looks like in menu bar */
+  .menubar-preview {
+    background: #111;
+    border: 1px solid #1e1e1e;
+    border-radius: 16px;
+    padding: 32px 40px;
+    margin-bottom: 100px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+
+  .preview-label {
+    font-size: 11px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: #444;
+  }
+
+  .fake-menubar {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: #1a1a1a;
+    border: 1px solid #222;
+    border-radius: 10px;
+    padding: 6px 0;
+    max-width: 260px;
+    font-size: 13px;
+  }
+
+  .menu-item {
+    padding: 5px 16px;
+    color: #ccc;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+  }
+
+  .menu-item.update {
+    color: #4AA89A;
+    font-weight: 500;
+  }
+
+  .menu-item.separator {
+    height: 1px;
+    background: #2a2a2a;
+    margin: 4px 0;
+    padding: 0;
+  }
+
+  .menu-shortcut { color: #555; font-size: 12px; }
+
+  /* App grid */
+  .apps-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 100px;
+  }
+
+  .app-card {
+    background: #111;
+    border: 1px solid #1a1a1a;
+    border-radius: 24px;
+    padding: 44px 36px;
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.4s ease, transform 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .app-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+
+  .app-card:hover { transform: translateY(-3px); }
+  .app-card:hover::before { opacity: 1; }
+
+  .app-card.kenaz::before { background: linear-gradient(90deg, transparent, #E8571F, transparent); }
+  .app-card.kenaz:hover { border-color: #E8571F33; }
+
+  .app-card.raido::before { background: linear-gradient(90deg, transparent, #D4A574, transparent); }
+  .app-card.raido:hover { border-color: #D4A57433; }
+
+  .app-card.dagaz::before { background: linear-gradient(90deg, transparent, #7AB8D4, transparent); }
+  .app-card.dagaz:hover { border-color: #7AB8D433; }
+
+  .app-card.laguz::before { background: linear-gradient(90deg, transparent, #5CB8A5, transparent); }
+  .app-card.laguz:hover { border-color: #5CB8A533; }
+
+  .card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin-bottom: 28px;
+  }
+
+  .app-status {
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+  }
+
+  .status-live { color: #4CAF50; border: 1px solid #4CAF5033; background: #4CAF5010; }
+  .status-beta { color: #D4A574; border: 1px solid #D4A57433; background: #D4A57410; }
+  .status-someday { color: #444; border: 1px solid #222; }
+
+  .app-icon { transition: transform 0.3s ease; }
+  .app-card:hover .app-icon { transform: scale(1.06); }
+
+  .app-name {
+    font-size: 30px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+    margin-bottom: 4px;
+  }
+
+  .app-rune {
+    font-size: 12px;
+    font-weight: 300;
+    color: #555;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 16px;
+  }
+
+  .app-desc {
+    font-size: 14px;
+    font-weight: 300;
+    color: #777;
+    line-height: 1.65;
+  }
+
+  .app-card.kenaz .app-name { color: #E8571F; }
+  .app-card.raido .app-name { color: #D4A574; }
+  .app-card.dagaz .app-name { color: #7AB8D4; }
+  .app-card.laguz .app-name { color: #5CB8A5; }
+
+  /* About */
+  .about-section {
+    border-top: 1px solid #1a1a1a;
+    padding-top: 80px;
+    margin-bottom: 80px;
+  }
+
+  .section-label {
+    font-size: 11px;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: #444;
+    margin-bottom: 24px;
+  }
+
+  .about-section p {
+    font-size: 16px;
+    font-weight: 300;
+    color: #888;
+    line-height: 1.8;
+    max-width: 640px;
+  }
+
+  .about-section p + p { margin-top: 16px; }
+
+  .req-row {
+    display: flex;
+    gap: 32px;
+    margin-top: 40px;
+    flex-wrap: wrap;
+  }
+
+  .req-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: #555;
+  }
+
+  .req-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #2a2a2a;
+    flex-shrink: 0;
+  }
+
+  /* Footer */
+  footer {
+    border-top: 1px solid #1a1a1a;
+    padding-top: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .footer-rune { font-size: 18px; color: #2a2a2a; letter-spacing: 8px; }
+
+  .footer-right { font-size: 12px; color: #333; letter-spacing: 1px; text-transform: uppercase; }
+
+  /* Animations */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .page > * {
+    animation: fadeUp 0.6s ease forwards;
+    opacity: 0;
+  }
+
+  .page > *:nth-child(1) { animation-delay: 0.05s; }
+  .page > *:nth-child(2) { animation-delay: 0.12s; }
+  .page > *:nth-child(3) { animation-delay: 0.18s; }
+  .page > *:nth-child(4) { animation-delay: 0.26s; }
+  .page > *:nth-child(5) { animation-delay: 0.34s; }
+  .page > *:nth-child(6) { animation-delay: 0.44s; }
+  .page > *:nth-child(7) { animation-delay: 0.54s; }
+
+  @media (max-width: 720px) {
+    h1 { font-size: 36px; }
+    .apps-grid { grid-template-columns: 1fr; }
+    .page { padding: 60px 24px 80px; }
+    .menubar-preview { padding: 24px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="suite-label">Futhark Suite · v0.2.0</div>
+  <h1>Tools forged in runes</h1>
+  <p class="hero-sub">Four focused macOS apps for email, tasks, calendar, and notes - each named for a Norse rune that embodies its purpose. Built for solo use, and natively aware of Claude.</p>
+
+  <!-- Download -->
+  <div class="download-section">
+    <a href="/releases/futhark-latest.dmg" class="download-primary">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+      Download Futhark Suite
+    </a>
+
+    <div class="download-individual">
+      <a href="/releases/kenaz-latest.dmg" class="download-app kenaz">
+        <div class="app-dot dot-kenaz"></div>
+        kenaz only
+      </a>
+      <a href="/releases/raido-latest.dmg" class="download-app raido">
+        <div class="app-dot dot-raido"></div>
+        raidō only
+      </a>
+      <a href="/releases/dagaz-latest.dmg" class="download-app dagaz">
+        <div class="app-dot dot-dagaz"></div>
+        dagaz only
+      </a>
+      <span class="download-app laguz" style="opacity:0.3; cursor:default; pointer-events:none;">
+        <div class="app-dot dot-laguz"></div>
+        laguz · soon
+      </span>
+    </div>
+
+    <div class="version-note">v0.2.0 · macOS 13+</div>
+  </div>
+
+  <!-- Menu bar update preview -->
+  <div class="menubar-preview">
+    <div class="preview-label">Updates from the menu bar</div>
+    <div style="display: flex; gap: 48px; flex-wrap: wrap; align-items: flex-start;">
+      <div>
+        <div class="fake-menubar">
+          <div class="menu-item">About Futhark</div>
+          <div class="menu-item separator"></div>
+          <div class="menu-item update">
+            ↑ Update to v0.3.0
+          </div>
+          <div class="menu-item separator"></div>
+          <div class="menu-item">
+            Preferences<span class="menu-shortcut">⌘,</span>
+          </div>
+          <div class="menu-item separator"></div>
+          <div class="menu-item">Quit<span class="menu-shortcut">⌘Q</span></div>
+        </div>
+      </div>
+      <div style="max-width: 320px; padding-top: 8px;">
+        <p style="font-size: 14px; color: #666; line-height: 1.7; font-weight: 300;">
+          When a new version is available, each app shows an update option directly in its menu bar menu. One click downloads and applies the update - no app store, no manual downloads.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Apps -->
+  <div class="apps-grid">
+
+    <!-- Kenaz -->
+    <div class="app-card kenaz">
+      <div class="card-top">
+        <svg class="app-icon" width="72" height="72" viewBox="0 0 512 512" fill="none">
+          <defs>
+            <linearGradient id="kenaz-bg" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#C43E0C"/>
+              <stop offset="1" stop-color="#F7A94B"/>
+            </linearGradient>
+          </defs>
+          <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#kenaz-bg)"/>
+          <path d="M332.8 112.6L189.4 256L332.8 399.4" stroke="#FFF8F0" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        </svg>
+        <span class="app-status status-live">Live</span>
+      </div>
+      <div class="app-name">kenaz</div>
+      <div class="app-rune">ᚲ · Torch · Fire</div>
+      <div class="app-desc">A personal email client that keeps Gmail and your HubSpot contacts in the same view. Read, draft, and triage - and give Claude the same access so it can act on your behalf.</div>
+    </div>
+
+    <!-- Raidō -->
+    <div class="app-card raido">
+      <div class="card-top">
+        <svg class="app-icon" width="72" height="72" viewBox="0 0 512 512" fill="none">
+          <defs>
+            <linearGradient id="raido-bg" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#8B5E3C"/>
+              <stop offset="1" stop-color="#D4A574"/>
+            </linearGradient>
+          </defs>
+          <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#raido-bg)"/>
+          <path d="M190 399.4L190 112.6" stroke="#FFF8F0" stroke-width="36" stroke-linecap="round" fill="none"/>
+          <path d="M190 112.6L330 210L190 307.4" stroke="#FFF8F0" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <path d="M190 307.4L330 399.4" stroke="#FFF8F0" stroke-width="36" stroke-linecap="round" fill="none"/>
+        </svg>
+        <span class="app-status status-live">Live</span>
+      </div>
+      <div class="app-name">raidō</div>
+      <div class="app-rune">ᚱ · Journey · Ride</div>
+      <div class="app-desc">A task manager built around the way work actually flows - groups, tags, recurrence, and a logbook. Claude has the same view, so it can capture, update, and reason about your to-dos.</div>
+    </div>
+
+    <!-- Dagaz -->
+    <div class="app-card dagaz">
+      <div class="card-top">
+        <svg class="app-icon" width="72" height="72" viewBox="0 0 512 512" fill="none">
+          <defs>
+            <linearGradient id="dagaz-bg" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#2D5F8A"/>
+              <stop offset="1" stop-color="#7AB8D4"/>
+            </linearGradient>
+          </defs>
+          <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#dagaz-bg)"/>
+          <path d="M128 160L256 256L128 352M384 160L256 256L384 352" stroke="#F0F4FF" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          <line x1="128" y1="160" x2="128" y2="352" stroke="#F0F4FF" stroke-width="36" stroke-linecap="round"/>
+          <line x1="384" y1="160" x2="384" y2="352" stroke="#F0F4FF" stroke-width="36" stroke-linecap="round"/>
+        </svg>
+        <span class="app-status status-live">Live</span>
+      </div>
+      <div class="app-name">dagaz</div>
+      <div class="app-rune">ᛞ · Day · Dawn</div>
+      <div class="app-desc">A calendar client that stays out of your way. See your day, find free time, prep for meetings - and let Claude do the same when it needs to schedule or check your availability.</div>
+    </div>
+
+    <!-- Laguz -->
+    <div class="app-card laguz">
+      <div class="card-top">
+        <svg class="app-icon" width="72" height="72" viewBox="0 0 512 512" fill="none">
+          <defs>
+            <linearGradient id="laguz-bg" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
+              <stop offset="0" stop-color="#1B4D5C"/>
+              <stop offset="1" stop-color="#5CB8A5"/>
+            </linearGradient>
+          </defs>
+          <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#laguz-bg)"/>
+          <path d="M190 399.4L190 160" stroke="#F0FFF8" stroke-width="36" stroke-linecap="round" fill="none"/>
+          <path d="M190 160L320 256" stroke="#F0FFF8" stroke-width="36" stroke-linecap="round" fill="none"/>
+        </svg>
+        <span class="app-status status-someday">Soon</span>
+      </div>
+      <div class="app-name">laguz</div>
+      <div class="app-rune">ᛚ · Lake · Flow</div>
+      <div class="app-desc">A scratch pad and Obsidian vault browser in one. Write, annotate PDFs, and browse your notes - with Claude able to search, read, and write to the same vault.</div>
+    </div>
+
+  </div>
+
+  <!-- About -->
+  <div class="about-section">
+    <div class="section-label">What this is</div>
+    <p>Futhark is a suite of small, focused macOS apps - each one genuinely useful on its own, and each one built to give Claude the same access you have. Not a dashboard or a wrapper, but real tools that happen to speak Claude's language.</p>
+    <p>Each app is named for an Elder Futhark rune whose meaning matches its purpose. They are designed to work together - Kenaz pulls CRM context from HubSpot while you draft, Dagaz surfaces tasks from Raidō when you plan your day.</p>
+
+    <div class="req-row">
+      <div class="req-item"><div class="req-dot"></div>macOS 13 Ventura or later</div>
+      <div class="req-item"><div class="req-dot"></div>Claude Desktop or compatible MCP client</div>
+      <div class="req-item"><div class="req-dot"></div>Google account (for Gmail / Calendar)</div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <div class="footer-rune">ᚲ ᚱ ᛞ ᛚ</div>
+    <div class="footer-right">kenaz.app · v0.2.0</div>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -301,7 +301,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   defaultCalendarId: null,
   notificationsEnabled: false,
   reminderMinutes: 15,
-  dockBadgeEnabled: false,
+  dockBadgeEnabled: true,
   pendingInviteCheckInterval: 300000,
   timeZones: [],
   use24HourClock: false,

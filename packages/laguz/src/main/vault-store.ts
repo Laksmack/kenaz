@@ -111,6 +111,19 @@ export class VaultStore {
       CREATE INDEX IF NOT EXISTS idx_note_meta_note ON note_meta(note_id);
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS vault_files (
+        id       TEXT PRIMARY KEY,
+        path     TEXT UNIQUE NOT NULL,
+        filename TEXT,
+        ext      TEXT,
+        modified TEXT,
+        size     INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_vault_files_ext ON vault_files(ext);
+      CREATE INDEX IF NOT EXISTS idx_vault_files_modified ON vault_files(modified);
+    `);
+
     this.ensureFts();
   }
 
@@ -224,6 +237,47 @@ export class VaultStore {
     upsert();
   }
 
+  indexFile(filePath: string): void {
+    const relativePath = path.relative(config.vaultPath, filePath);
+    const ext = path.extname(relativePath).toLowerCase().replace('.', '');
+    if (!ext) return;
+
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(filePath);
+    } catch {
+      return;
+    }
+
+    const id = pathToId(relativePath);
+    const filename = path.basename(relativePath);
+
+    this.db.prepare(`
+      INSERT INTO vault_files (id, path, filename, ext, modified, size)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        path=excluded.path, filename=excluded.filename, ext=excluded.ext,
+        modified=excluded.modified, size=excluded.size
+    `).run(id, relativePath, filename, ext, stat.mtime.toISOString(), stat.size);
+  }
+
+  removeFile(filePath: string): void {
+    const relativePath = path.relative(config.vaultPath, filePath);
+    const id = pathToId(relativePath);
+    this.db.prepare('DELETE FROM vault_files WHERE id = ?').run(id);
+  }
+
+  getVaultFiles(ext?: string, limit: number = 100): Array<{ path: string; filename: string; ext: string; modified: string; size: number }> {
+    if (ext) {
+      return this.db.prepare(
+        'SELECT path, filename, ext, modified, size FROM vault_files WHERE ext = ? ORDER BY modified DESC LIMIT ?'
+      ).all(ext, limit) as any[];
+    }
+    return this.db.prepare(
+      'SELECT path, filename, ext, modified, size FROM vault_files ORDER BY modified DESC LIMIT ?'
+    ).all(limit) as any[];
+  }
+
   removeNote(filePath: string): void {
     const relativePath = path.relative(config.vaultPath, filePath);
     const id = pathToId(relativePath);
@@ -269,6 +323,13 @@ export class VaultStore {
           } catch (e) {
             errors++;
             console.warn(`[Laguz] Failed to index: ${entry.name}`, e);
+          }
+        } else if (entry.name.endsWith('.pdf')) {
+          try {
+            this.indexFile(full);
+            count++;
+          } catch (e) {
+            errors++;
           }
         }
       }
@@ -470,6 +531,108 @@ export class VaultStore {
     }
     fs.writeFileSync(fullPath, content, 'utf-8');
     this.indexNote(fullPath);
+  }
+
+  getFields(notePath: string, fields: string[]): Record<string, string | null> {
+    const fullPath = path.join(config.vaultPath, notePath);
+    if (!fs.existsSync(fullPath)) throw new Error(`File not found: ${notePath}`);
+    const raw = fs.readFileSync(fullPath, 'utf-8');
+    const parsed = matter(raw);
+
+    const toSnake = (s: string) => s.trim().toLowerCase().replace(/[\s\-]+/g, '_');
+
+    const sectionMap = new Map<string, string>();
+    const lines = parsed.content.split('\n');
+    let currentKey = '';
+    let currentLevel = 0;
+    let currentLines: string[] = [];
+
+    const flush = () => {
+      if (currentKey) {
+        const text = currentLines.join('\n').trim();
+        if (text) sectionMap.set(currentKey, text);
+      }
+    };
+
+    for (const line of lines) {
+      const m = line.match(/^(#{2,6})\s+(.+)/);
+      if (m) {
+        const level = m[1].length;
+        const heading = m[2].trim();
+        if (level <= currentLevel || !currentKey) {
+          flush();
+          currentKey = toSnake(heading);
+          currentLevel = level;
+          currentLines = [];
+        } else {
+          currentLines.push(line);
+        }
+      } else {
+        if (currentKey) currentLines.push(line);
+      }
+    }
+    flush();
+
+    const result: Record<string, string | null> = {};
+    for (const field of fields) {
+      const snake = toSnake(field);
+      if (snake in parsed.data) {
+        const val = parsed.data[snake];
+        result[field] = val == null ? null
+          : val instanceof Date ? val.toISOString().split('T')[0]
+          : String(val);
+      } else if (sectionMap.has(snake)) {
+        result[field] = sectionMap.get(snake)!;
+      } else {
+        result[field] = null;
+      }
+    }
+    return result;
+  }
+
+  updateFrontmatter(notePath: string, fields: Record<string, any>): { path: string; updated: string[] } {
+    const fullPath = path.join(config.vaultPath, notePath);
+    const raw = fs.readFileSync(fullPath, 'utf-8');
+    const parsed = matter(raw);
+
+    const updated: string[] = [];
+    for (const [key, value] of Object.entries(fields)) {
+      if (value === null || value === undefined) {
+        if (key in parsed.data) {
+          delete parsed.data[key];
+          updated.push(key);
+        }
+      } else {
+        parsed.data[key] = value;
+        updated.push(key);
+      }
+    }
+
+    const output = matter.stringify(parsed.content, parsed.data);
+    fs.writeFileSync(fullPath, output, 'utf-8');
+    this.indexNote(fullPath);
+    return { path: notePath, updated };
+  }
+
+  // ── Folder Operations ────────────────────────────────────────
+
+  getAllFolders(): Array<{ name: string; path: string }> {
+    const folders: Array<{ name: string; path: string }> = [];
+    const walk = (dir: string, relativePath: string) => {
+      try {
+        const entries = fs.readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.name.startsWith('.') || entry.name.startsWith('_')) continue;
+          if (entry.isDirectory()) {
+            const rel = relativePath ? `${relativePath}/${entry.name}` : entry.name;
+            folders.push({ name: entry.name, path: rel });
+            walk(path.join(dir, entry.name), rel);
+          }
+        }
+      } catch {}
+    };
+    walk(config.vaultPath, '');
+    return folders;
   }
 
   // ── Cleanup ──────────────────────────────────────────────────
