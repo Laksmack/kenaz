@@ -68,6 +68,14 @@ if [ -f "$REPO_ROOT/.env.notarize" ]; then
   set +a
 fi
 
+# Unlock the login keychain so codesign can access the Developer ID key.
+# KEYCHAIN_PASSWORD should be set in .env.notarize (the Mac login password).
+if [ -n "${KEYCHAIN_PASSWORD:-}" ]; then
+  echo "  unlocking keychain..."
+  security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db 2>/dev/null
+  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db >/dev/null 2>&1 || true
+fi
+
 # Install dependencies
 echo "  installing dependencies..."
 if ! npm ci --quiet 2>&1; then
