@@ -67,7 +67,11 @@ fi
 
 echo ""
 echo "━━━ Build Runner: $(date '+%Y-%m-%d %H:%M:%S') ━━━"
-echo "  new commits detected ($LOCAL → $REMOTE)"
+if [ "$FORCE" = true ]; then
+  echo "  forced build ($(git rev-parse --short HEAD))"
+else
+  echo "  new commits detected ($LOCAL → $REMOTE)"
+fi
 
 # Load notarization credentials
 if [ -f "$REPO_ROOT/.env.notarize" ]; then
