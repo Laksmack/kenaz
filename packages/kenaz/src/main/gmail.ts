@@ -31,10 +31,6 @@ function getCredentialsPath(): string {
   return path.join(app.getPath('userData'), 'credentials.json');
 }
 
-function getTokenPath(): string {
-  return path.join(app.getPath('userData'), 'token.json');
-}
-
 /**
  * Returns OAuth client_id and client_secret.
  * Uses bundled credentials by default; falls back to credentials.json if bundled ones are empty.
@@ -66,6 +62,7 @@ export class GmailService {
   private oauth2Client: OAuth2Client | null = null;
   private gmail: gmail_v1.Gmail | null = null;
   private config: ConfigStore;
+  private dataDir: string;
   private labelCache: Map<string, string> = new Map(); // name → id
   private userEmail: string = '';
 
@@ -77,8 +74,13 @@ export class GmailService {
     return this.userEmail;
   }
 
-  constructor(config: ConfigStore) {
+  private getTokenPath(): string {
+    return path.join(this.dataDir, 'token.json');
+  }
+
+  constructor(config: ConfigStore, dataDir?: string) {
     this.config = config;
+    this.dataDir = dataDir || app.getPath('userData');
     this.tryLoadExistingToken();
   }
 
@@ -89,7 +91,7 @@ export class GmailService {
 
       this.oauth2Client = new OAuth2Client(oauthCreds.client_id, oauthCreds.client_secret, OAUTH_REDIRECT_URI);
 
-      const tokenPath = getTokenPath();
+      const tokenPath = this.getTokenPath();
       if (fs.existsSync(tokenPath)) {
         const token = JSON.parse(fs.readFileSync(tokenPath, 'utf-8'));
         this.oauth2Client.setCredentials(token);
@@ -181,7 +183,9 @@ export class GmailService {
       this.oauth2Client.setCredentials(tokens);
 
       // Save token
-      fs.writeFileSync(getTokenPath(), JSON.stringify(tokens, null, 2));
+      const dir = path.dirname(this.getTokenPath());
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(this.getTokenPath(), JSON.stringify(tokens, null, 2));
 
       this.gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
       await this.cacheLabelIds();

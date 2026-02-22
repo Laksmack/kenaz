@@ -48,6 +48,11 @@ declare global {
       // Cross-app
       crossAppFetch: (url: string, options?: any) => Promise<any>;
 
+      // Update
+      onUpdateState: (callback: (state: { status: string; version?: string; percent?: number; message?: string }) => void) => () => void;
+      checkForUpdates: () => Promise<any>;
+      installUpdate: () => Promise<void>;
+
       // Events
       onTasksChanged: (callback: () => void) => () => void;
     };

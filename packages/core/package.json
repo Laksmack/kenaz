@@ -1,6 +1,6 @@
 {
   "name": "@futhark/core",
-  "version": "0.5.4",
+  "version": "0.6.0",
   "private": true,
   "main": "index.ts",
   "scripts": {
@@ -11,6 +11,7 @@
     "./components/*": "./components/*",
     "./hooks/*": "./hooks/*",
     "./lib/*": "./lib/*",
+    "./lib/auto-updater": "./lib/auto-updater.ts",
     "./types": "./types/index.ts",
     "./mcp/installer": "./mcp/installer.ts",
     "./tailwind.preset": "./tailwind.preset.mjs",

@@ -94,6 +94,15 @@ const api = {
   searchContacts: (query: string) =>
     ipcRenderer.invoke(IPC.OVERLAY_SEARCH_CONTACTS, query),
 
+  // Update
+  onUpdateState: (callback: (state: any) => void) => {
+    const handler: any = (_event: any, state: any) => callback(state);
+    ipcRenderer.on('update:state', handler);
+    return () => { ipcRenderer.removeListener('update:state', handler); };
+  },
+  checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+
   // Push events from main process
   onSyncChanged: (callback: (state: any) => void) => {
     ipcRenderer.on('sync:changed', (_event, state) => callback(state));

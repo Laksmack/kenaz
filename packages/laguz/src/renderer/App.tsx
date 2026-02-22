@@ -8,6 +8,7 @@ import { FolderContextView } from './components/FolderContextView';
 import { TabBar } from './components/TabBar';
 import { NoteDetail } from './components/NoteDetail';
 import { SettingsModal } from './components/SettingsModal';
+import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
 import type { ViewType, LaguzConfig, SelectedItem, EditorConfig } from './types';
 
 // ── Editor Config Context ─────────────────────────────────────
@@ -315,6 +316,7 @@ export default function App() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        <UpdateBanner api={window.laguz} />
         {/* Title bar */}
         <div className="titlebar-drag h-12 flex items-center px-4 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
           <div className="flex-1" />

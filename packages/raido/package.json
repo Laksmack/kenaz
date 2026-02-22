@@ -1,6 +1,6 @@
 {
   "name": "@futhark/raido",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Raidō ᚱ — Personal task manager",
   "main": "dist/main/main/main.js",
   "private": true,
@@ -38,9 +38,24 @@
           "arch": [
             "arm64"
           ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
         }
       ],
-      "darkModeSupport": true
+      "darkModeSupport": true,
+      "identity": "MARTIN STENKILDE (DDZS7WM362)",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "../../signing/entitlements.mac.plist",
+      "entitlementsInherit": "../../signing/entitlements.mac.plist"
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://kenaz.app/releases/raido"
     },
     "asarUnpack": [],
     "npmRebuild": true
@@ -50,6 +65,7 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "better-sqlite3": "^12.6.2",
     "dotenv": "^17.2.4",
+    "electron-updater": "^6.8.3",
     "express": "^4.18.2",
     "marked": "^17.0.2",
     "react": "^18.2.0",
@@ -57,6 +73,7 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@electron/notarize": "^3.1.1",
     "@napi-rs/canvas": "^0.1.92",
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^4.17.21",

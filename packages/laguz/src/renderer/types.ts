@@ -171,6 +171,11 @@ declare global {
       getVaultFolders: () => Promise<Array<{ name: string; path: string }>>;
       getFolderContext: (folderName: string) => Promise<FolderContextData>;
 
+      // Update
+      onUpdateState: (callback: (state: { status: string; version?: string; percent?: number; message?: string }) => void) => () => void;
+      checkForUpdates: () => Promise<any>;
+      installUpdate: () => Promise<void>;
+
       crossAppFetch: (url: string, options?: any) => Promise<any>;
       onOpenFile: (cb: (path: string) => void) => () => void;
     };

@@ -3,6 +3,8 @@ import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
 
+import { initAutoUpdater, getUpdateMenuItems } from '@futhark/core/lib/auto-updater';
+
 // Catch fatal errors during module loading
 process.on('uncaughtException', (e) => {
   const msg = `[Laguz] FATAL uncaught exception: ${e?.message ?? e}\n${e?.stack ?? ''}`;
@@ -523,6 +525,8 @@ function buildAppMenu() {
       submenu: [
         { role: 'about' as const },
         { type: 'separator' as const },
+        ...getUpdateMenuItems(),
+        { type: 'separator' as const },
         {
           label: isDefault ? 'Default .md Viewer \u2713' : 'Make Default .md Viewer',
           enabled: !isDefault,
@@ -594,6 +598,7 @@ app.whenReady().then(async () => {
     console.error('[Laguz] buildAppMenu failed:', e.message);
   }
 
+  initAutoUpdater(mainWindow!, buildAppMenu);
   installFutharkMcp();
 
   // Send any file that was opened before the window was ready

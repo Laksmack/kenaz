@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain, shell, Notification, powerMonitor, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Notification, powerMonitor, dialog, Menu } from 'electron';
 import path from 'path';
 import * as chrono from 'chrono-node';
 
+import { initAutoUpdater, getUpdateMenuItems } from '@futhark/core/lib/auto-updater';
 import { GoogleCalendarService } from './google-calendar';
 import { startApiServer } from './api-server';
 import { ConfigStore } from './config';
@@ -707,10 +708,39 @@ async function installFutharkMcp() {
   }
 }
 
+function buildAppMenu() {
+  const isMac = process.platform === 'darwin';
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' as const },
+        { type: 'separator' as const },
+        ...getUpdateMenuItems(),
+        { type: 'separator' as const },
+        { role: 'services' as const },
+        { type: 'separator' as const },
+        { role: 'hide' as const },
+        { role: 'hideOthers' as const },
+        { role: 'unhide' as const },
+        { type: 'separator' as const },
+        { role: 'quit' as const },
+      ],
+    }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 app.whenReady().then(async () => {
   await initServices();
   registerIpcHandlers();
+  buildAppMenu();
   createWindow();
+  initAutoUpdater(mainWindow!, buildAppMenu);
   startBadgeMonitor();
   initDockIcon();
   installFutharkMcp();

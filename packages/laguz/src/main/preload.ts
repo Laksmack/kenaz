@@ -58,6 +58,15 @@ const api = {
   // Cross-app
   crossAppFetch: (url: string, options?: any) => ipcRenderer.invoke('cross-app:fetch', url, options),
 
+  // Update
+  onUpdateState: (callback: (state: any) => void) => {
+    const handler = (_event: any, state: any) => callback(state);
+    ipcRenderer.on('update:state', handler);
+    return () => { ipcRenderer.removeListener('update:state', handler); };
+  },
+  checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+
   // Events from main process
   onOpenFile: (cb: (path: string) => void) => {
     const handler = (_e: any, path: string) => cb(path);

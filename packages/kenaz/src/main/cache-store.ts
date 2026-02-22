@@ -4,15 +4,13 @@ import fs from 'fs';
 import { app } from 'electron';
 import type { EmailThread, Email, EmailAddress, CacheStats, SendEmailPayload, OutboxItem, NudgeType } from '../shared/types';
 
-function getDbPath(): string {
-  return path.join(app.getPath('userData'), 'kenaz-cache.db');
-}
-
 export class CacheStore {
   private db: Database.Database;
+  private dbPath: string;
 
-  constructor() {
-    const dbPath = getDbPath();
+  constructor(dataDir?: string) {
+    const dbPath = path.join(dataDir || app.getPath('userData'), 'kenaz-cache.db');
+    this.dbPath = dbPath;
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -711,7 +709,7 @@ export class CacheStore {
 
     let sizeBytes = 0;
     try {
-      const dbPath = getDbPath();
+      const dbPath = this.dbPath;
       if (fs.existsSync(dbPath)) {
         sizeBytes = fs.statSync(dbPath).size;
         // Also count WAL file

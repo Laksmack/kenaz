@@ -77,6 +77,15 @@ const api = {
   // Cross-app
   crossAppFetch: (url: string, options?: any) => ipcRenderer.invoke('cross-app:fetch', url, options),
 
+  // Update
+  onUpdateState: (callback: (state: any) => void) => {
+    const handler = (_event: any, state: any) => callback(state);
+    ipcRenderer.on('update:state', handler);
+    return () => { ipcRenderer.removeListener('update:state', handler); };
+  },
+  checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+
   // Push events
   onTasksChanged: (callback: () => void) => {
     ipcRenderer.on('tasks:changed', callback);

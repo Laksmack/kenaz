@@ -10,8 +10,8 @@ export class ViewStore {
   private filePath: string;
   private views: View[];
 
-  constructor() {
-    this.filePath = path.join(app.getPath('userData'), 'views.json');
+  constructor(dataDir?: string) {
+    this.filePath = path.join(dataDir || app.getPath('userData'), 'views.json');
     this.views = this.load();
   }
 
@@ -75,8 +75,8 @@ export class RuleStore {
   private filePath: string;
   private rules: Rule[];
 
-  constructor() {
-    this.filePath = path.join(app.getPath('userData'), 'rules.json');
+  constructor(dataDir?: string) {
+    this.filePath = path.join(dataDir || app.getPath('userData'), 'rules.json');
     this.rules = this.load();
   }
 

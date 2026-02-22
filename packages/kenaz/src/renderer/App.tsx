@@ -13,7 +13,9 @@ import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useEmails } from './hooks/useEmails';
 import { useConnectivity } from './hooks/useConnectivity';
 import { ErrorBoundary } from './components/ErrorBoundary';
-import type { ViewType, ComposeData, SendEmailPayload, EmailThread, AppConfig, View, Rule } from '@shared/types';
+import { AccountSwitcher } from './components/AccountSwitcher';
+import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
+import type { ViewType, ComposeData, SendEmailPayload, EmailThread, AppConfig, View, Rule, AccountInfo } from '@shared/types';
 
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
@@ -33,13 +35,25 @@ export default function App() {
   const [undoActions, setUndoActions] = useState<import('./components/UndoToast').UndoAction[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [snoozeMode, setSnoozeMode] = useState(false);
+  const [accounts, setAccounts] = useState<AccountInfo[]>([]);
+  const [activeAccount, setActiveAccount] = useState<string>('');
   const pendingSendsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Connectivity / offline state
   const { isOnline, pendingActions, outboxCount } = useConnectivity();
 
-  // Check auth on mount, load config, user email, and views
+  // Check auth on mount, load config, user email, views, and accounts
   useEffect(() => {
+    window.kenaz.listAccounts().then((accts: AccountInfo[]) => {
+      setAccounts(accts);
+      if (accts.length === 0) {
+        setAuthenticated(false);
+        return;
+      }
+      window.kenaz.getActiveAccount().then((email: string | null) => {
+        if (email) setActiveAccount(email);
+      });
+    });
     window.kenaz.gmailAuthStatus()
       .then((status: boolean) => {
         setAuthenticated(status);
@@ -178,6 +192,49 @@ export default function App() {
       }
     });
     return cleanup;
+  }, []);
+
+  // Listen for account changes from main process
+  useEffect(() => {
+    const cleanup = window.kenaz.onAccountChanged((email: string | null) => {
+      if (email) {
+        setActiveAccount(email);
+        // Reset all state for the new account
+        setSelectedThread(null);
+        setSelectedIds(new Set());
+        setSearchQuery('');
+        setCurrentView('inbox');
+        setComposeOpen(false);
+
+        // Reload account-specific data
+        window.kenaz.getUserEmail().then(setUserEmail);
+        window.kenaz.getConfig().then(setAppConfig);
+        window.kenaz.listViews().then(setViews);
+        window.kenaz.listAccounts().then(setAccounts);
+        window.kenaz.gmailAuthStatus().then(setAuthenticated);
+      } else {
+        setAuthenticated(false);
+        setAccounts([]);
+        setActiveAccount('');
+      }
+    });
+    return cleanup;
+  }, []);
+
+  const handleSwitchAccount = useCallback(async (email: string) => {
+    await window.kenaz.switchAccount(email);
+  }, []);
+
+  const handleAddAccount = useCallback(async () => {
+    const result = await window.kenaz.addAccount();
+    if (result.success) {
+      window.kenaz.listAccounts().then(setAccounts);
+    }
+  }, []);
+
+  const handleRemoveAccount = useCallback(async (email: string) => {
+    await window.kenaz.removeAccount(email);
+    window.kenaz.listAccounts().then(setAccounts);
   }, []);
 
   // Also update counts when threads change (user actions)
@@ -915,7 +972,16 @@ export default function App() {
 
   // Auth screen
   if (authenticated === false) {
-    return <AuthScreen onAuthenticated={() => setAuthenticated(true)} />;
+    return <AuthScreen onAuthenticated={() => {
+      setAuthenticated(true);
+      window.kenaz.listAccounts().then(setAccounts);
+      window.kenaz.getActiveAccount().then((email: string | null) => {
+        if (email) setActiveAccount(email);
+      });
+      window.kenaz.getUserEmail().then(setUserEmail);
+      window.kenaz.getConfig().then(setAppConfig);
+      window.kenaz.listViews().then(setViews);
+    }} />;
   }
 
   if (authenticated === null) {
@@ -929,6 +995,7 @@ export default function App() {
   return (
     <ErrorBoundary>
     <div className="h-screen flex flex-col bg-bg-primary">
+      <UpdateBanner api={window.kenaz} />
       {/* Title bar drag region */}
       <div className="titlebar-drag h-12 flex items-center pl-20 pr-3 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
         <div className="titlebar-no-drag">
@@ -936,6 +1003,15 @@ export default function App() {
         </div>
         <div className="flex-1" /> {/* This space IS draggable */}
         <div className="titlebar-no-drag flex items-center gap-2">
+          {accounts.length > 0 && (
+            <AccountSwitcher
+              accounts={accounts}
+              activeAccount={activeAccount}
+              onSwitch={handleSwitchAccount}
+              onAdd={handleAddAccount}
+              onRemove={handleRemoveAccount}
+            />
+          )}
           {!isOnline && (
             <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-accent-danger/15 text-accent-danger text-[10px] font-semibold">
               <span className="w-1.5 h-1.5 rounded-full bg-accent-danger animate-pulse" />

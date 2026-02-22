@@ -6,6 +6,7 @@
 #   ./deploy.sh all              Build and deploy all apps (parallel)
 #   ./deploy.sh kenaz dagaz      Build and deploy specific apps
 #   ./deploy.sh kenaz --launch   Build, deploy, and relaunch
+#   ./deploy.sh all --notarize   Build all and notarize with Apple (for Sophos)
 #   ./deploy.sh --mcp-only       Only rebuild the MCP server (no app builds)
 #   ./deploy.sh all --serial     Build sequentially instead of in parallel
 #
@@ -24,6 +25,7 @@ APPS=(kenaz raido dagaz laguz)
 LAUNCH=false
 MCP_ONLY=false
 SERIAL=false
+NOTARIZE=false
 
 show_help() {
   echo "Usage: ./deploy.sh [all | app1 app2 ...] [--launch] [--mcp-only] [--serial]"
@@ -32,15 +34,17 @@ show_help() {
   echo ""
   echo "Flags:"
   echo "  --launch     Open apps in /Applications/ after successful build"
+  echo "  --notarize   Notarize apps with Apple (slower, needed for Sophos)"
   echo "  --mcp-only   Only rebuild the unified MCP server (no app builds)"
   echo "  --serial     Build sequentially instead of in parallel"
   echo ""
   echo "Examples:"
-  echo "  ./deploy.sh all              Build all apps in parallel"
-  echo "  ./deploy.sh all --serial     Build all apps one at a time"
-  echo "  ./deploy.sh kenaz            Build and install Kenaz only"
-  echo "  ./deploy.sh kenaz --launch   Build, install, and open Kenaz"
-  echo "  ./deploy.sh --mcp-only       Only rebuild the unified MCP server"
+  echo "  ./deploy.sh all                   Build all apps in parallel"
+  echo "  ./deploy.sh all --serial          Build all apps one at a time"
+  echo "  ./deploy.sh kenaz                 Build and install Kenaz only"
+  echo "  ./deploy.sh kenaz --launch        Build, install, and open Kenaz"
+  echo "  ./deploy.sh all --notarize        Build all, notarize with Apple"
+  echo "  ./deploy.sh --mcp-only            Only rebuild the unified MCP server"
   exit 0
 }
 
@@ -56,9 +60,10 @@ TARGETS=()
 for arg in "$@"; do
   case "$arg" in
     -h|--help)  show_help ;;
-    --launch)   LAUNCH=true ;;
-    --mcp-only) MCP_ONLY=true ;;
-    --serial)   SERIAL=true ;;
+    --launch)    LAUNCH=true ;;
+    --notarize)  NOTARIZE=true ;;
+    --mcp-only)  MCP_ONLY=true ;;
+    --serial)    SERIAL=true ;;
     --*)
       echo "Error: Unknown flag '$arg'"
       echo "Run ./deploy.sh --help for usage."
@@ -93,6 +98,11 @@ get_display_name() {
 
 # ── Step 1: Build core MCP ──────────────────────────────────
 
+caffeinate -i -w $$ &
+CAFFEINE_PID=$!
+
+echo ""
+echo "━━━ Deploy started at $(date '+%H:%M:%S') ━━━"
 echo ""
 echo "━━━ Building @futhark/core MCP server ━━━"
 cd "$REPO_ROOT/packages/core"
@@ -126,9 +136,34 @@ echo "  done"
 
 # ── Step 3: Build and deploy ─────────────────────────────────
 
+if [ "$NOTARIZE" = true ]; then
+  if [ -f "$REPO_ROOT/.env.notarize" ]; then
+    set -a
+    source "$REPO_ROOT/.env.notarize"
+    set +a
+    echo ""
+    echo "━━━ Notarization enabled ━━━"
+    echo "  credentials loaded from .env.notarize"
+  else
+    echo "Error: .env.notarize not found. Create it with APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID"
+    exit 1
+  fi
+fi
+
 LOG_DIR=$(mktemp -d)
 PIDS=()
 BUILD_START=$(date +%s)
+
+elapsed_since() {
+  local start="$1"
+  local now=$(date +%s)
+  echo "$(( now - start ))s"
+}
+
+progress() {
+  local name="$1" step="$2" start="$3"
+  printf "  %-8s %-36s %s\n" "$name" "$step" "$(elapsed_since "$start")"
+}
 
 build_app() {
   local app="$1"
@@ -142,10 +177,32 @@ build_app() {
   fi
 
   local VERSION=$(node -p "require('$PKG_DIR/package.json').version")
-  echo "[$NAME v$VERSION] building..." > "$LOG"
+  local APP_START=$(date +%s)
+
+  progress "$NAME" "compiling typescript..." "$APP_START"
 
   cd "$PKG_DIR"
-  if ! npm run dist:dir >> "$LOG" 2>&1; then
+
+  npm run dist:dir 2>&1 | tee "$LOG" | while IFS= read -r line; do
+    case "$line" in
+      *"vite build"*)
+        progress "$NAME" "bundling renderer (vite)..." "$APP_START" ;;
+      *"built in"*)
+        progress "$NAME" "vite done" "$APP_START" ;;
+      *"installing native dependencies"*)
+        progress "$NAME" "rebuilding native modules..." "$APP_START" ;;
+      *"packaging"*"platform="*)
+        progress "$NAME" "packaging electron app..." "$APP_START" ;;
+      *"signing"*"file="*)
+        progress "$NAME" "signing with Developer ID..." "$APP_START" ;;
+      *"otarizing"*|*"otariz"*)
+        progress "$NAME" "notarizing with Apple..." "$APP_START" ;;
+      *"otarization complete"*|*"otarize complete"*)
+        progress "$NAME" "notarization complete" "$APP_START" ;;
+    esac
+  done
+
+  if [ "${PIPESTATUS[0]}" -ne 0 ]; then
     echo "FAIL: Build failed" >> "$LOG"
     return 1
   fi
@@ -158,72 +215,53 @@ build_app() {
     return 1
   fi
 
+  progress "$NAME" "copying to /Applications..." "$APP_START"
   rm -rf "$DEST"
   cp -R "$SRC" "$DEST"
 
   local INSTALLED_VER=$(defaults read "$DEST/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || echo "?")
+  progress "$NAME" "✓ v$INSTALLED_VER installed" "$APP_START"
   echo "OK: $NAME v$INSTALLED_VER installed" >> "$LOG"
   return 0
 }
 
+echo ""
+echo "━━━ Building ${#TARGETS[@]} app(s) ━━━"
+echo ""
+
 if [ "$SERIAL" = true ] || [ ${#TARGETS[@]} -eq 1 ]; then
-  # Sequential builds
   FAILED=()
   SUCCEEDED=()
 
   for app in "${TARGETS[@]}"; do
-    NAME=$(get_display_name "$app")
-    echo ""
-    echo "━━━ $NAME ━━━"
     if build_app "$app"; then
-      tail -1 "$LOG_DIR/$app.log" | sed 's/^/  /'
       SUCCEEDED+=("$app")
     else
-      tail -1 "$LOG_DIR/$app.log" | sed 's/^/  /'
+      NAME=$(get_display_name "$app")
+      progress "$NAME" "✗ build failed" "$BUILD_START"
       FAILED+=("$app")
+      echo ""
+      echo "  Last 20 lines of $LOG_DIR/$app.log:"
+      tail -20 "$LOG_DIR/$app.log" | sed 's/^/    /'
     fi
   done
 else
-  # Parallel builds — each subshell prints its result the moment it finishes
-  echo ""
-  echo "━━━ Building ${#TARGETS[@]} apps in parallel ━━━"
-  echo ""
-
-  for app in "${TARGETS[@]}"; do
-    NAME=$(get_display_name "$app")
-    VERSION=$(node -p "require('$REPO_ROOT/packages/$app/package.json').version" 2>/dev/null || echo "?")
-    echo "  ⟐ $NAME v$VERSION"
-  done
-
-  echo ""
-
   RESULT_DIR=$(mktemp -d)
 
   for app in "${TARGETS[@]}"; do
     (
-      APP_START=$(date +%s)
-      NAME=$(get_display_name "$app")
       if build_app "$app"; then
-        APP_END=$(date +%s)
-        APP_ELAPSED=$((APP_END - APP_START))
-        result=$(tail -1 "$LOG_DIR/$app.log")
-        echo "  ✓ $result (${APP_ELAPSED}s)"
         echo "ok" > "$RESULT_DIR/$app"
       else
-        APP_END=$(date +%s)
-        APP_ELAPSED=$((APP_END - APP_START))
-        result=$(tail -1 "$LOG_DIR/$app.log")
-        echo "  ✗ $NAME: $result (${APP_ELAPSED}s)"
+        NAME=$(get_display_name "$app")
+        progress "$NAME" "✗ build failed" "$BUILD_START"
         echo "fail" > "$RESULT_DIR/$app"
       fi
     ) &
     PIDS+=($!)
   done
 
-  # Wait for all background jobs to finish
   wait "${PIDS[@]}" 2>/dev/null || true
-
-  echo ""
 
   FAILED=()
   SUCCEEDED=()

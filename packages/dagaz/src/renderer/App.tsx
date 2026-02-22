@@ -12,6 +12,7 @@ import { AuthScreen } from './components/AuthScreen';
 import { useCalendar, useSync } from './hooks/useCalendar';
 import { usePendingInvites } from './hooks/usePendingInvites';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
 import { isSameDay, formatDayHeader, dateKey, setUse24HourClock } from './lib/utils';
 import type { ViewType, CalendarEvent, AppConfig, CreateEventInput, OverlayPerson, OverlayEvent } from '../shared/types';
 import { OVERLAY_COLORS } from '../shared/types';
@@ -520,6 +521,7 @@ export default function App() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        <UpdateBanner api={window.dagaz} />
         {/* Title bar */}
         <div className="titlebar-drag h-12 flex items-center px-4 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
           {/* Navigation */}

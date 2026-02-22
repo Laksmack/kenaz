@@ -64,9 +64,27 @@ declare global {
 
       // MCP
       getMcpStatus: () => Promise<{ enabled: boolean; claudeDesktopConfig: any; serverPath: string }>;
+
+      // Accounts
+      listAccounts: () => Promise<import('@shared/types').AccountInfo[]>;
+      addAccount: () => Promise<{ success: boolean; email?: string; error?: string }>;
+      removeAccount: (email: string) => Promise<boolean>;
+      switchAccount: (email: string) => Promise<boolean>;
+      getActiveAccount: () => Promise<string | null>;
+      onAccountChanged: (callback: (email: string | null) => void) => () => void;
+
+      // Cross-app
+      crossAppFetch: (url: string, options?: any) => Promise<any>;
+
+      // Update
+      onUpdateState: (callback: (state: { status: string; version?: string; percent?: number; message?: string }) => void) => () => void;
+      checkForUpdates: () => Promise<any>;
+      installUpdate: () => Promise<void>;
+
       // Push events
       onThreadsUpdated: (callback: (data: any) => void) => () => void;
       onThreadUpdated: (callback: (data: any) => void) => () => void;
+      onNavigate: (callback: (data: any) => void) => () => void;
     };
   }
 }

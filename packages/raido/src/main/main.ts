@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain, shell, Notification, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Notification, dialog, Menu } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
+import { initAutoUpdater, getUpdateMenuItems } from '@futhark/core/lib/auto-updater';
 import { startApiServer } from './api-server';
 import { ConfigStore } from './config';
 import { TaskStore } from './task-store';
@@ -274,10 +275,39 @@ async function installFutharkMcp() {
   }
 }
 
+function buildAppMenu() {
+  const isMac = process.platform === 'darwin';
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' as const },
+        { type: 'separator' as const },
+        ...getUpdateMenuItems(),
+        { type: 'separator' as const },
+        { role: 'services' as const },
+        { type: 'separator' as const },
+        { role: 'hide' as const },
+        { role: 'hideOthers' as const },
+        { role: 'unhide' as const },
+        { type: 'separator' as const },
+        { role: 'quit' as const },
+      ],
+    }] : []),
+    { role: 'fileMenu' },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 app.whenReady().then(async () => {
   await initServices();
   registerIpcHandlers();
+  buildAppMenu();
   createWindow();
+  initAutoUpdater(mainWindow!, buildAppMenu);
   startBadgeMonitor();
   installFutharkMcp();
 

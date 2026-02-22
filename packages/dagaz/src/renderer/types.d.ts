@@ -49,6 +49,11 @@ interface DagazAPI {
   // MCP
   getMcpStatus(): Promise<any>;
 
+  // Update
+  onUpdateState(callback: (state: { status: string; version?: string; percent?: number; message?: string }) => void): () => void;
+  checkForUpdates(): Promise<any>;
+  installUpdate(): Promise<void>;
+
   // Push events
   onSyncChanged(callback: (state: any) => void): () => void;
   onConnectivityChanged(callback: (online: boolean) => void): () => void;

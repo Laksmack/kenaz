@@ -1,6 +1,6 @@
 {
   "name": "@futhark/laguz",
-  "version": "1.6.4",
+  "version": "1.7.0",
   "description": "Laguz ᛚ — Notes and vault browser",
   "main": "dist/main/main/main.js",
   "private": true,
@@ -37,9 +37,24 @@
           "arch": [
             "arm64"
           ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
         }
       ],
-      "darkModeSupport": true
+      "darkModeSupport": true,
+      "identity": "MARTIN STENKILDE (DDZS7WM362)",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "../../signing/entitlements.mac.plist",
+      "entitlementsInherit": "../../signing/entitlements.mac.plist"
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "https://kenaz.app/releases/laguz"
     },
     "fileAssociations": [
       {
@@ -444,6 +459,7 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "better-sqlite3": "^12.6.2",
     "chokidar": "^4.0.0",
+    "electron-updater": "^6.8.3",
     "express": "^4.18.2",
     "gray-matter": "^4.0.3",
     "mammoth": "^1.11.0",
@@ -455,6 +471,7 @@
     "zod": "^3.22.0"
   },
   "devDependencies": {
+    "@electron/notarize": "^3.1.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^4.17.21",
     "@types/node": "^22.0.0",

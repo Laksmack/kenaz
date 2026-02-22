@@ -235,30 +235,50 @@ export const IPC = {
 
   // MCP
   MCP_STATUS: 'mcp:status',
+
+  // Accounts
+  ACCOUNTS_LIST: 'accounts:list',
+  ACCOUNTS_ADD: 'accounts:add',
+  ACCOUNTS_REMOVE: 'accounts:remove',
+  ACCOUNTS_SWITCH: 'accounts:switch',
+  ACCOUNTS_ACTIVE: 'accounts:active',
 } as const;
+
+// ── Accounts ─────────────────────────────────────────────────
+
+export interface AccountInfo {
+  email: string;
+  addedAt: string;   // ISO date
+  lastActive: string; // ISO date
+}
 
 // ── Config ───────────────────────────────────────────────────
 
-export interface AppConfig {
-  displayName: string; // User's display name (shown in email list for sent items)
+export interface GlobalConfig {
+  apiPort: number;
+  apiEnabled: boolean;
+  cacheEnabled: boolean;
+  cacheMaxSizeMB: number;
+  mcpEnabled: boolean;
+  theme: 'dark' | 'light' | 'system';
+}
+
+export interface AccountConfig {
+  displayName: string;
   signature: string;
   hubspotToken: string;
   hubspotEnabled: boolean;
   hubspotPortalId: string;
-  apiPort: number;
-  apiEnabled: boolean;
   defaultView: ViewType;
   autoBccEnabled: boolean;
-  autoBccAddress: string; // e.g. "crm@hubspot.com"
-  autoBccExcludedDomains: string[]; // e.g. ["compscience.com"] — skip BCC for these domains
-  archiveOnReply: boolean; // Automatically mark thread as done when replying
-  composeMode: 'html' | 'markdown'; // Editor mode for compose window
-  cacheEnabled: boolean; // Enable local SQLite email cache
-  cacheMaxSizeMB: number; // Max cache size in MB (default 500)
-  mcpEnabled: boolean; // Enable MCP server for Claude Desktop integration
-  excludedCalendarIds: string[]; // Calendar IDs to hide from the widget
-  theme: 'dark' | 'light' | 'system'; // App color theme
+  autoBccAddress: string;
+  autoBccExcludedDomains: string[];
+  archiveOnReply: boolean;
+  composeMode: 'html' | 'markdown';
+  excludedCalendarIds: string[];
 }
+
+export interface AppConfig extends GlobalConfig, AccountConfig {}
 
 // ── Cache / Offline Types ───────────────────────────────────
 
@@ -280,23 +300,31 @@ export interface OutboxItem {
   sentAt: string | null;
 }
 
-export const DEFAULT_CONFIG: AppConfig = {
+export const DEFAULT_GLOBAL_CONFIG: GlobalConfig = {
+  apiPort: 3141,
+  apiEnabled: true,
+  cacheEnabled: true,
+  cacheMaxSizeMB: 500,
+  mcpEnabled: false,
+  theme: 'dark',
+};
+
+export const DEFAULT_ACCOUNT_CONFIG: AccountConfig = {
   displayName: '',
-  signature: `<p style="color:#666;font-size:13px;">Martin Stenkilde<br/>Director of Product & Business Development<br/>CompScience</p>`,
+  signature: '',
   hubspotToken: '',
   hubspotEnabled: false,
   hubspotPortalId: '',
-  apiPort: 3141,
-  apiEnabled: true,
   defaultView: 'inbox',
   autoBccEnabled: false,
   autoBccAddress: '',
   autoBccExcludedDomains: [],
   archiveOnReply: false,
   composeMode: 'html',
-  cacheEnabled: true,
-  cacheMaxSizeMB: 500,
-  mcpEnabled: false,
   excludedCalendarIds: [],
-  theme: 'dark',
+};
+
+export const DEFAULT_CONFIG: AppConfig = {
+  ...DEFAULT_GLOBAL_CONFIG,
+  ...DEFAULT_ACCOUNT_CONFIG,
 };

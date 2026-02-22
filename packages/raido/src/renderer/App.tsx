@@ -4,6 +4,7 @@ import { TaskList } from './components/TaskList';
 import { TaskDetail } from './components/TaskDetail';
 import { SettingsModal } from './components/SettingsModal';
 import { useTasks } from './hooks/useTasks';
+import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
 import type { Task, AppConfig, ViewType } from '../shared/types';
 
 export default function App() {
@@ -229,6 +230,7 @@ export default function App() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        <UpdateBanner api={window.raido} />
         {/* Title bar */}
         <div className="titlebar-drag h-12 flex items-center px-4 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
           <div className="flex-1" />

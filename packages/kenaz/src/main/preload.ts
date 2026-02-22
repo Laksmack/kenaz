@@ -50,6 +50,11 @@ const IPC = {
   SNOOZE_CANCEL: 'snooze:cancel',
   SNOOZE_LIST: 'snooze:list',
   MCP_STATUS: 'mcp:status',
+  ACCOUNTS_LIST: 'accounts:list',
+  ACCOUNTS_ADD: 'accounts:add',
+  ACCOUNTS_REMOVE: 'accounts:remove',
+  ACCOUNTS_SWITCH: 'accounts:switch',
+  ACCOUNTS_ACTIVE: 'accounts:active',
 } as const;
 
 const api = {
@@ -162,8 +167,29 @@ const api = {
   // MCP
   getMcpStatus: () => ipcRenderer.invoke(IPC.MCP_STATUS),
 
+  // Accounts
+  listAccounts: () => ipcRenderer.invoke(IPC.ACCOUNTS_LIST),
+  addAccount: () => ipcRenderer.invoke(IPC.ACCOUNTS_ADD),
+  removeAccount: (email: string) => ipcRenderer.invoke(IPC.ACCOUNTS_REMOVE, email),
+  switchAccount: (email: string) => ipcRenderer.invoke(IPC.ACCOUNTS_SWITCH, email),
+  getActiveAccount: () => ipcRenderer.invoke(IPC.ACCOUNTS_ACTIVE),
+  onAccountChanged: (callback: (email: string | null) => void) => {
+    const handler = (_event: any, email: string | null) => callback(email);
+    ipcRenderer.on('account:changed', handler);
+    return () => { ipcRenderer.removeListener('account:changed', handler); };
+  },
+
   // Cross-app
   crossAppFetch: (url: string, options?: any) => ipcRenderer.invoke('cross-app:fetch', url, options),
+
+  // Update
+  onUpdateState: (callback: (state: any) => void) => {
+    const handler = (_event: any, state: any) => callback(state);
+    ipcRenderer.on('update:state', handler);
+    return () => { ipcRenderer.removeListener('update:state', handler); };
+  },
+  checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
 
   // Push event listeners
   onThreadsUpdated: (callback: (data: any) => void) => {
