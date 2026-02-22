@@ -116,7 +116,12 @@ for app in "${APPS[@]}"; do
   unlock_keychain
 
   BUILD_LOG="$REPO_ROOT/.build-$app.log"
-  if (cd "$PKG_DIR" && npm run dist 2>&1) > "$BUILD_LOG"; then
+  cd "$PKG_DIR"
+  npm run dist > "$BUILD_LOG" 2>&1
+  BUILD_EXIT=$?
+  cd "$REPO_ROOT"
+
+  if [ $BUILD_EXIT -eq 0 ]; then
     echo "  ✓ $NAME v$VERSION built"
 
     # Upload release artifacts to server
