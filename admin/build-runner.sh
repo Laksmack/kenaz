@@ -15,7 +15,7 @@
 #      */10 * * * * /path/to/futhark/admin/build-runner.sh >> ~/.futhark/build-runner.log 2>&1
 #
 
-set -e
+set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOCK_FILE="/tmp/futhark-build-runner.lock"
@@ -69,20 +69,25 @@ if [ -f "$REPO_ROOT/.env.notarize" ]; then
 fi
 
 # Install dependencies
-npm ci --quiet 2>/dev/null
+echo "  installing dependencies..."
+if ! npm ci --quiet 2>&1; then
+  echo "  ✗ npm ci failed"
+  exit 1
+fi
+echo "  ✓ dependencies installed"
 
 # Build each app
 FAILED=()
 for app in "${APPS[@]}"; do
   PKG_DIR="$REPO_ROOT/packages/$app"
-  NAME=$(node -p "require('$PKG_DIR/package.json').productName || require('$PKG_DIR/package.json').name" 2>/dev/null)
-  VERSION=$(node -p "require('$PKG_DIR/package.json').version" 2>/dev/null)
+  NAME=$(node -p "require('$PKG_DIR/package.json').productName || require('$PKG_DIR/package.json').name" 2>/dev/null || echo "$app")
+  VERSION=$(node -p "require('$PKG_DIR/package.json').version" 2>/dev/null || echo "?")
 
   echo ""
   echo "  building $NAME v$VERSION..."
 
-  cd "$PKG_DIR"
-  if npm run dist --quiet 2>&1; then
+  BUILD_LOG="$REPO_ROOT/.build-$app.log"
+  if (cd "$PKG_DIR" && npm run dist 2>&1) > "$BUILD_LOG"; then
     echo "  ✓ $NAME v$VERSION built"
 
     # Upload release artifacts to server
@@ -94,8 +99,10 @@ for app in "${APPS[@]}"; do
         "$REMOTE_HOST:$REMOTE_PATH/$app/" 2>/dev/null || true
       echo "  ✓ uploaded"
     fi
+    rm -f "$BUILD_LOG"
   else
-    echo "  ✗ $NAME build failed"
+    echo "  ✗ $NAME build failed — last 20 lines:"
+    tail -20 "$BUILD_LOG" 2>/dev/null | sed 's/^/    /'
     FAILED+=("$app")
   fi
 done
