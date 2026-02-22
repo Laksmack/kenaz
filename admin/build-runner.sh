@@ -80,12 +80,18 @@ if [ -f "$REPO_ROOT/.env.notarize" ]; then
   set +a
 fi
 
-# Unlock the login keychain so codesign can access the Developer ID key.
-# KEYCHAIN_PASSWORD should be set in .env.notarize (the Mac login password).
+unlock_keychain() {
+  if [ -n "${KEYCHAIN_PASSWORD:-}" ]; then
+    security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db 2>/dev/null
+    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db >/dev/null 2>&1 || true
+  fi
+}
+
+# Disable keychain auto-lock and unlock it
 if [ -n "${KEYCHAIN_PASSWORD:-}" ]; then
   echo "  unlocking keychain..."
-  security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db 2>/dev/null
-  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db >/dev/null 2>&1 || true
+  security set-keychain-settings ~/Library/Keychains/login.keychain-db 2>/dev/null
+  unlock_keychain
 fi
 
 # Install dependencies
@@ -105,6 +111,9 @@ for app in "${APPS[@]}"; do
 
   echo ""
   echo "  building $NAME v$VERSION..."
+
+  # Re-unlock keychain before each build to prevent auto-lock timeouts
+  unlock_keychain
 
   BUILD_LOG="$REPO_ROOT/.build-$app.log"
   if (cd "$PKG_DIR" && npm run dist 2>&1) > "$BUILD_LOG"; then
