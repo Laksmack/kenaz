@@ -22,8 +22,8 @@ LOCK_FILE="/tmp/futhark-build-runner.lock"
 APPS=(kenaz raido dagaz laguz)
 
 # ── Config (edit these) ──────────────────────────────────────
-REMOTE_HOST="deploy@kenaz.app"
-REMOTE_PATH="/var/www/kenaz.app/releases"
+REMOTE_HOST="ubuntu@compsci-hackathons.com"
+REMOTE_PATH="/home/ubuntu/projects/kenaz/html/releases"
 BRANCH="main"
 
 # Prevent overlapping runs
