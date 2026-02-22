@@ -17,6 +17,11 @@
 
 set -uo pipefail
 
+FORCE=false
+if [ "${1:-}" = "--force" ] || [ "${1:-}" = "-f" ]; then
+  FORCE=true
+fi
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOCK_FILE="/tmp/futhark-build-runner.lock"
 APPS=(kenaz raido dagaz laguz)
@@ -30,6 +35,7 @@ BRANCH="main"
 if [ -f "$LOCK_FILE" ]; then
   LOCK_PID=$(cat "$LOCK_FILE")
   if kill -0 "$LOCK_PID" 2>/dev/null; then
+    echo "  build already running (pid $LOCK_PID), skipping"
     exit 0
   fi
   rm -f "$LOCK_FILE"
@@ -39,22 +45,24 @@ trap 'rm -f "$LOCK_FILE"' EXIT
 
 cd "$REPO_ROOT"
 
-# Check for new commits
-git fetch origin "$BRANCH" --quiet
-LOCAL=$(git rev-parse HEAD)
-REMOTE=$(git rev-parse "origin/$BRANCH")
+if [ "$FORCE" = false ]; then
+  # Check for new commits
+  git fetch origin "$BRANCH" --quiet
+  LOCAL=$(git rev-parse HEAD)
+  REMOTE=$(git rev-parse "origin/$BRANCH")
 
-if [ "$LOCAL" = "$REMOTE" ]; then
-  exit 0
-fi
+  if [ "$LOCAL" = "$REMOTE" ]; then
+    exit 0
+  fi
 
-git pull --quiet
+  git pull --quiet
 
-# Check if any app code actually changed (skip admin-only or docs-only commits)
-CHANGED=$(git diff --name-only "$LOCAL" "$REMOTE" -- packages/ signing/ package.json package-lock.json)
-if [ -z "$CHANGED" ]; then
-  echo "$(date '+%Y-%m-%d %H:%M:%S') — pulled but no app changes, skipping build"
-  exit 0
+  # Check if any app code actually changed (skip admin-only or docs-only commits)
+  CHANGED=$(git diff --name-only "$LOCAL" "$REMOTE" -- packages/ signing/ package.json package-lock.json)
+  if [ -z "$CHANGED" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') — pulled but no app changes, skipping build"
+    exit 0
+  fi
 fi
 
 echo ""
