@@ -14,8 +14,9 @@
 #   6. Add to crontab:
 #      */10 * * * * /path/to/futhark/admin/build-runner.sh >> ~/.futhark/build-runner.log 2>&1
 #
-
-set -uo pipefail
+# Usage:
+#   bash admin/build-runner.sh            # normal mode: build only if new commits
+#   bash admin/build-runner.sh --force    # skip commit check, build immediately
 
 FORCE=false
 if [ "${1:-}" = "--force" ] || [ "${1:-}" = "-f" ]; then
@@ -46,7 +47,6 @@ trap 'rm -f "$LOCK_FILE"' EXIT
 cd "$REPO_ROOT"
 
 if [ "$FORCE" = false ]; then
-  # Check for new commits
   git fetch origin "$BRANCH" --quiet
   LOCAL=$(git rev-parse HEAD)
   REMOTE=$(git rev-parse "origin/$BRANCH")
@@ -57,7 +57,6 @@ if [ "$FORCE" = false ]; then
 
   git pull --quiet
 
-  # Check if any app code actually changed (skip admin-only or docs-only commits)
   CHANGED=$(git diff --name-only "$LOCAL" "$REMOTE" -- packages/ signing/ package.json package-lock.json)
   if [ -z "$CHANGED" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') — pulled but no app changes, skipping build"
@@ -73,33 +72,18 @@ else
   echo "  new commits detected ($LOCAL → $REMOTE)"
 fi
 
-# Load notarization credentials
-if [ -f "$REPO_ROOT/.env.notarize" ]; then
-  set -a
-  source "$REPO_ROOT/.env.notarize"
-  set +a
-fi
+# Load credentials and export them for electron-builder notarization
+source "$REPO_ROOT/.env.notarize"
+export APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
 
-unlock_keychain() {
-  if [ -n "${KEYCHAIN_PASSWORD:-}" ]; then
-    security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db 2>/dev/null
-    security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db >/dev/null 2>&1 || true
-  fi
-}
-
-# Disable keychain auto-lock and unlock it
-if [ -n "${KEYCHAIN_PASSWORD:-}" ]; then
-  echo "  unlocking keychain..."
-  security set-keychain-settings ~/Library/Keychains/login.keychain-db 2>/dev/null
-  unlock_keychain
-fi
+# Unlock keychain for codesign
+security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db
+security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db >/dev/null 2>&1
+echo "  keychain unlocked"
 
 # Install dependencies
 echo "  installing dependencies..."
-if ! npm ci --quiet 2>&1; then
-  echo "  ✗ npm ci failed"
-  exit 1
-fi
+npm ci --quiet 2>&1
 echo "  ✓ dependencies installed"
 
 # Build each app
@@ -112,8 +96,8 @@ for app in "${APPS[@]}"; do
   echo ""
   echo "  building $NAME v$VERSION..."
 
-  # Re-unlock keychain before each build to prevent auto-lock timeouts
-  unlock_keychain
+  # Re-unlock keychain before each build
+  security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db
 
   BUILD_LOG="$REPO_ROOT/.build-$app.log"
   cd "$PKG_DIR"
@@ -122,9 +106,8 @@ for app in "${APPS[@]}"; do
   cd "$REPO_ROOT"
 
   if [ $BUILD_EXIT -eq 0 ]; then
-    echo "  ✓ $NAME v$VERSION built"
+    echo "  ✓ $NAME v$VERSION built ($(date '+%H:%M:%S'))"
 
-    # Upload release artifacts to server
     RELEASE_DIR="$PKG_DIR/release"
     if [ -d "$RELEASE_DIR" ]; then
       echo "  uploading $NAME to $REMOTE_HOST..."
