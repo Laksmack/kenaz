@@ -123,6 +123,21 @@ export function SettingsModal({ onClose }: Props) {
                 ))}
               </select>
             </label>
+            <label className="flex items-center justify-between py-1.5">
+              <span className="text-xs text-text-secondary">Default event duration</span>
+              <select
+                value={config.defaultEventDurationMinutes}
+                onChange={e => updateConfig({ defaultEventDurationMinutes: parseInt(e.target.value) })}
+                className="bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none"
+              >
+                <option value={15}>15 minutes</option>
+                <option value={30}>30 minutes</option>
+                <option value={45}>45 minutes</option>
+                <option value={60}>1 hour</option>
+                <option value={90}>1.5 hours</option>
+                <option value={120}>2 hours</option>
+              </select>
+            </label>
           </section>
 
           {/* Appearance */}

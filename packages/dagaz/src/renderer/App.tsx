@@ -653,6 +653,7 @@ export default function App() {
                 onUpdateEvent={handleUpdateEvent}
                 onRSVP={handleRSVP}
                 weekDays={weekDays as 5 | 7}
+                defaultEventDurationMinutes={appConfig?.defaultEventDurationMinutes}
               />
             )}
             {currentView === 'day' && (
@@ -666,6 +667,7 @@ export default function App() {
                 onCreateEvent={(start, end) => openQuickCreate(start, end)}
                 onUpdateEvent={handleUpdateEvent}
                 onRSVP={handleRSVP}
+                defaultEventDurationMinutes={appConfig?.defaultEventDurationMinutes}
               />
             )}
             {currentView === 'month' && (
@@ -712,6 +714,7 @@ export default function App() {
         defaultCalendarId={appConfig?.defaultCalendarId || null}
         defaultStart={quickCreateStart}
         defaultEnd={quickCreateEnd}
+        defaultAttendees={overlayPeople}
       />
 
       {/* Settings Modal */}

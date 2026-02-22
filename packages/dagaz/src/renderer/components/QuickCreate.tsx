@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { Calendar, CreateEventInput, ParsedEventInput } from '../../shared/types';
+import type { Calendar, CreateEventInput, ParsedEventInput, OverlayPerson } from '../../shared/types';
 
 interface Props {
   open: boolean;
@@ -9,9 +9,10 @@ interface Props {
   defaultCalendarId: string | null;
   defaultStart?: Date;
   defaultEnd?: Date;
+  defaultAttendees?: OverlayPerson[];
 }
 
-export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalendarId, defaultStart, defaultEnd }: Props) {
+export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalendarId, defaultStart, defaultEnd, defaultAttendees }: Props) {
   const [text, setText] = useState('');
   const [parsed, setParsed] = useState<ParsedEventInput | null>(null);
   const [calendarId, setCalendarId] = useState(defaultCalendarId || '');
@@ -24,20 +25,28 @@ export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalenda
   useEffect(() => {
     if (open) {
       setTimeout(() => inputRef.current?.focus(), 50);
+      const attendees = defaultAttendees?.filter(p => p.visible).map(p => p.email);
       if (defaultStart && defaultEnd) {
         setShowStructured(true);
         setParsed({
           summary: '',
           start: defaultStart.toISOString(),
           end: defaultEnd.toISOString(),
+          attendees: attendees?.length ? attendees : undefined,
         });
+      } else if (attendees?.length) {
+        setShowStructured(true);
+        const start = new Date();
+        start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15, 0, 0);
+        const end = new Date(start.getTime() + 60 * 60 * 1000);
+        setParsed({ summary: '', start: start.toISOString(), end: end.toISOString(), attendees });
       }
     } else {
       setText('');
       setParsed(null);
       setShowStructured(false);
     }
-  }, [open, defaultStart, defaultEnd]);
+  }, [open, defaultStart, defaultEnd, defaultAttendees]);
 
   useEffect(() => {
     if (!calendarId && calendars.length > 0) {
@@ -86,8 +95,9 @@ export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalenda
         }
       : {
           summary: text.trim(),
-          start: new Date().toISOString(),
-          end: new Date(Date.now() + 3600000).toISOString(),
+          start: defaultStart?.toISOString() || new Date().toISOString(),
+          end: defaultEnd?.toISOString() || new Date(Date.now() + 3600000).toISOString(),
+          attendees: defaultAttendees?.filter(p => p.visible).map(p => p.email),
           calendar_id: calendarId || undefined,
           add_conferencing: addConferencing,
         };
@@ -98,13 +108,13 @@ export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalenda
 
   if (!open) return null;
 
-  const formatParsedTime = (iso: string) => {
+  const toLocalInput = (iso: string) => {
     const d = new Date(iso);
-    return d.toLocaleString('en-US', {
-      weekday: 'short', month: 'short', day: 'numeric',
-      hour: 'numeric', minute: '2-digit', hour12: true,
-    });
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
+
+  const fromLocalInput = (val: string) => new Date(val).toISOString();
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh]" onClick={onClose}>
@@ -146,10 +156,20 @@ export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalenda
               />
 
               <span className="text-text-muted">Start</span>
-              <span className="text-text-primary py-1">{formatParsedTime(parsed.start)}</span>
+              <input
+                type="datetime-local"
+                value={toLocalInput(parsed.start)}
+                onChange={e => setParsed(p => p ? { ...p, start: fromLocalInput(e.target.value) } : null)}
+                className="bg-bg-primary border border-border-subtle rounded px-2 py-1 text-text-primary outline-none focus:border-accent-primary/40"
+              />
 
               <span className="text-text-muted">End</span>
-              <span className="text-text-primary py-1">{formatParsedTime(parsed.end)}</span>
+              <input
+                type="datetime-local"
+                value={toLocalInput(parsed.end)}
+                onChange={e => setParsed(p => p ? { ...p, end: fromLocalInput(e.target.value) } : null)}
+                className="bg-bg-primary border border-border-subtle rounded px-2 py-1 text-text-primary outline-none focus:border-accent-primary/40"
+              />
 
               {parsed.location && (
                 <>

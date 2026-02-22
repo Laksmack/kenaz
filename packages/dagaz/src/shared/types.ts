@@ -286,6 +286,7 @@ export interface AppConfig {
   dockEventIndicator: boolean;
   dockEventIndicatorMinutes: number;
   hideDeclinedEvents: boolean;
+  defaultEventDurationMinutes: number;
   overlayPeople: OverlayPerson[];
 }
 
@@ -309,5 +310,6 @@ export const DEFAULT_CONFIG: AppConfig = {
   dockEventIndicator: false,
   dockEventIndicatorMinutes: 5,
   hideDeclinedEvents: true,
+  defaultEventDurationMinutes: 60,
   overlayPeople: [],
 };

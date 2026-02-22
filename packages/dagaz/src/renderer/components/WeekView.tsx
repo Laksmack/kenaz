@@ -15,6 +15,7 @@ interface Props {
   onUpdateEvent?: (event: CalendarEvent, newStart: Date, newEnd: Date) => void;
   onRSVP?: (eventId: string, response: 'accepted' | 'declined' | 'tentative') => void;
   weekDays: 5 | 7;
+  defaultEventDurationMinutes?: number;
 }
 
 function timeOverlaps(s1: string, e1: string, s2: string, e2: string): boolean {
@@ -140,7 +141,7 @@ function overlayToEvent(oe: OverlayEvent): CalendarEvent {
   };
 }
 
-export function WeekView({ currentDate, events, overlayEvents = [], pendingInvites = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP, weekDays }: Props) {
+export function WeekView({ currentDate, events, overlayEvents = [], pendingInvites = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP, weekDays, defaultEventDurationMinutes = 60 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const today = useMemo(() => new Date(), []);
   const weekDates = useMemo(() => getWeekDates(currentDate, weekDays), [currentDate, weekDays]);
@@ -322,10 +323,9 @@ export function WeekView({ currentDate, events, overlayEvents = [], pendingInvit
     const minutes = Math.round(((y % HOUR_HEIGHT) / HOUR_HEIGHT) * 60 / 15) * 15;
     const start = new Date(dayDate);
     start.setHours(hour, minutes, 0, 0);
-    const end = new Date(start);
-    end.setHours(start.getHours() + 1);
+    const end = new Date(start.getTime() + defaultEventDurationMinutes * 60 * 1000);
     onCreateEvent(start, end);
-  }, [onCreateEvent, isDragging]);
+  }, [onCreateEvent, isDragging, defaultEventDurationMinutes]);
 
   return (
     <div className="flex flex-col h-full">
