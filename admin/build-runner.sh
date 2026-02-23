@@ -57,7 +57,7 @@ if [ "$FORCE" = false ]; then
 
   git pull --quiet
 
-  CHANGED=$(git diff --name-only "$LOCAL" "$REMOTE" -- packages/ signing/ package.json package-lock.json)
+  CHANGED=$(git diff --name-only "$LOCAL" "$REMOTE" -- packages/ signing/ web/ package.json package-lock.json)
   if [ -z "$CHANGED" ]; then
     echo "$(date '+%Y-%m-%d %H:%M:%S') — pulled but no app changes, skipping build"
     exit 0
@@ -121,6 +121,11 @@ for app in "${APPS[@]}"; do
       ssh "$REMOTE_HOST" "mkdir -p $REMOTE_PATH/$app"
       scp -q "$RELEASE_DIR"/*.dmg "$RELEASE_DIR"/*.zip "$RELEASE_DIR"/latest-mac.yml \
         "$REMOTE_HOST:$REMOTE_PATH/$app/" 2>/dev/null || true
+      # Create latest.dmg symlink pointing to the newest DMG
+      DMG_NAME=$(ls -t "$RELEASE_DIR"/*.dmg 2>/dev/null | head -1 | xargs basename)
+      if [ -n "$DMG_NAME" ]; then
+        ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && ln -sf '$DMG_NAME' latest.dmg"
+      fi
       echo "  ✓ uploaded"
     fi
     rm -f "$BUILD_LOG"
@@ -130,6 +135,15 @@ for app in "${APPS[@]}"; do
     FAILED+=("$app")
   fi
 done
+
+# Sync web directory to server (always, even if some builds failed)
+if [ -d "$REPO_ROOT/web" ]; then
+  echo ""
+  echo "  syncing website..."
+  REMOTE_HTML=$(dirname "$REMOTE_PATH")
+  scp -q "$REPO_ROOT/web/"* "$REMOTE_HOST:$REMOTE_HTML/" 2>/dev/null || true
+  echo "  ✓ website synced"
+fi
 
 echo ""
 if [ ${#FAILED[@]} -gt 0 ]; then
