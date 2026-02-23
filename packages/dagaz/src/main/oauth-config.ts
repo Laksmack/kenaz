@@ -4,19 +4,12 @@ import { app } from 'electron';
 import fs from 'fs';
 
 function loadEnv() {
-  const cwd = process.cwd();
   const candidates = [
-    // Package root (cwd when running `electron .` from packages/dagaz/)
-    path.join(cwd, '.env'),
-    // Monorepo root (../../ from packages/dagaz/)
-    path.join(cwd, '../../.env'),
-    // Kenaz's .env (sibling package — same credentials)
-    path.join(cwd, '../kenaz/.env'),
-    // __dirname traversals (dist/main/main/ → package root → monorepo root)
-    path.join(__dirname, '../../.env'),
+    process.resourcesPath ? path.join(process.resourcesPath, '.env') : '',
     path.join(__dirname, '../../../.env'),
-    path.join(__dirname, '../../../../.env'),
-    path.join(__dirname, '../../../../../.env'),
+    path.join(__dirname, '../../.env'),
+    path.join(process.cwd(), '.env'),
+    path.join(process.cwd(), '../../.env'),
   ];
 
   try {
@@ -27,13 +20,13 @@ function loadEnv() {
   }
 
   for (const p of candidates) {
-    if (fs.existsSync(p)) {
+    if (p && fs.existsSync(p)) {
       console.log('[Dagaz] Loaded .env from:', p);
       dotenv.config({ path: p });
       return;
     }
   }
-  console.warn('[Dagaz] No .env file found! OAuth will not work.');
+  console.warn('[Dagaz] No .env found — OAuth will not work. Searched:', candidates.filter(Boolean));
 }
 
 loadEnv();

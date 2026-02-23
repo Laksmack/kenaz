@@ -59,7 +59,22 @@ security find-identity -v -p codesigning
 # Should show: Developer ID Application: MARTIN STENKILDE (DDZS7WM362)
 ```
 
-### 5. Apple notarization credentials
+### 5. Google OAuth credentials (for Gmail/Calendar in packaged apps)
+
+Create a `.env` file at the repo root. The build scripts copy this into each
+package directory so electron-builder bundles it into the asar.
+
+```bash
+cat > ~/futhark/.env << 'EOF'
+OAUTH_CLIENT_ID=your_google_client_id
+OAUTH_CLIENT_SECRET=your_google_client_secret
+OAUTH_REDIRECT_URI=http://localhost:8234
+EOF
+```
+
+Get these from https://console.cloud.google.com/ → your project → Credentials → OAuth 2.0 Client ID.
+
+### 6. Apple notarization credentials
 
 ```bash
 cat > ~/futhark/.env.notarize << 'EOF'
@@ -69,7 +84,7 @@ APPLE_TEAM_ID=DDZS7WM362
 EOF
 ```
 
-### 6. SSH key for kenaz.app
+### 7. SSH key for kenaz.app
 
 ```bash
 ssh-keygen -t ed25519 -f ~/.ssh/futhark-deploy -N ''
@@ -86,13 +101,13 @@ EOF
 ssh-copy-id -i ~/.ssh/futhark-deploy deploy@kenaz.app
 ```
 
-### 7. Install the cron job
+### 8. Install the cron job
 
 ```bash
 (crontab -l 2>/dev/null; echo '*/10 * * * * ~/futhark/admin/build-runner.sh >> ~/.futhark/build-runner.log 2>&1') | crontab -
 ```
 
-### 8. Prevent sleep
+### 9. Prevent sleep
 
 Go to **System Settings → Energy** and enable:
 - **Prevent automatic sleeping when the display is off**

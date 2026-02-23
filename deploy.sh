@@ -225,6 +225,18 @@ build_app() {
   return 0
 }
 
+# Copy .env into each target package so electron-builder bundles it into the asar
+ENV_FILE="$REPO_ROOT/.env"
+if [ -f "$ENV_FILE" ]; then
+  for app in "${TARGETS[@]}"; do
+    cp "$ENV_FILE" "$REPO_ROOT/packages/$app/.env"
+  done
+else
+  echo ""
+  echo "⚠  No .env file at repo root — OAuth credentials will NOT be bundled."
+  echo "   Create $REPO_ROOT/.env with OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET"
+fi
+
 echo ""
 echo "━━━ Building ${#TARGETS[@]} app(s) ━━━"
 echo ""

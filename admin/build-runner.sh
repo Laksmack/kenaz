@@ -140,6 +140,17 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
   cd "$REPO_ROOT"
   echo "  ✓ core built"
 
+  # Copy .env into each package so electron-builder bundles OAuth creds into the asar
+  ENV_FILE="$REPO_ROOT/.env"
+  if [ -f "$ENV_FILE" ]; then
+    for app in "${APPS_TO_BUILD[@]}"; do
+      cp "$ENV_FILE" "$REPO_ROOT/packages/$app/.env"
+    done
+    echo "  ✓ .env copied to packages"
+  else
+    echo "  ⚠  No .env at repo root — OAuth will not work in packaged apps!"
+  fi
+
   echo "  apps to build: ${APPS_TO_BUILD[*]}"
 
   for app in "${APPS_TO_BUILD[@]}"; do

@@ -1,6 +1,6 @@
 {
   "name": "@futhark/kenaz",
-  "version": "0.20.0",
+  "version": "0.20.1",
   "description": "Kenaz ᚲ — Personal Gmail client with HubSpot CRM, Google Calendar, and Claude API",
   "main": "dist/main/main/main.js",
   "bin": {
@@ -63,6 +63,12 @@
       "provider": "generic",
       "url": "https://kenaz.app/releases/kenaz"
     },
+    "extraResources": [
+      {
+        "from": ".env",
+        "to": ".env"
+      }
+    ],
     "asarUnpack": [],
     "npmRebuild": true,
     "dmg": {
