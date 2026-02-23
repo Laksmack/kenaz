@@ -581,6 +581,30 @@ server.tool(
 // DAGAZ — Calendar (port 3143)
 // ═══════════════════════════════════════════════════════════
 
+function compactEvent(e: any) {
+  const ev: any = { id: e.id, title: e.summary };
+  if (e.all_day) {
+    ev.date = e.start_date;
+    if (e.end_date && e.end_date !== e.start_date) ev.end_date = e.end_date;
+    ev.all_day = true;
+  } else {
+    ev.start = e.start_time;
+    ev.end = e.end_time;
+  }
+  if (e.location) ev.location = e.location.split('\n')[0];
+  if (e.attendees?.length) ev.attendees = e.attendees.length;
+  if (e.hangout_link || e.conference_data) ev.has_video = true;
+  if (e.status !== 'confirmed') ev.status = e.status;
+  if (e.self_response && e.self_response !== 'accepted') ev.rsvp = e.self_response;
+  if (e.recurrence_rule) ev.recurring = true;
+  if (e.calendar_id) ev.calendar_id = e.calendar_id;
+  return ev;
+}
+
+function compactEvents(events: any[]) {
+  return JSON.stringify(events.map(compactEvent));
+}
+
 // ── Read ──
 
 server.tool(
@@ -595,7 +619,7 @@ server.tool(
 
 server.tool(
   'dagaz_get_events',
-  'Get events in a date range. Returns events from all visible calendars unless filtered.',
+  'Get events in a date range (compact summaries). Use dagaz_get_event_full for complete details on a specific event.',
   {
     start: z.string().describe('ISO date/datetime (e.g. "2026-02-16" or "2026-02-16T09:00:00")'),
     end: z.string().describe('ISO date/datetime'),
@@ -605,13 +629,23 @@ server.tool(
     let url = `/api/events?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
     if (calendar_id) url += `&calendar=${encodeURIComponent(calendar_id)}`;
     const data = await api('dagaz', url);
-    return { content: [{ type: 'text', text: JSON.stringify(data.events, null, 2) }] };
+    return { content: [{ type: 'text', text: compactEvents(data.events) }] };
   }
 );
 
 server.tool(
   'dagaz_get_event',
-  'Get full event details including attendees, conferencing, and description',
+  'Get a single event (compact). Returns title, time, location, attendee count, video link flag. Use dagaz_get_event_full for description, attendee list, conferencing details, etc.',
+  { event_id: z.string().describe('Event ID (local UUID or Google Calendar ID — either works)') },
+  async ({ event_id }) => {
+    const data = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}`);
+    return { content: [{ type: 'text', text: JSON.stringify(compactEvent(data)) }] };
+  }
+);
+
+server.tool(
+  'dagaz_get_event_full',
+  'Get complete event details: full description, attendee list with RSVP statuses, conferencing links, attachments, recurrence rules. Only use when the user explicitly needs these details.',
   { event_id: z.string().describe('Event ID (local UUID or Google Calendar ID — either works)') },
   async ({ event_id }) => {
     const data = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}`);
@@ -621,17 +655,17 @@ server.tool(
 
 server.tool(
   'dagaz_get_today',
-  "Get today's events in chronological order",
+  "Get today's events (compact summaries). Use dagaz_get_event_full for complete details on a specific event.",
   {},
   async () => {
     const data = await api('dagaz', '/api/today');
-    return { content: [{ type: 'text', text: JSON.stringify(data.events, null, 2) }] };
+    return { content: [{ type: 'text', text: compactEvents(data.events) }] };
   }
 );
 
 server.tool(
   'dagaz_get_agenda',
-  'Get agenda for a date range. Defaults to next 7 days from today.',
+  'Get agenda for a date range — compact summaries. Defaults to next 7 days. Use dagaz_get_event_full for complete details.',
   {
     date: z.string().optional().describe('Start date (YYYY-MM-DD), defaults to today'),
     days: z.number().optional().describe('Number of days, defaults to 7'),
@@ -643,7 +677,7 @@ server.tool(
     if (days) params.push(`days=${days}`);
     if (params.length) url += '?' + params.join('&');
     const data = await api('dagaz', url);
-    return { content: [{ type: 'text', text: JSON.stringify(data.events, null, 2) }] };
+    return { content: [{ type: 'text', text: compactEvents(data.events) }] };
   }
 );
 
