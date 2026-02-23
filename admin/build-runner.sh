@@ -124,18 +124,10 @@ fi
 # Build apps if any need building
 FAILED=()
 if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
-  # Unlock keychain for codesign (cron/launchd may have empty keychain search list)
-  echo "  keychain search list before:"
-  security list-keychains 2>&1 | sed 's/^/    /'
+  # Unlock keychain for codesign (launchd may have empty keychain search list)
   security list-keychains -s ~/Library/Keychains/login.keychain-db
-  echo "  keychain search list after:"
-  security list-keychains 2>&1 | sed 's/^/    /'
   security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db
-  echo "  unlock exit code: $?"
   security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db >/dev/null 2>&1
-  echo "  partition-list exit code: $?"
-  echo "  codesigning identities:"
-  security find-identity -v -p codesigning 2>&1 | sed 's/^/    /'
   echo "  keychain unlocked"
 
   echo "  installing dependencies..."
@@ -164,7 +156,7 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
 
   for app in "${APPS_TO_BUILD[@]}"; do
     PKG_DIR="$REPO_ROOT/packages/$app"
-    NAME=$(node -p "require('$PKG_DIR/package.json').productName || require('$PKG_DIR/package.json').name" 2>/dev/null || echo "$app")
+    NAME=$(node -p "require('$PKG_DIR/package.json').build.productName || require('$PKG_DIR/package.json').name" 2>/dev/null || echo "$app")
     VERSION=$(node -p "require('$PKG_DIR/package.json').version" 2>/dev/null || echo "?")
 
     echo ""
