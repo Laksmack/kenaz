@@ -72,9 +72,16 @@ else
   echo "  new commits detected ($LOCAL → $REMOTE)"
 fi
 
-# Load credentials and export them for electron-builder notarization
+# Load credentials (keychain password for codesign access)
 source "$REPO_ROOT/.env.notarize"
-export APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+
+# Export notarize vars only if --notarize flag is passed
+NOTARIZE=false
+if [ "${2:-}" = "--notarize" ]; then
+  NOTARIZE=true
+  export APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
+  echo "  notarization enabled"
+fi
 
 # Unlock keychain for codesign
 security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db
