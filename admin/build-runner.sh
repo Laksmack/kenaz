@@ -24,6 +24,15 @@ if [ "${1:-}" = "--force" ] || [ "${1:-}" = "-f" ]; then
   FORCE=true
 fi
 
+# Ensure SSH agent is available for git (needed in cron)
+if [ -z "${SSH_AUTH_SOCK:-}" ]; then
+  eval "$(ssh-agent -s)" >/dev/null 2>&1
+  ssh-add --apple-use-keychain 2>/dev/null
+fi
+
+# Ensure PATH includes homebrew (needed in cron)
+export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOCK_FILE="/tmp/futhark-build-runner.lock"
 APPS=(kenaz raido dagaz laguz)
