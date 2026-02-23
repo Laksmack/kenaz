@@ -30,8 +30,8 @@ if [ -z "${SSH_AUTH_SOCK:-}" ]; then
   ssh-add --apple-use-keychain 2>/dev/null
 fi
 
-# Ensure PATH includes homebrew (needed in cron)
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+# Ensure PATH includes homebrew and node (needed in cron)
+export PATH="/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOCK_FILE="/tmp/futhark-build-runner.lock"
