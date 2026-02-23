@@ -142,25 +142,40 @@ server.tool(
 // KENAZ — Email, CRM, Calendar (port 3141)
 // ═══════════════════════════════════════════════════════════
 
+function compactThread(t: any) {
+  const th: any = { id: t.id, subject: t.subject };
+  if (t.from) th.from = t.from.name || t.from.email;
+  th.date = t.lastDate;
+  if (t.snippet) th.snippet = t.snippet;
+  if (t.messages?.length) th.messages = t.messages.length;
+  if (t.isUnread) th.unread = true;
+  if (t.nudgeType) th.nudge = t.nudgeType;
+  return th;
+}
+
+function compactThreads(threads: any[]) {
+  return JSON.stringify(threads.map(compactThread));
+}
+
 // ── Read ──
 
 server.tool(
   'kenaz_get_inbox',
-  'Get the most recent inbox threads (up to 50)',
+  'Get recent inbox threads (compact summaries). Use kenaz_get_thread_summary or kenaz_get_thread for full details on a specific thread.',
   {},
   async () => {
     const data = await api('kenaz', '/api/inbox');
-    return { content: [{ type: 'text', text: JSON.stringify(data.threads, null, 2) }] };
+    return { content: [{ type: 'text', text: compactThreads(data.threads) }] };
   }
 );
 
 server.tool(
   'kenaz_get_unread',
-  'Get unread inbox threads with count',
+  'Get unread inbox threads (compact summaries) with count. Use kenaz_get_thread_summary or kenaz_get_thread for full details.',
   {},
   async () => {
     const data = await api('kenaz', '/api/unread');
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    return { content: [{ type: 'text', text: JSON.stringify({ count: data.count, threads: data.threads.map(compactThread) }) }] };
   }
 );
 
@@ -176,17 +191,17 @@ server.tool(
 
 server.tool(
   'kenaz_search_emails',
-  'Search emails using Gmail query syntax (e.g. "from:user@example.com", "subject:invoice", "is:unread", "after:2026/01/01"). Returns up to 50 matching threads.',
+  'Search emails using Gmail query syntax (e.g. "from:user@example.com", "subject:invoice", "is:unread", "after:2026/01/01"). Returns compact summaries. Use kenaz_get_thread_summary or kenaz_get_thread for full details on a specific thread.',
   { query: z.string().describe('Gmail search query') },
   async ({ query }) => {
     const data = await api('kenaz', `/api/search?q=${encodeURIComponent(query)}`);
-    return { content: [{ type: 'text', text: JSON.stringify(data.threads, null, 2) }] };
+    return { content: [{ type: 'text', text: compactThreads(data.threads) }] };
   }
 );
 
 server.tool(
   'kenaz_get_thread',
-  'Get a full email thread with all messages, bodies, and attachment metadata',
+  'Get complete thread details: all messages with full bodies, recipients, attachment metadata. Only use when you explicitly need the full content.',
   { thread_id: z.string().describe('Gmail thread ID') },
   async ({ thread_id }) => {
     const data = await api('kenaz', `/api/email/${thread_id}`);

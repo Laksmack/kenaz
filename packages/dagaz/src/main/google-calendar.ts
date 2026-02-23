@@ -412,6 +412,13 @@ export class GoogleCalendarService {
       };
     }
 
+    if (!conferenceData && !item.hangoutLink) {
+      conferenceData = extractConferenceFromText(
+        item.description || '',
+        item.location || '',
+      );
+    }
+
     const selfAttendee = item.attendees?.find(a => a.self);
 
     const attendees: Attendee[] = (item.attendees || []).map(a => ({
@@ -463,4 +470,27 @@ export class GoogleCalendarService {
       attendees,
     };
   }
+}
+
+const MEETING_PROVIDERS: Array<{ pattern: RegExp; name: string }> = [
+  { pattern: /https?:\/\/teams\.microsoft\.com\/[^\s<)"']+/i, name: 'Microsoft Teams' },
+  { pattern: /https?:\/\/[\w.-]*zoom\.us\/j\/[^\s<)"']+/i, name: 'Zoom' },
+  { pattern: /https?:\/\/[\w.-]*webex\.com\/[^\s<)"']+/i, name: 'Webex' },
+];
+
+function extractConferenceFromText(
+  description: string,
+  location: string,
+): ConferenceData | null {
+  const text = `${location}\n${description}`;
+  for (const { pattern, name } of MEETING_PROVIDERS) {
+    const match = text.match(pattern);
+    if (match) {
+      return {
+        conferenceSolution: { name },
+        entryPoints: [{ entryPointType: 'video', uri: match[0] }],
+      };
+    }
+  }
+  return null;
 }
