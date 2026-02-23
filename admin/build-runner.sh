@@ -124,7 +124,8 @@ fi
 # Build apps if any need building
 FAILED=()
 if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
-  # Unlock keychain for codesign
+  # Unlock keychain for codesign (cron has an empty keychain search list)
+  security list-keychains -s ~/Library/Keychains/login.keychain-db
   security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db
   security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db >/dev/null 2>&1
   echo "  keychain unlocked"
