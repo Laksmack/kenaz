@@ -124,6 +124,13 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
   npm ci --quiet 2>&1
   echo "  ✓ dependencies installed"
 
+  # Build core library first (auto-updater etc.)
+  echo "  building @futhark/core..."
+  cd "$REPO_ROOT/packages/core"
+  npm run build 2>&1 | tail -5
+  cd "$REPO_ROOT"
+  echo "  ✓ core built"
+
   echo "  apps to build: ${APPS_TO_BUILD[*]}"
 
   for app in "${APPS_TO_BUILD[@]}"; do

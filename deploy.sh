@@ -104,9 +104,9 @@ CAFFEINE_PID=$!
 echo ""
 echo "━━━ Deploy started at $(date '+%H:%M:%S') ━━━"
 echo ""
-echo "━━━ Building @futhark/core MCP server ━━━"
+echo "━━━ Building @futhark/core ━━━"
 cd "$REPO_ROOT/packages/core"
-npm run build:mcp 2>&1 | tail -3
+npm run build 2>&1 | tail -5
 echo "  done"
 
 if [ "$MCP_ONLY" = true ]; then

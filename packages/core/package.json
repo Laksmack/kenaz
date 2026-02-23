@@ -1,17 +1,19 @@
 {
   "name": "@futhark/core",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "private": true,
   "main": "index.ts",
   "scripts": {
-    "build:mcp": "esbuild mcp/futhark-mcp.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/mcp/futhark-mcp.js && esbuild mcp/installer.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/mcp/installer.js --external:electron"
+    "build:mcp": "esbuild mcp/futhark-mcp.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/mcp/futhark-mcp.js && esbuild mcp/installer.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/mcp/installer.js --external:electron",
+    "build:lib": "esbuild lib/auto-updater.ts --bundle --platform=node --target=node22 --format=cjs --outfile=dist/lib/auto-updater.js --external:electron --external:electron-updater",
+    "build": "npm run build:mcp && npm run build:lib"
   },
   "exports": {
     "./styles/*": "./styles/*",
     "./components/*": "./components/*",
     "./hooks/*": "./hooks/*",
     "./lib/*": "./lib/*",
-    "./lib/auto-updater": "./lib/auto-updater.ts",
+    "./lib/auto-updater": "./dist/lib/auto-updater.js",
     "./types": "./types/index.ts",
     "./mcp/installer": "./mcp/installer.ts",
     "./tailwind.preset": "./tailwind.preset.mjs",
