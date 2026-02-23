@@ -124,10 +124,18 @@ fi
 # Build apps if any need building
 FAILED=()
 if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
-  # Unlock keychain for codesign (cron has an empty keychain search list)
+  # Unlock keychain for codesign (cron/launchd may have empty keychain search list)
+  echo "  keychain search list before:"
+  security list-keychains 2>&1 | sed 's/^/    /'
   security list-keychains -s ~/Library/Keychains/login.keychain-db
+  echo "  keychain search list after:"
+  security list-keychains 2>&1 | sed 's/^/    /'
   security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db
+  echo "  unlock exit code: $?"
   security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db >/dev/null 2>&1
+  echo "  partition-list exit code: $?"
+  echo "  codesigning identities:"
+  security find-identity -v -p codesigning 2>&1 | sed 's/^/    /'
   echo "  keychain unlocked"
 
   echo "  installing dependencies..."
@@ -184,7 +192,8 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
         FAILED+=("$app")
       elif ! echo "$SIGN_INFO" | grep -q "Developer ID Application"; then
         echo "  ✗ $NAME v$VERSION signed but not with Developer ID — skipping upload"
-        echo "$SIGN_INFO" | grep -E '(Authority|Signature|TeamIdentifier)' | sed 's/^/    /'
+        echo "  full codesign output:"
+        echo "$SIGN_INFO" | sed 's/^/    /'
         FAILED+=("$app")
       else
         echo "  ✓ $NAME v$VERSION built and signed ($(date '+%H:%M:%S'))"
