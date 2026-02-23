@@ -101,11 +101,15 @@ EOF
 ssh-copy-id -i ~/.ssh/futhark-deploy deploy@kenaz.app
 ```
 
-### 8. Install the cron job
+### 8. Install the build runner (launchd)
 
 ```bash
-(crontab -l 2>/dev/null; echo '*/10 * * * * ~/futhark/admin/build-runner.sh >> ~/.futhark/build-runner.log 2>&1') | crontab -
+mkdir -p ~/.futhark
+ln -sf ~/futhark/admin/com.futhark.build-runner.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.futhark.build-runner.plist
 ```
+
+This runs `build-runner.sh` every 10 minutes and on login. Logs go to `~/.futhark/build-runner.log`.
 
 ### 9. Prevent sleep
 
@@ -121,7 +125,13 @@ tail -f ~/.futhark/build-runner.log
 
 ### Run a build manually
 ```bash
-cd ~/futhark && ./deploy.sh all --notarize
+cd ~/futhark && bash admin/build-runner.sh --force
+```
+
+### Reload the build runner after changes
+```bash
+launchctl unload ~/Library/LaunchAgents/com.futhark.build-runner.plist
+launchctl load ~/Library/LaunchAgents/com.futhark.build-runner.plist
 ```
 
 ### Check Apple notarization status
