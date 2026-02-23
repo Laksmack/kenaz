@@ -2,8 +2,9 @@
 #
 # Futhark Build Runner — Mac Mini
 #
-# Polls origin/main for new commits. If found, builds all apps
-# (signed + notarized DMGs), then uploads to kenaz.app.
+# Polls origin/main for new commits. If found, builds only the apps
+# that changed (signed DMGs), then uploads to kenaz.app.
+# Also syncs the web/ directory if it changed.
 #
 # Setup:
 #   1. Clone the repo on the Mac Mini
@@ -16,7 +17,7 @@
 #
 # Usage:
 #   bash admin/build-runner.sh            # normal mode: build only if new commits
-#   bash admin/build-runner.sh --force    # skip commit check, build immediately
+#   bash admin/build-runner.sh --force    # skip commit check, build all apps
 
 FORCE=false
 if [ "${1:-}" = "--force" ] || [ "${1:-}" = "-f" ]; then
@@ -30,6 +31,7 @@ APPS=(kenaz raido dagaz laguz)
 # ── Config (edit these) ──────────────────────────────────────
 REMOTE_HOST="ubuntu@compsci-hackathons.com"
 REMOTE_PATH="/home/ubuntu/projects/kenaz/html/releases"
+REMOTE_HTML="/home/ubuntu/projects/kenaz/html"
 BRANCH="main"
 
 # Prevent overlapping runs
@@ -46,6 +48,8 @@ trap 'rm -f "$LOCK_FILE"' EXIT
 
 cd "$REPO_ROOT"
 
+# Determine what changed
+CHANGED_FILES=""
 if [ "$FORCE" = false ]; then
   git fetch origin "$BRANCH" --quiet
   LOCAL=$(git rev-parse HEAD)
@@ -57,9 +61,10 @@ if [ "$FORCE" = false ]; then
 
   git pull --quiet
 
-  CHANGED=$(git diff --name-only "$LOCAL" "$REMOTE" -- packages/ signing/ web/ package.json package-lock.json)
-  if [ -z "$CHANGED" ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') — pulled but no app changes, skipping build"
+  CHANGED_FILES=$(git diff --name-only "$LOCAL" "$REMOTE")
+  RELEVANT=$(echo "$CHANGED_FILES" | grep -E '^(packages/|signing/|web/|package\.json|package-lock\.json)')
+  if [ -z "$RELEVANT" ]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') — pulled but no relevant changes, skipping"
     exit 0
   fi
 fi
@@ -72,75 +77,102 @@ else
   echo "  new commits detected ($LOCAL → $REMOTE)"
 fi
 
+# Figure out which apps need rebuilding
+# Rebuild all if: --force, core changed, signing changed, root package files changed
+REBUILD_ALL=false
+if [ "$FORCE" = true ]; then
+  REBUILD_ALL=true
+elif echo "$CHANGED_FILES" | grep -qE '^(packages/core/|signing/|package\.json|package-lock\.json)'; then
+  REBUILD_ALL=true
+fi
+
+APPS_TO_BUILD=()
+if [ "$REBUILD_ALL" = true ]; then
+  APPS_TO_BUILD=("${APPS[@]}")
+else
+  for app in "${APPS[@]}"; do
+    if echo "$CHANGED_FILES" | grep -q "^packages/$app/"; then
+      APPS_TO_BUILD+=("$app")
+    fi
+  done
+fi
+
+# Check if web changed
+WEB_CHANGED=false
+if [ "$FORCE" = true ] || echo "$CHANGED_FILES" | grep -q "^web/"; then
+  WEB_CHANGED=true
+fi
+
 # Load credentials (keychain password for codesign access)
 source "$REPO_ROOT/.env.notarize"
 
 # Export notarize vars only if --notarize flag is passed
-NOTARIZE=false
 if [ "${2:-}" = "--notarize" ]; then
-  NOTARIZE=true
   export APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
   echo "  notarization enabled"
 fi
 
-# Unlock keychain for codesign
-security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db
-security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db >/dev/null 2>&1
-echo "  keychain unlocked"
-
-# Install dependencies
-echo "  installing dependencies..."
-npm ci --quiet 2>&1
-echo "  ✓ dependencies installed"
-
-# Build each app
+# Build apps if any need building
 FAILED=()
-for app in "${APPS[@]}"; do
-  PKG_DIR="$REPO_ROOT/packages/$app"
-  NAME=$(node -p "require('$PKG_DIR/package.json').productName || require('$PKG_DIR/package.json').name" 2>/dev/null || echo "$app")
-  VERSION=$(node -p "require('$PKG_DIR/package.json').version" 2>/dev/null || echo "?")
-
-  echo ""
-  echo "  building $NAME v$VERSION..."
-
-  # Re-unlock keychain before each build
+if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
+  # Unlock keychain for codesign
   security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db
+  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db >/dev/null 2>&1
+  echo "  keychain unlocked"
 
-  BUILD_LOG="$REPO_ROOT/.build-$app.log"
-  cd "$PKG_DIR"
-  npm run dist > "$BUILD_LOG" 2>&1
-  BUILD_EXIT=$?
-  cd "$REPO_ROOT"
+  echo "  installing dependencies..."
+  npm ci --quiet 2>&1
+  echo "  ✓ dependencies installed"
 
-  if [ $BUILD_EXIT -eq 0 ]; then
-    echo "  ✓ $NAME v$VERSION built ($(date '+%H:%M:%S'))"
+  echo "  apps to build: ${APPS_TO_BUILD[*]}"
 
-    RELEASE_DIR="$PKG_DIR/release"
-    if [ -d "$RELEASE_DIR" ]; then
-      echo "  uploading $NAME to $REMOTE_HOST..."
-      ssh "$REMOTE_HOST" "mkdir -p $REMOTE_PATH/$app"
-      scp -q "$RELEASE_DIR"/*.dmg "$RELEASE_DIR"/*.zip "$RELEASE_DIR"/latest-mac.yml \
-        "$REMOTE_HOST:$REMOTE_PATH/$app/" 2>/dev/null || true
-      # Create latest.dmg symlink pointing to the newest DMG
-      DMG_NAME=$(ls -t "$RELEASE_DIR"/*.dmg 2>/dev/null | head -1 | xargs basename)
-      if [ -n "$DMG_NAME" ]; then
-        ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && ln -sf '$DMG_NAME' latest.dmg"
+  for app in "${APPS_TO_BUILD[@]}"; do
+    PKG_DIR="$REPO_ROOT/packages/$app"
+    NAME=$(node -p "require('$PKG_DIR/package.json').productName || require('$PKG_DIR/package.json').name" 2>/dev/null || echo "$app")
+    VERSION=$(node -p "require('$PKG_DIR/package.json').version" 2>/dev/null || echo "?")
+
+    echo ""
+    echo "  building $NAME v$VERSION..."
+
+    # Re-unlock keychain before each build
+    security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db
+
+    BUILD_LOG="$REPO_ROOT/.build-$app.log"
+    cd "$PKG_DIR"
+    npm run dist > "$BUILD_LOG" 2>&1
+    BUILD_EXIT=$?
+    cd "$REPO_ROOT"
+
+    if [ $BUILD_EXIT -eq 0 ]; then
+      echo "  ✓ $NAME v$VERSION built ($(date '+%H:%M:%S'))"
+
+      RELEASE_DIR="$PKG_DIR/release"
+      if [ -d "$RELEASE_DIR" ]; then
+        echo "  uploading $NAME to $REMOTE_HOST..."
+        ssh "$REMOTE_HOST" "mkdir -p $REMOTE_PATH/$app"
+        scp -q "$RELEASE_DIR"/*.dmg "$RELEASE_DIR"/*.zip "$RELEASE_DIR"/latest-mac.yml \
+          "$REMOTE_HOST:$REMOTE_PATH/$app/" 2>/dev/null || true
+        DMG_NAME=$(ls -t "$RELEASE_DIR"/*.dmg 2>/dev/null | head -1 | xargs basename)
+        if [ -n "$DMG_NAME" ]; then
+          ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && ln -sf '$DMG_NAME' latest.dmg"
+        fi
+        echo "  ✓ uploaded"
       fi
-      echo "  ✓ uploaded"
+      rm -f "$BUILD_LOG"
+    else
+      echo "  ✗ $NAME build failed — last 20 lines:"
+      tail -20 "$BUILD_LOG" 2>/dev/null | sed 's/^/    /'
+      FAILED+=("$app")
     fi
-    rm -f "$BUILD_LOG"
-  else
-    echo "  ✗ $NAME build failed — last 20 lines:"
-    tail -20 "$BUILD_LOG" 2>/dev/null | sed 's/^/    /'
-    FAILED+=("$app")
-  fi
-done
+  done
+else
+  echo "  no app changes — skipping builds"
+fi
 
-# Sync web directory to server (always, even if some builds failed)
-if [ -d "$REPO_ROOT/web" ]; then
+# Sync web directory if it changed
+if [ "$WEB_CHANGED" = true ] && [ -d "$REPO_ROOT/web" ]; then
   echo ""
   echo "  syncing website..."
-  REMOTE_HTML=$(dirname "$REMOTE_PATH")
   scp -q "$REPO_ROOT/web/"* "$REMOTE_HOST:$REMOTE_HTML/" 2>/dev/null || true
   echo "  ✓ website synced"
 fi
@@ -149,5 +181,5 @@ echo ""
 if [ ${#FAILED[@]} -gt 0 ]; then
   echo "━━━ Done (${#FAILED[@]} failed: ${FAILED[*]}) ━━━"
 else
-  echo "━━━ Done — all apps built and uploaded ━━━"
+  echo "━━━ Done ━━━"
 fi
