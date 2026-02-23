@@ -37,8 +37,8 @@ BRANCH="main"
 # Prevent overlapping runs
 if [ -f "$LOCK_FILE" ]; then
   LOCK_PID=$(cat "$LOCK_FILE")
-  if kill -0 "$LOCK_PID" 2>/dev/null; then
-    echo "  build already running (pid $LOCK_PID), skipping"
+  if kill -0 "$LOCK_PID" 2>/dev/null && ps -p "$LOCK_PID" -o command= 2>/dev/null | grep -q "build-runner"; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') — build already running (pid $LOCK_PID), skipping"
     exit 0
   fi
   rm -f "$LOCK_FILE"
