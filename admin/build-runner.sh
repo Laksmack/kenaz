@@ -171,21 +171,36 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
     cd "$REPO_ROOT"
 
     if [ $BUILD_EXIT -eq 0 ]; then
-      echo "  ✓ $NAME v$VERSION built ($(date '+%H:%M:%S'))"
-
       RELEASE_DIR="$PKG_DIR/release"
-      if [ -d "$RELEASE_DIR" ]; then
-        echo "  uploading $NAME to $REMOTE_HOST..."
-        ssh "$REMOTE_HOST" "mkdir -p $REMOTE_PATH/$app"
-        scp -q "$RELEASE_DIR"/*.dmg "$RELEASE_DIR"/*.zip "$RELEASE_DIR"/latest-mac.yml \
-          "$REMOTE_HOST:$REMOTE_PATH/$app/" 2>/dev/null || true
-      DMG_NAME=$(ls -t "$RELEASE_DIR"/*.dmg 2>/dev/null | head -1 | xargs basename)
-      if [ -n "$DMG_NAME" ]; then
-        ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && ln -sf '$DMG_NAME' ${app}_latest.dmg"
+      APP_PATH="$RELEASE_DIR/mac-arm64/$NAME.app"
+
+      # Verify code signing — reject ad-hoc signed builds
+      SIGN_INFO=$(codesign -dvv "$APP_PATH" 2>&1)
+      if echo "$SIGN_INFO" | grep -q "Signature=adhoc"; then
+        echo "  ✗ $NAME v$VERSION built but ad-hoc signed (cert not found?) — skipping upload"
+        echo "  codesign output:" 
+        echo "$SIGN_INFO" | sed 's/^/    /'
+        FAILED+=("$app")
+      elif ! echo "$SIGN_INFO" | grep -q "Developer ID Application"; then
+        echo "  ✗ $NAME v$VERSION signed but not with Developer ID — skipping upload"
+        echo "$SIGN_INFO" | grep -E '(Authority|Signature|TeamIdentifier)' | sed 's/^/    /'
+        FAILED+=("$app")
+      else
+        echo "  ✓ $NAME v$VERSION built and signed ($(date '+%H:%M:%S'))"
+
+        if [ -d "$RELEASE_DIR" ]; then
+          echo "  uploading $NAME to $REMOTE_HOST..."
+          ssh "$REMOTE_HOST" "mkdir -p $REMOTE_PATH/$app"
+          scp -q "$RELEASE_DIR"/*.dmg "$RELEASE_DIR"/*.zip "$RELEASE_DIR"/latest-mac.yml \
+            "$REMOTE_HOST:$REMOTE_PATH/$app/" 2>/dev/null || true
+          DMG_NAME=$(ls -t "$RELEASE_DIR"/*.dmg 2>/dev/null | head -1 | xargs basename)
+          if [ -n "$DMG_NAME" ]; then
+            ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && ln -sf '$DMG_NAME' ${app}_latest.dmg"
+          fi
+          echo "  ✓ uploaded"
+        fi
+        rm -f "$BUILD_LOG"
       fi
-        echo "  ✓ uploaded"
-      fi
-      rm -f "$BUILD_LOG"
     else
       echo "  ✗ $NAME build failed — last 20 lines:"
       tail -20 "$BUILD_LOG" 2>/dev/null | sed 's/^/    /'
