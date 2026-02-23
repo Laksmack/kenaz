@@ -152,10 +152,10 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
         ssh "$REMOTE_HOST" "mkdir -p $REMOTE_PATH/$app"
         scp -q "$RELEASE_DIR"/*.dmg "$RELEASE_DIR"/*.zip "$RELEASE_DIR"/latest-mac.yml \
           "$REMOTE_HOST:$REMOTE_PATH/$app/" 2>/dev/null || true
-        DMG_NAME=$(ls -t "$RELEASE_DIR"/*.dmg 2>/dev/null | head -1 | xargs basename)
-        if [ -n "$DMG_NAME" ]; then
-          ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && ln -sf '$DMG_NAME' latest.dmg"
-        fi
+      DMG_NAME=$(ls -t "$RELEASE_DIR"/*.dmg 2>/dev/null | head -1 | xargs basename)
+      if [ -n "$DMG_NAME" ]; then
+        ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && ln -sf '$DMG_NAME' ${app}_latest.dmg"
+      fi
         echo "  ✓ uploaded"
       fi
       rm -f "$BUILD_LOG"
