@@ -3,6 +3,7 @@ import { z } from 'zod';
 import * as chrono from 'chrono-node';
 import type { CacheStore } from './cache-store';
 import type { GoogleCalendarService } from './google-calendar';
+import type { CalendlyService } from './calendly';
 import type { SyncEngine } from './sync-engine';
 import type { ConnectivityMonitor } from './connectivity';
 import type { CreateEventInput, UpdateEventInput } from '../shared/types';
@@ -13,6 +14,7 @@ export function startApiServer(
   sync: SyncEngine,
   connectivity: ConnectivityMonitor,
   port: number,
+  calendly: CalendlyService,
 ) {
   const app = express();
   app.use(express.json());
@@ -637,6 +639,68 @@ export function startApiServer(
       if (e instanceof z.ZodError) {
         return res.status(400).json({ error: 'Validation error', details: e.errors });
       }
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Calendly ───────────────────────────────────────────────
+
+  app.post('/api/calendly/configure', async (req, res) => {
+    try {
+      const { api_key } = req.body;
+      calendly.configure(api_key || null);
+      res.json({ configured: calendly.isConfigured() });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/calendly/status', async (_req, res) => {
+    try {
+      if (!calendly.isConfigured()) {
+        return res.json({ configured: false });
+      }
+      const user = await calendly.getCurrentUser();
+      res.json({ configured: true, user });
+    } catch (e: any) {
+      res.json({ configured: true, error: e.message });
+    }
+  });
+
+  app.get('/api/calendly/event-types', async (_req, res) => {
+    try {
+      const eventTypes = await calendly.getEventTypes();
+      res.json({ event_types: eventTypes });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/calendly/available-times', async (req, res) => {
+    try {
+      const eventType = req.query.event_type as string;
+      const start = req.query.start as string;
+      const end = req.query.end as string;
+      const timezone = req.query.timezone as string | undefined;
+      const format = (req.query.format as string) || 'both';
+
+      if (!eventType || !start || !end) {
+        return res.status(400).json({ error: 'event_type, start, and end params required' });
+      }
+
+      const slots = await calendly.getAvailableTimes(eventType, start, end);
+      const result: any = {};
+
+      if (format === 'json' || format === 'both') {
+        result.slots = slots;
+      }
+      if (format === 'html' || format === 'both') {
+        result.html = calendly.generateAvailabilityHtml(slots, { timezone });
+      }
+
+      result.count = slots.length;
+      res.json(result);
+    } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });

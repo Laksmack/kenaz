@@ -291,6 +291,7 @@ export interface AppConfig {
   hideDeclinedEvents: boolean;
   defaultEventDurationMinutes: number;
   overlayPeople: OverlayPerson[];
+  calendlyApiKey: string | null;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -315,4 +316,33 @@ export const DEFAULT_CONFIG: AppConfig = {
   hideDeclinedEvents: true,
   defaultEventDurationMinutes: 60,
   overlayPeople: [],
+  calendlyApiKey: null,
 };
+
+// ── Calendly Types ──────────────────────────────────────────
+
+export interface CalendlyEventType {
+  uri: string;
+  name: string;
+  slug: string;
+  duration: number;
+  scheduling_url: string;
+  active: boolean;
+  kind: string;
+  color: string;
+}
+
+export interface CalendlyAvailableTime {
+  status: string;
+  start_time: string;
+  scheduling_url: string;
+  invitees_remaining: number;
+}
+
+export interface CalendlyUser {
+  uri: string;
+  name: string;
+  email: string;
+  scheduling_url: string;
+  timezone: string;
+}

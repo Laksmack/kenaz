@@ -216,6 +216,32 @@ export function SettingsModal({ onClose }: Props) {
               </div>
             )}
           </section>
+
+          {/* Calendly */}
+          <section>
+            <h3 className="text-xs font-medium text-text-primary mb-3">Calendly</h3>
+            <label className="flex flex-col gap-1.5 py-1.5">
+              <div>
+                <span className="text-xs text-text-secondary block">API key</span>
+                <span className="text-[10px] text-text-muted">
+                  Personal access token from{' '}
+                  <button
+                    className="text-accent-primary hover:underline"
+                    onClick={() => window.dagaz.openExternal('https://calendly.com/integrations/api_webhooks')}
+                  >
+                    calendly.com/integrations
+                  </button>
+                </span>
+              </div>
+              <input
+                type="password"
+                value={config.calendlyApiKey || ''}
+                onChange={e => updateConfig({ calendlyApiKey: e.target.value || null })}
+                placeholder="eyJraWQiOi..."
+                className="bg-bg-primary border border-border-subtle rounded px-2 py-1.5 text-xs text-text-primary outline-none focus:border-accent-primary font-mono w-full"
+              />
+            </label>
+          </section>
         </div>
       </div>
     </div>

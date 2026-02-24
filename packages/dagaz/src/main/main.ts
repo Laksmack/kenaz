@@ -4,6 +4,7 @@ import * as chrono from 'chrono-node';
 
 import { initAutoUpdater, getUpdateMenuItems } from '@futhark/core/lib/auto-updater';
 import { GoogleCalendarService } from './google-calendar';
+import { CalendlyService } from './calendly';
 import { startApiServer } from './api-server';
 import { ConfigStore } from './config';
 import { CacheStore } from './cache-store';
@@ -18,6 +19,7 @@ import type { CreateEventInput, UpdateEventInput } from '../shared/types';
 
 let mainWindow: BrowserWindow | null = null;
 let google: GoogleCalendarService;
+let calendly: CalendlyService;
 let config: ConfigStore;
 let cache: CacheStore;
 let connectivity: ConnectivityMonitor;
@@ -86,13 +88,17 @@ async function initServices() {
   config = new ConfigStore();
   cache = new CacheStore();
   google = new GoogleCalendarService();
+  calendly = new CalendlyService();
   connectivity = new ConnectivityMonitor();
   connectivity.start();
   sync = new SyncEngine(google, cache, connectivity);
 
   const appConfig = config.get();
+  if (appConfig.calendlyApiKey) {
+    calendly.configure(appConfig.calendlyApiKey);
+  }
   if (appConfig.apiEnabled) {
-    startApiServer(cache, google, sync, connectivity, appConfig.apiPort);
+    startApiServer(cache, google, sync, connectivity, appConfig.apiPort, calendly);
   }
 
   // Start sync if already authorized
@@ -460,6 +466,9 @@ function registerIpcHandlers() {
     }
     if (updates.dockBadgeEnabled !== undefined) {
       updateDockBadge();
+    }
+    if (updates.calendlyApiKey !== undefined) {
+      calendly.configure(updates.calendlyApiKey);
     }
     return result;
   });

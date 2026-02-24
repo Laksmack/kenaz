@@ -273,11 +273,12 @@ server.tool(
 
 server.tool(
   'kenaz_draft_email',
-  'Create an email draft in Kenaz for review before sending. Supports markdown body (auto-converted to HTML). Use reply_to_thread_id to make it a reply. Supports file attachments via absolute file paths.',
+  'Create an email draft in Kenaz for review before sending. Supports markdown body (auto-converted to HTML) or raw HTML via body_html (e.g. for Calendly availability tables). Use reply_to_thread_id to make it a reply. Supports file attachments via absolute file paths.',
   {
     to: z.string().describe('Comma-separated recipient emails'),
     subject: z.string().describe('Email subject'),
-    body_markdown: z.string().describe('Email body in markdown (converted to HTML)'),
+    body_markdown: z.string().optional().describe('Email body in markdown (converted to HTML). Omit if using body_html.'),
+    body_html: z.string().optional().describe('Raw HTML body — use for rich content like Calendly tables. Bypasses markdown conversion.'),
     cc: z.string().optional().describe('Comma-separated CC emails'),
     bcc: z.string().optional().describe('Comma-separated BCC emails'),
     reply_to_thread_id: z.string().optional().describe('Thread ID to reply to (makes this a reply)'),
@@ -313,11 +314,12 @@ server.tool(
 
 server.tool(
   'kenaz_send_email',
-  'Send an email immediately. Use draft_email instead if the user should review first. Supports markdown body and file attachments.',
+  'Send an email immediately. Use draft_email instead if the user should review first. Supports markdown body or raw HTML via body_html, plus file attachments.',
   {
     to: z.string().describe('Comma-separated recipient emails'),
     subject: z.string().describe('Email subject'),
-    body_markdown: z.string().describe('Email body in markdown (converted to HTML)'),
+    body_markdown: z.string().optional().describe('Email body in markdown (converted to HTML). Omit if using body_html.'),
+    body_html: z.string().optional().describe('Raw HTML body — use for rich content like Calendly tables. Bypasses markdown conversion.'),
     cc: z.string().optional().describe('Comma-separated CC emails'),
     bcc: z.string().optional().describe('Comma-separated BCC emails'),
     reply_to_thread_id: z.string().optional().describe('Thread ID to reply to'),
@@ -882,6 +884,49 @@ server.tool(
     if (group_by) url += `&group_by=${group_by}`;
     const data = await api('dagaz', url);
     return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+// ── Calendly ──
+
+server.tool(
+  'dagaz_calendly',
+  'Calendly integration. Actions: "configure" (set API key), "event_types" (list active event types), "availability" (get available time slots with clickable booking links, optionally as email-ready HTML). Requires a Calendly API key — set via "configure" or in Dagaz Settings.',
+  {
+    action: z.enum(['configure', 'event_types', 'availability']).describe('Operation to perform'),
+    api_key: z.string().optional().describe('Calendly personal access token (for "configure" action)'),
+    event_type: z.string().optional().describe('Event type URI (for "availability" action)'),
+    start: z.string().optional().describe('Start of range, ISO datetime (for "availability")'),
+    end: z.string().optional().describe('End of range, ISO datetime (for "availability")'),
+    timezone: z.string().optional().describe('IANA timezone for display, e.g. "America/New_York" (for "availability")'),
+    format: z.enum(['json', 'html', 'both']).optional().describe('Output format for availability (default: "both")'),
+  },
+  async ({ action, api_key, event_type, start, end, timezone, format }) => {
+    switch (action) {
+      case 'configure': {
+        if (!api_key) return { content: [{ type: 'text', text: 'Error: api_key is required for configure' }] };
+        await api('dagaz', '/api/calendly/configure', {
+          method: 'POST',
+          body: JSON.stringify({ api_key }),
+        });
+        const status = await api('dagaz', '/api/calendly/status');
+        return { content: [{ type: 'text', text: JSON.stringify(status, null, 2) }] };
+      }
+      case 'event_types': {
+        const data = await api('dagaz', '/api/calendly/event-types');
+        return { content: [{ type: 'text', text: JSON.stringify(data.event_types, null, 2) }] };
+      }
+      case 'availability': {
+        if (!event_type || !start || !end) {
+          return { content: [{ type: 'text', text: 'Error: event_type, start, and end are required for availability' }] };
+        }
+        let url = `/api/calendly/available-times?event_type=${encodeURIComponent(event_type)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+        if (timezone) url += `&timezone=${encodeURIComponent(timezone)}`;
+        if (format) url += `&format=${format}`;
+        const data = await api('dagaz', url);
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+    }
   }
 );
 
