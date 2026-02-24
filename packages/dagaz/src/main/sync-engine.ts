@@ -173,6 +173,7 @@ export class SyncEngine {
     try {
       const calendars = this.cache.getVisibleCalendars();
       let hasChanges = false;
+      const calendarsNeedingFullSync: string[] = [];
 
       for (const cal of calendars) {
         if (!cal.sync_token) continue;
@@ -206,7 +207,14 @@ export class SyncEngine {
             this.cache.updateCalendarSyncToken(cal.id, nextSyncToken);
           }
         } catch (e: any) {
-          console.error(`[Dagaz Sync] Incremental sync failed for ${cal.summary}:`, e.message);
+          const status = e.code || e.response?.status || e.status;
+          if (status === 410) {
+            console.warn(`[Dagaz Sync] Sync token expired for ${cal.summary} — queueing full sync`);
+            this.cache.updateCalendarSyncToken(cal.id, null);
+            calendarsNeedingFullSync.push(cal.id);
+          } else {
+            console.error(`[Dagaz Sync] Incremental sync failed for ${cal.summary}:`, e.message);
+          }
         }
       }
 
@@ -216,6 +224,12 @@ export class SyncEngine {
 
       if (hasChanges) {
         this.notifyRenderer();
+      }
+
+      // Re-sync calendars whose tokens expired
+      if (calendarsNeedingFullSync.length > 0) {
+        console.log(`[Dagaz Sync] Running full sync for ${calendarsNeedingFullSync.length} calendar(s) with expired tokens`);
+        await this.fullSync();
       }
     } catch (e: any) {
       console.error('[Dagaz Sync] Incremental sync error:', e.message);

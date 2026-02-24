@@ -109,12 +109,14 @@ const api = {
 
   // Push events from main process
   onSyncChanged: (callback: (state: any) => void) => {
-    ipcRenderer.on('sync:changed', (_event, state) => callback(state));
-    return () => { ipcRenderer.removeListener('sync:changed', callback as any); };
+    const handler = (_event: any, state: any) => callback(state);
+    ipcRenderer.on('sync:changed', handler);
+    return () => { ipcRenderer.removeListener('sync:changed', handler); };
   },
   onConnectivityChanged: (callback: (online: boolean) => void) => {
-    ipcRenderer.on('connectivity:changed', (_event, online) => callback(online));
-    return () => { ipcRenderer.removeListener('connectivity:changed', callback as any); };
+    const handler = (_event: any, online: boolean) => callback(online);
+    ipcRenderer.on('connectivity:changed', handler);
+    return () => { ipcRenderer.removeListener('connectivity:changed', handler); };
   },
 };
 

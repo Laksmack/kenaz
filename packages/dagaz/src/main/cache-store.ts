@@ -177,7 +177,7 @@ export class CacheStore {
       .run(color, id);
   }
 
-  updateCalendarSyncToken(id: string, syncToken: string): void {
+  updateCalendarSyncToken(id: string, syncToken: string | null): void {
     this.db.prepare('UPDATE calendars SET sync_token = ?, last_synced_at = datetime(\'now\'), updated_at = datetime(\'now\') WHERE id = ?')
       .run(syncToken, id);
   }

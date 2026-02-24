@@ -183,6 +183,7 @@ export class GoogleCalendarService {
   async listEvents(calendarId: string, opts: {
     timeMin?: string; timeMax?: string; syncToken?: string;
     maxResults?: number; singleEvents?: boolean; noPaginate?: boolean;
+    showDeleted?: boolean;
   } = {}): Promise<{ events: Array<Partial<CalendarEvent> & { google_id: string; calendar_id: string; attendees?: Attendee[] }>; nextSyncToken?: string }> {
     if (!this.calendar) throw new Error('Not authenticated');
 
@@ -191,6 +192,7 @@ export class GoogleCalendarService {
       maxResults: opts.maxResults || 2500,
       singleEvents: opts.singleEvents !== false,
       orderBy: opts.singleEvents !== false ? 'startTime' : undefined,
+      showDeleted: opts.showDeleted || undefined,
     };
     // @ts-ignore — supportsAttachments is valid but not in all type defs
     params['supportsAttachments'] = true;
@@ -226,10 +228,9 @@ export class GoogleCalendarService {
       const events = allItems.map(item => this.parseGoogleEvent(item, calendarId));
       return { events, nextSyncToken: syncToken };
     } catch (e: any) {
-      // If sync token is invalid, do a full sync
       if (e.code === 410 && opts.syncToken) {
-        console.log('[Dagaz] Sync token expired, doing full fetch');
-        return this.listEvents(calendarId, { ...opts, syncToken: undefined });
+        console.log('[Dagaz] Sync token expired, doing full fetch with showDeleted');
+        return this.listEvents(calendarId, { ...opts, syncToken: undefined, showDeleted: true });
       }
       throw e;
     }

@@ -774,11 +774,22 @@ app.whenReady().then(async () => {
 
   powerMonitor.on('resume', () => {
     handleSystemWake(() => refreshDockIcon());
+    // Sync immediately after waking — tokens may be stale
+    if (google.isAuthorized()) {
+      sync.incrementalSync().catch(e => console.error('[Dagaz] Post-wake sync failed:', e));
+    }
   });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
+    }
+  });
+
+  // Sync when user brings the app to the foreground
+  app.on('browser-window-focus', () => {
+    if (google.isAuthorized()) {
+      sync.incrementalSync().catch(e => console.error('[Dagaz] Focus sync failed:', e));
     }
   });
 });
