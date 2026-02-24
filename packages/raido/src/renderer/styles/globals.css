@@ -79,7 +79,11 @@
   }
 
   .sidebar-item.active {
-    @apply bg-bg-tertiary font-semibold;
+    background: rgb(var(--accent-primary) / 0.12);
+    color: rgb(var(--accent-warm));
+    font-weight: 600;
+    border-left: 2px solid rgb(var(--accent-primary));
+    padding-left: calc(1rem - 2px);
   }
 
   .tag-pill {

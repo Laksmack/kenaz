@@ -68,7 +68,7 @@ export function Sidebar({ currentView, onViewChange, stats, groups, selectedGrou
 
           {/* Groups */}
           <div className="px-4 mb-2">
-            <span className="text-xs font-semibold text-text-secondary uppercase tracking-wider">Groups</span>
+            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'rgb(var(--accent-primary) / 0.6)' }}>Groups</span>
           </div>
 
           <nav className="px-3 space-y-0.5 overflow-y-auto flex-1 scrollbar-hide">
@@ -83,7 +83,10 @@ export function Sidebar({ currentView, onViewChange, stats, groups, selectedGrou
                     isActive && 'active'
                   )}
                 >
-                  <span className="text-base w-6 text-center opacity-60">⌐</span>
+                  <span
+                    className="text-[10px] w-6 text-center"
+                    style={{ color: isActive ? 'rgb(var(--accent-primary))' : 'rgb(var(--accent-primary) / 0.4)' }}
+                  >■</span>
                   <span className="flex-1 text-left truncate">{group.name}</span>
                   <span className="text-xs text-text-muted">{group.count}</span>
                 </button>
@@ -97,7 +100,7 @@ export function Sidebar({ currentView, onViewChange, stats, groups, selectedGrou
 
       {/* Raidō rune footer */}
       <div className="px-4 py-3 border-t border-border-subtle flex items-center gap-2">
-        <svg className="w-5 h-5" viewBox="0 0 512 512" fill="none">
+        <svg className="w-6 h-6" viewBox="0 0 512 512" fill="none">
           <defs>
             <linearGradient id="raido-rune" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
               <stop offset="0" stopColor="#8B5E3C"/>
@@ -109,7 +112,7 @@ export function Sidebar({ currentView, onViewChange, stats, groups, selectedGrou
           <path d="M198.2 130.5L320.8 215.8L198.2 301.0" stroke="#FFF8F0" strokeWidth="31.36" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
           <path d="M198.2 301.0L320.8 381.5" stroke="#FFF8F0" strokeWidth="31.36" strokeLinecap="round" fill="none"/>
         </svg>
-        <span className="text-xs text-text-muted font-medium">Raidō</span>
+        <span className="text-xs font-medium" style={{ color: 'rgb(var(--accent-warm))' }}>Raidō</span>
       </div>
     </div>
   );
