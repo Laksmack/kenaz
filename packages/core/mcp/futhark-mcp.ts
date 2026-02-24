@@ -191,10 +191,11 @@ server.tool(
 
 server.tool(
   'kenaz_search_emails',
-  'Search emails using Gmail query syntax (e.g. "from:user@example.com", "subject:invoice", "is:unread", "after:2026/01/01"). Returns compact summaries. Use kenaz_get_thread_summary or kenaz_get_thread for full details on a specific thread.',
+  'Search emails using Gmail query syntax (e.g. "from:user@example.com", "subject:invoice", "is:unread", "after:2026/01/01"). To find sent emails, prefer "from:me" over "in:sent" — from:me catches replies in received threads too. If you use "in:sent", it will be auto-translated to "from:me". Returns compact summaries. Use kenaz_get_thread_summary or kenaz_get_thread for full details on a specific thread.',
   { query: z.string().describe('Gmail search query') },
   async ({ query }) => {
-    const data = await api('kenaz', `/api/search?q=${encodeURIComponent(query)}`);
+    const rewritten = query.replace(/\bin:sent\b/gi, 'from:me');
+    const data = await api('kenaz', `/api/search?q=${encodeURIComponent(rewritten)}`);
     return { content: [{ type: 'text', text: compactThreads(data.threads) }] };
   }
 );

@@ -200,6 +200,12 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
             ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && ln -sf '$DMG_NAME' ${app}_latest.dmg"
           fi
           echo "  ✓ uploaded"
+
+          # Clean up old versions on remote (keep only current version + symlink)
+          CLEANED=$(ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && find . -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.zip' \) ! -name '*${VERSION}*' -print -delete 2>/dev/null" | wc -l | tr -d ' ')
+          if [ "$CLEANED" -gt 0 ] 2>/dev/null; then
+            echo "  ✓ cleaned up $CLEANED old release file(s)"
+          fi
         fi
         rm -f "$BUILD_LOG"
       fi
