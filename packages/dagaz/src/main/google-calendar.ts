@@ -187,19 +187,21 @@ export class GoogleCalendarService {
   } = {}): Promise<{ events: Array<Partial<CalendarEvent> & { google_id: string; calendar_id: string; attendees?: Attendee[] }>; nextSyncToken?: string }> {
     if (!this.calendar) throw new Error('Not authenticated');
 
+    const useSingleEvents = opts.singleEvents !== false;
     const params: calendar_v3.Params$Resource$Events$List = {
       calendarId,
       maxResults: opts.maxResults || 2500,
-      singleEvents: opts.singleEvents !== false,
-      orderBy: opts.singleEvents !== false ? 'startTime' : undefined,
+      singleEvents: useSingleEvents,
       showDeleted: opts.showDeleted || undefined,
     };
     // @ts-ignore — supportsAttachments is valid but not in all type defs
     params['supportsAttachments'] = true;
 
     if (opts.syncToken) {
+      // orderBy, timeMin, timeMax are incompatible with syncToken
       params.syncToken = opts.syncToken;
     } else {
+      if (useSingleEvents) params.orderBy = 'startTime';
       if (opts.timeMin) params.timeMin = opts.timeMin;
       if (opts.timeMax) params.timeMax = opts.timeMax;
     }

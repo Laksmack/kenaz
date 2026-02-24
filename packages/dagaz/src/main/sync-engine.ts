@@ -167,16 +167,31 @@ export class SyncEngine {
   async incrementalSync(): Promise<void> {
     if (!this.google.isAuthorized() || !this.connectivity.isOnline) return;
 
+    // If no recent successful sync, escalate to full sync
+    const STALE_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+    if (!this.lastSync || (Date.now() - new Date(this.lastSync).getTime()) > STALE_THRESHOLD) {
+      const calendars = this.cache.getVisibleCalendars();
+      const hasAnyToken = calendars.some(c => !!c.sync_token);
+      if (!hasAnyToken) {
+        console.log('[Dagaz Sync] No sync tokens found — running full sync');
+        return this.fullSync();
+      }
+    }
+
     this._status = 'syncing';
     this.notifyRenderer();
 
     try {
       const calendars = this.cache.getVisibleCalendars();
       let hasChanges = false;
+      let syncedCount = 0;
       const calendarsNeedingFullSync: string[] = [];
 
       for (const cal of calendars) {
-        if (!cal.sync_token) continue;
+        if (!cal.sync_token) {
+          calendarsNeedingFullSync.push(cal.id);
+          continue;
+        }
 
         try {
           const { events, nextSyncToken } = await this.google.listEvents(cal.id, {
@@ -206,6 +221,7 @@ export class SyncEngine {
           if (nextSyncToken) {
             this.cache.updateCalendarSyncToken(cal.id, nextSyncToken);
           }
+          syncedCount++;
         } catch (e: any) {
           const status = e.code || e.response?.status || e.status;
           if (status === 410) {
@@ -218,17 +234,18 @@ export class SyncEngine {
         }
       }
 
-      this._status = 'synced';
-      this.lastSync = new Date().toISOString();
-      this.connectivity.reportOnline();
+      if (syncedCount > 0) {
+        this._status = 'synced';
+        this.lastSync = new Date().toISOString();
+        this.connectivity.reportOnline();
+      }
 
       if (hasChanges) {
         this.notifyRenderer();
       }
 
-      // Re-sync calendars whose tokens expired
       if (calendarsNeedingFullSync.length > 0) {
-        console.log(`[Dagaz Sync] Running full sync for ${calendarsNeedingFullSync.length} calendar(s) with expired tokens`);
+        console.log(`[Dagaz Sync] Running full sync for ${calendarsNeedingFullSync.length} calendar(s) needing token refresh`);
         await this.fullSync();
       }
     } catch (e: any) {
