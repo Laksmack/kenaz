@@ -69,7 +69,15 @@ if [ "$FORCE" = false ]; then
     exit 0
   fi
 
-  git pull --quiet
+  # Reset any build artifacts (e.g. package-lock.json modified by npm ci)
+  # so git pull doesn't fail on dirty working tree
+  git checkout -- . 2>/dev/null
+  git clean -fd 2>/dev/null
+
+  if ! git pull --quiet; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') — git pull failed, aborting"
+    exit 1
+  fi
 
   CHANGED_FILES=$(git diff --name-only "$LOCAL" "$REMOTE")
   RELEVANT=$(echo "$CHANGED_FILES" | grep -E '^(packages/|signing/|web/|package\.json|package-lock\.json)')
@@ -190,6 +198,9 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
 
     echo ""
     echo "  building $NAME v$VERSION..."
+
+    # Clean old build artifacts so only current version gets uploaded
+    rm -rf "$PKG_DIR/release"
 
     # Re-unlock keychain before each build
     security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db
