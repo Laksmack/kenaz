@@ -253,6 +253,41 @@ export class SyncEngine {
                 this.cache.setNudge(thread.id, nudgeType);
                 console.log(`[SyncEngine] Nudge: "${thread.subject?.slice(0, 40)}" → ${nudgeType}`);
               }
+
+              // ── Restore archived threads on new external reply ──
+              // Gmail sometimes doesn't re-add INBOX when a new reply lands on
+              // an archived thread. Explicitly restore it so the user never misses mail.
+              if (newMessageThreadIds.has(thread.id) && !this.cache.isSnoozed(thread.id)) {
+                const hasInbox = thread.labels.includes('INBOX');
+                const isTrashed = thread.labels.includes('TRASH') || thread.labels.includes('SPAM');
+                if (!hasInbox && !isTrashed) {
+                  const lastMsg = thread.messages[thread.messages.length - 1];
+                  const userEmail = this.gmail.getUserEmail().toLowerCase();
+                  const isFromMe = lastMsg?.from.email.toLowerCase() === userEmail;
+                  if (lastMsg && !isFromMe) {
+                    console.log(`[SyncEngine] New reply on archived thread ${thread.id.slice(0, 8)} "${thread.subject?.slice(0, 40)}" — restoring to inbox`);
+                    this.cache.updateThreadLabels(thread.id, ['INBOX', 'UNREAD'], []);
+                    if (this.connectivity.isOnline) {
+                      try {
+                        await this.gmail.modifyLabels(thread.id, 'INBOX', null);
+                        await this.gmail.modifyLabels(thread.id, 'UNREAD', null);
+                      } catch (e) {
+                        console.error(`[SyncEngine] Failed to restore thread ${thread.id} to inbox:`, e);
+                        this.cache.enqueuePendingAction('label', thread.id, { add: 'INBOX', remove: null });
+                      }
+                    } else {
+                      this.cache.enqueuePendingAction('label', thread.id, { add: 'INBOX', remove: null });
+                    }
+                    try {
+                      new Notification({
+                        title: `New reply: ${thread.subject || 'Thread'}`,
+                        body: lastMsg.snippet || thread.snippet || '',
+                        silent: false,
+                      }).show();
+                    } catch {}
+                  }
+                }
+              }
             }
           }
         }

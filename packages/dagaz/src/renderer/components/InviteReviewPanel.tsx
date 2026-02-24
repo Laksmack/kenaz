@@ -182,32 +182,35 @@ export function InviteReviewPanel({ events, allEvents, isLoading, onRefresh, onR
                 </div>
               )}
 
-              {/* Actions */}
+              {/* Actions — always visible for fast triage */}
               {state === 'loading' ? (
                 <div className="mt-3 text-xs text-text-muted animate-pulse">Updating...</div>
               ) : state === 'error' ? (
-                <button
-                  onClick={() => handleAction(event, 'accepted')}
-                  className="mt-3 text-xs text-red-400 hover:text-red-300 transition-colors"
-                >
-                  Failed — click to retry
-                </button>
+                <div className="flex gap-2 mt-3">
+                  <span className="text-xs text-red-400">Failed</span>
+                  <button
+                    onClick={() => handleAction(event, 'accepted')}
+                    className="text-xs text-red-400 hover:text-red-300 underline transition-colors"
+                  >
+                    Retry
+                  </button>
+                </div>
               ) : (
                 <div className="flex gap-2 mt-3">
                   <button
-                    onClick={() => handleAction(event, 'accepted')}
+                    onClick={(e) => { e.stopPropagation(); handleAction(event, 'accepted'); }}
                     className="flex-1 px-2 py-1.5 rounded-md text-xs font-medium bg-green-500/15 text-green-400 hover:bg-green-500/25 transition-colors"
                   >
                     Accept
                   </button>
                   <button
-                    onClick={() => handleAction(event, 'tentative')}
+                    onClick={(e) => { e.stopPropagation(); handleAction(event, 'tentative'); }}
                     className="flex-1 px-2 py-1.5 rounded-md text-xs font-medium bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500/25 transition-colors"
                   >
                     Maybe
                   </button>
                   <button
-                    onClick={() => handleAction(event, 'declined')}
+                    onClick={(e) => { e.stopPropagation(); handleAction(event, 'declined'); }}
                     className="flex-1 px-2 py-1.5 rounded-md text-xs font-medium bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
                   >
                     Decline

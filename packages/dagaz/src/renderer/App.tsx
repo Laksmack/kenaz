@@ -215,7 +215,7 @@ export default function App() {
     refresh({ full: false });
     refreshNeedsAction();
     const updated = await window.dagaz.getEvent(id);
-    if (updated) setSelectedEvent(updated);
+    setSelectedEvent(prev => prev?.id === id ? updated : prev);
 
     // Archive the matching invite email in Kenaz
     if (updated?.summary) {
