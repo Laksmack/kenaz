@@ -474,12 +474,43 @@ export class TaskStore {
 
   getGroup(name: string): Task[] {
     const prefix = `[${name}]`;
+    const today = new Date().toISOString().split('T')[0];
     const rows = this.db.prepare(`
       SELECT * FROM tasks
       WHERE title LIKE ? AND status = 'open'
-      ORDER BY due_date ASC, priority DESC, sort_order ASC
     `).all(`${prefix}%`) as any[];
-    return rows.map(r => this.enrichTask(r));
+
+    const tasks = rows.map(r => this.enrichTask(r));
+
+    const overdue: Task[] = [];
+    const upcoming: Task[] = [];
+    const noDue: Task[] = [];
+    for (const t of tasks) {
+      if (t.due_date && t.due_date < today) overdue.push(t);
+      else if (t.due_date) upcoming.push(t);
+      else noDue.push(t);
+    }
+
+    const byDateThenTag = (a: Task, b: Task) => {
+      const dateCmp = a.due_date!.localeCompare(b.due_date!);
+      if (dateCmp !== 0) return dateCmp;
+      const aTag = a.tags.length > 0 ? [...a.tags].sort()[0] : '\uffff';
+      const bTag = b.tags.length > 0 ? [...b.tags].sort()[0] : '\uffff';
+      if (aTag !== bTag) return aTag.localeCompare(bTag);
+      return a.created_at.localeCompare(b.created_at);
+    };
+
+    overdue.sort(byDateThenTag);
+    upcoming.sort(byDateThenTag);
+
+    noDue.sort((a, b) => {
+      const aTag = a.tags.length > 0 ? [...a.tags].sort()[0] : '\uffff';
+      const bTag = b.tags.length > 0 ? [...b.tags].sort()[0] : '\uffff';
+      if (aTag !== bTag) return aTag.localeCompare(bTag);
+      return a.created_at.localeCompare(b.created_at);
+    });
+
+    return [...overdue, ...upcoming, ...noDue];
   }
 
   // ── Tag Queries ───────────────────────────────────────────

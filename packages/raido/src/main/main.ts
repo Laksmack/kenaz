@@ -179,7 +179,9 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle(IPC.ATTACHMENT_DELETE, async (_event, taskId: string, attachmentId: string) => {
-    return store.deleteAttachment(taskId, attachmentId);
+    const ok = store.deleteAttachment(taskId, attachmentId);
+    notifyTasksChanged();
+    return ok;
   });
 
   ipcMain.handle(IPC.ATTACHMENT_ADD, async (_event, taskId: string) => {
@@ -192,7 +194,9 @@ function registerIpcHandlers() {
     const filePath = result.filePaths[0];
     const filename = path.basename(filePath);
     const buffer = fs.readFileSync(filePath);
-    return store.addAttachment(taskId, filename, buffer, { source: 'upload' });
+    const attachment = store.addAttachment(taskId, filename, buffer, { source: 'upload' });
+    notifyTasksChanged();
+    return attachment;
   });
 
   // Checklist
