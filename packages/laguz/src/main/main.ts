@@ -455,6 +455,20 @@ function registerIpcHandlers() {
     return cabinetService.copyCabinetFile(sourcePath, targetFolder || '');
   });
 
+  ipcMain.handle('laguz:openScanner', async (_event, cabinetFolder?: string) => {
+    if (process.platform !== 'darwin') return { supported: false };
+
+    const targetDir = path.join(config.vaultPath, '_cabinet', cabinetFolder || '');
+    if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
+
+    // Open Image Capture and reveal the target folder so the user knows where to save
+    const { exec } = require('child_process');
+    exec('open -a "Image Capture"');
+    shell.openPath(targetDir);
+
+    return { supported: true, saveTo: targetDir };
+  });
+
   // Cross-app
   ipcMain.handle('cross-app:fetch', async (_event, url: string, options?: any) => {
     const res = await fetch(url, {

@@ -208,6 +208,7 @@ declare global {
       moveCabinetDocument: (from: string, to: string) => Promise<{ newPath: string }>;
       getCabinetOcrStatus: () => Promise<CabinetOcrStatus>;
       copyCabinetFile: (sourcePath: string, targetFolder: string) => Promise<{ path: string; filename: string }>;
+      openScanner: (cabinetFolder?: string) => Promise<{ supported: boolean; saveTo?: string }>;
 
       crossAppFetch: (url: string, options?: any) => Promise<any>;
       onOpenFile: (cb: (path: string) => void) => () => void;

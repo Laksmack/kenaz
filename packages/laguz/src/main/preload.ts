@@ -65,6 +65,7 @@ const api = {
   moveCabinetDocument: (from: string, to: string) => ipcRenderer.invoke('laguz:moveCabinetDocument', from, to),
   getCabinetOcrStatus: () => ipcRenderer.invoke('laguz:getCabinetOcrStatus'),
   copyCabinetFile: (sourcePath: string, targetFolder: string) => ipcRenderer.invoke('laguz:copyCabinetFile', sourcePath, targetFolder),
+  openScanner: (cabinetFolder?: string) => ipcRenderer.invoke('laguz:openScanner', cabinetFolder),
 
   // Cross-app
   crossAppFetch: (url: string, options?: any) => ipcRenderer.invoke('cross-app:fetch', url, options),
