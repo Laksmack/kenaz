@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState, useEffect } from 'react';
+import React, { useCallback, useRef, useState, useEffect, useLayoutEffect } from 'react';
 import type { CalendarEvent } from '../../shared/types';
 import { formatTime } from '../lib/utils';
 import type { DragMode } from '../hooks/useEventDrag';
@@ -28,7 +28,18 @@ export function EventBlock({ event, selected, onClick, onRSVP, onDragStart, styl
 
   const mouseDownRef = useRef<{ y: number; mode: DragMode; moved: boolean } | null>(null);
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null);
+  const [ctxPos, setCtxPos] = useState<{ left: number; top: number } | null>(null);
   const ctxRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!ctxMenu || !ctxRef.current) return;
+    const rect = ctxRef.current.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const left = ctxMenu.x + rect.width > vw ? vw - rect.width - 4 : ctxMenu.x;
+    const top = ctxMenu.y + rect.height > vh ? ctxMenu.y - rect.height : ctxMenu.y;
+    setCtxPos({ left, top });
+  }, [ctxMenu]);
 
   useEffect(() => {
     if (!ctxMenu) return;
@@ -42,6 +53,7 @@ export function EventBlock({ event, selected, onClick, onRSVP, onDragStart, styl
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    setCtxPos(null);
     setCtxMenu({ x: e.clientX, y: e.clientY });
   }, []);
 
@@ -162,7 +174,11 @@ export function EventBlock({ event, selected, onClick, onRSVP, onDragStart, styl
           <div
             ref={ctxRef}
             className="fixed z-[100] py-1 min-w-[200px] bg-bg-secondary border border-border-subtle rounded-lg shadow-2xl"
-            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+            style={{
+              left: ctxPos?.left ?? ctxMenu.x,
+              top: ctxPos?.top ?? ctxMenu.y,
+              visibility: ctxPos ? 'visible' : 'hidden',
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             {actions.map((a, i) => (
