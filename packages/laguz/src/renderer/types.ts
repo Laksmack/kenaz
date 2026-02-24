@@ -18,7 +18,7 @@ export interface NoteDetail extends NoteSummary {
   meta: Record<string, string>;
 }
 
-export type ViewType = 'scratch' | 'vault' | 'grouped' | 'flat' | 'context';
+export type ViewType = 'scratch' | 'vault' | 'grouped' | 'flat' | 'context' | 'cabinet';
 
 // ── Config Types ──────────────────────────────────────────────
 
@@ -103,6 +103,28 @@ export interface CompScienceProfile {
   title: string;
 }
 
+export interface CabinetDocument {
+  id: string;
+  path: string;
+  filename: string;
+  ext: string;
+  folder: string;
+  size: number;
+  modified: string | null;
+  created: string | null;
+  ocr_status: string;
+  page_count: number | null;
+  tags: string[];
+  extracted_text?: string | null;
+}
+
+export interface CabinetOcrStatus {
+  pending: number;
+  processing: number;
+  done: number;
+  failed: number;
+}
+
 export interface VaultFolder {
   name: string;
   path: string;
@@ -175,6 +197,17 @@ declare global {
       onUpdateState: (callback: (state: { status: string; version?: string; percent?: number; message?: string }) => void) => () => void;
       checkForUpdates: () => Promise<any>;
       installUpdate: () => Promise<void>;
+
+      // Cabinet
+      getCabinetFolders: (parent?: string) => Promise<string[]>;
+      getCabinetDocuments: (folder?: string, ext?: string) => Promise<CabinetDocument[]>;
+      searchCabinet: (q: string, filters?: { folder?: string; ext?: string }) => Promise<CabinetDocument[]>;
+      getCabinetDocument: (docPath: string) => Promise<CabinetDocument | null>;
+      tagCabinetDocument: (docPath: string, tags: string[]) => Promise<{ success: boolean }>;
+      createCabinetFolder: (folderPath: string) => Promise<{ success: boolean }>;
+      moveCabinetDocument: (from: string, to: string) => Promise<{ newPath: string }>;
+      getCabinetOcrStatus: () => Promise<CabinetOcrStatus>;
+      copyCabinetFile: (sourcePath: string, targetFolder: string) => Promise<{ path: string; filename: string }>;
 
       crossAppFetch: (url: string, options?: any) => Promise<any>;
       onOpenFile: (cb: (path: string) => void) => () => void;

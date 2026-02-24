@@ -441,6 +441,125 @@ export function startApiServer(store: VaultStore, signatureStore: SignatureStore
     }
   });
 
+  // ── Cabinet: Folders ───────────────────────────────────────
+
+  app.get('/api/cabinet/folders', (req, res) => {
+    try {
+      const parent = (req.query.parent as string) || '';
+      const folders = store.getCabinetFolders(parent);
+      res.json({ folders });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Cabinet: Documents ────────────────────────────────────
+
+  app.get('/api/cabinet/documents', (req, res) => {
+    try {
+      const folder = req.query.folder as string | undefined;
+      const ext = req.query.ext as string | undefined;
+      const docs = store.getCabinetDocuments(folder, ext);
+      res.json({ documents: docs });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Cabinet: Single Document ──────────────────────────────
+
+  app.get('/api/cabinet/document', (req, res) => {
+    try {
+      const docPath = req.query.path as string;
+      if (!docPath) return res.status(400).json({ error: 'path is required' });
+      const doc = store.getCabinetDocument(docPath);
+      if (!doc) return res.status(404).json({ error: 'Document not found' });
+      res.json(doc);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Cabinet: Search ───────────────────────────────────────
+
+  app.get('/api/cabinet/search', (req, res) => {
+    try {
+      const q = (req.query.q as string) || '';
+      const folder = req.query.folder as string | undefined;
+      const ext = req.query.ext as string | undefined;
+      const docs = store.searchCabinet(q, { folder, ext });
+      res.json({ documents: docs });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Cabinet: Tags ─────────────────────────────────────────
+
+  app.post('/api/cabinet/tag', (req, res) => {
+    try {
+      const { path: docPath, tags } = req.body;
+      if (!docPath || !Array.isArray(tags)) {
+        return res.status(400).json({ error: 'path and tags[] are required' });
+      }
+      store.tagCabinetDocument(docPath, tags);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Cabinet: Create Folder ────────────────────────────────
+
+  app.post('/api/cabinet/mkdir', (req, res) => {
+    try {
+      const { path: folderPath } = req.body;
+      if (!folderPath) return res.status(400).json({ error: 'path is required' });
+      store.createCabinetFolder(folderPath);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Cabinet: Move Document ────────────────────────────────
+
+  app.post('/api/cabinet/move', (req, res) => {
+    try {
+      const { from, to } = req.body;
+      if (!from || to == null) return res.status(400).json({ error: 'from and to are required' });
+      const result = store.moveCabinetDocument(from, to);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Cabinet: OCR Status ───────────────────────────────────
+
+  app.get('/api/cabinet/ocr-status', (_req, res) => {
+    try {
+      const status = store.getCabinetOcrStatus();
+      res.json(status);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Cabinet: Copy file into cabinet ───────────────────────
+
+  app.post('/api/cabinet/upload', (req, res) => {
+    try {
+      if (!_cabinetService) return res.status(500).json({ error: 'Cabinet service not initialized' });
+      const { source_path, folder } = req.body;
+      if (!source_path) return res.status(400).json({ error: 'source_path is required' });
+      const result = _cabinetService.copyCabinetFile(source_path, folder || '');
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Health ─────────────────────────────────────────────────
 
   app.get('/api/health', (_req, res) => {

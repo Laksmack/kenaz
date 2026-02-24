@@ -36,6 +36,7 @@ export PATH="/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:$PAT
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOCK_FILE="/tmp/futhark-build-runner.lock"
 APPS=(kenaz raido dagaz laguz)
+UPLOAD_PIDS=()
 
 # ── Config (edit these) ──────────────────────────────────────
 REMOTE_HOST="ubuntu@compsci-hackathons.com"
@@ -154,6 +155,34 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
 
   echo "  apps to build: ${APPS_TO_BUILD[*]}"
 
+  # Upload a built app in the background; logs to .upload-<app>.log
+  upload_release() {
+    local app="$1" name="$2" version="$3" release_dir="$4"
+    local log="$REPO_ROOT/.upload-$app.log"
+    {
+      echo "$(date '+%H:%M:%S') starting upload of $name v$version"
+      ssh "$REMOTE_HOST" "mkdir -p $REMOTE_PATH/$app"
+
+      rsync -ahz --info=progress2 \
+        "$release_dir"/*.dmg "$release_dir"/*.zip "$release_dir"/latest-mac.yml \
+        "$REMOTE_HOST:$REMOTE_PATH/$app/" 2>/dev/null || true
+
+      local dmg_name
+      dmg_name=$(ls -t "$release_dir"/*.dmg 2>/dev/null | head -1 | xargs basename)
+      if [ -n "$dmg_name" ]; then
+        ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && ln -sf '$dmg_name' ${app}_latest.dmg"
+      fi
+
+      local cleaned
+      cleaned=$(ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && find . -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.zip' \) ! -name '*${version}*' -print -delete 2>/dev/null" | wc -l | tr -d ' ')
+      if [ "$cleaned" -gt 0 ] 2>/dev/null; then
+        echo "cleaned $cleaned old release file(s)"
+      fi
+
+      echo "$(date '+%H:%M:%S') upload complete"
+    } > "$log" 2>&1
+  }
+
   for app in "${APPS_TO_BUILD[@]}"; do
     PKG_DIR="$REPO_ROOT/packages/$app"
     NAME=$(node -p "require('$PKG_DIR/package.json').build.productName || require('$PKG_DIR/package.json').name" 2>/dev/null || echo "$app")
@@ -189,25 +218,13 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
         FAILED+=("$app")
       else
         echo "  ✓ $NAME v$VERSION built and signed ($(date '+%H:%M:%S'))"
+        rm -f "$BUILD_LOG"
 
         if [ -d "$RELEASE_DIR" ]; then
-          echo "  uploading $NAME to $REMOTE_HOST..."
-          ssh "$REMOTE_HOST" "mkdir -p $REMOTE_PATH/$app"
-          scp -q "$RELEASE_DIR"/*.dmg "$RELEASE_DIR"/*.zip "$RELEASE_DIR"/latest-mac.yml \
-            "$REMOTE_HOST:$REMOTE_PATH/$app/" 2>/dev/null || true
-          DMG_NAME=$(ls -t "$RELEASE_DIR"/*.dmg 2>/dev/null | head -1 | xargs basename)
-          if [ -n "$DMG_NAME" ]; then
-            ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && ln -sf '$DMG_NAME' ${app}_latest.dmg"
-          fi
-          echo "  ✓ uploaded"
-
-          # Clean up old versions on remote (keep only current version + symlink)
-          CLEANED=$(ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && find . -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.zip' \) ! -name '*${VERSION}*' -print -delete 2>/dev/null" | wc -l | tr -d ' ')
-          if [ "$CLEANED" -gt 0 ] 2>/dev/null; then
-            echo "  ✓ cleaned up $CLEANED old release file(s)"
-          fi
+          upload_release "$app" "$NAME" "$VERSION" "$RELEASE_DIR" &
+          UPLOAD_PIDS+=("$!:$app:$NAME")
+          echo "  ↗ $NAME upload started in background (pid $!)"
         fi
-        rm -f "$BUILD_LOG"
       fi
     else
       echo "  ✗ $NAME build failed — last 20 lines:"
@@ -225,6 +242,42 @@ if [ "$WEB_CHANGED" = true ] && [ -d "$REPO_ROOT/web" ]; then
   echo "  syncing website..."
   scp -q "$REPO_ROOT/web/"* "$REMOTE_HOST:$REMOTE_HTML/" 2>/dev/null || true
   echo "  ✓ website synced"
+fi
+
+# Wait for background uploads to finish
+if [ ${#UPLOAD_PIDS[@]} -gt 0 ]; then
+  echo ""
+  echo "  waiting for ${#UPLOAD_PIDS[@]} upload(s)..."
+  WAIT_START=$SECONDS
+  UPLOAD_ERRORS=0
+
+  for entry in "${UPLOAD_PIDS[@]}"; do
+    pid="${entry%%:*}"
+    rest="${entry#*:}"
+    app="${rest%%:*}"
+    name="${rest#*:}"
+
+    if wait "$pid"; then
+      ELAPSED=$(( SECONDS - WAIT_START ))
+      echo "  ✓ $name uploaded (${ELAPSED}s elapsed)"
+    else
+      echo "  ✗ $name upload failed"
+      ((UPLOAD_ERRORS++))
+    fi
+
+    log="$REPO_ROOT/.upload-$app.log"
+    if [ -f "$log" ]; then
+      grep -E '(progress|cleaned|complete|error)' "$log" 2>/dev/null | tail -3 | sed 's/^/    /'
+      rm -f "$log"
+    fi
+  done
+
+  TOTAL_WAIT=$(( SECONDS - WAIT_START ))
+  if [ "$UPLOAD_ERRORS" -gt 0 ]; then
+    echo "  ⚠ $UPLOAD_ERRORS upload(s) had errors (${TOTAL_WAIT}s total)"
+  else
+    echo "  ✓ all uploads complete (${TOTAL_WAIT}s total)"
+  fi
 fi
 
 echo ""

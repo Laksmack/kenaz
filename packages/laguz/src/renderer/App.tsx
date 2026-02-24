@@ -5,6 +5,7 @@ import { VaultView } from './components/VaultView';
 import { AccountsView } from './components/AccountsView';
 import { FolderView } from './components/FolderView';
 import { FolderContextView } from './components/FolderContextView';
+import { CabinetView } from './components/CabinetView';
 import { TabBar } from './components/TabBar';
 import { NoteDetail } from './components/NoteDetail';
 import { SettingsModal } from './components/SettingsModal';
@@ -262,6 +263,10 @@ export default function App() {
           e.preventDefault();
           handleViewChange('vault');
           break;
+        case '3':
+          e.preventDefault();
+          handleViewChange('cabinet');
+          break;
         case '/':
           e.preventDefault();
           handleViewChange('vault');
@@ -415,6 +420,12 @@ export default function App() {
                       folderName={contextFolder}
                       onOpenFile={openFile}
                       onBack={() => handleViewChange('vault')}
+                    />
+                  )}
+                  {currentView === 'cabinet' && (
+                    <CabinetView
+                      activeFilePath={activeTab?.filePath ?? null}
+                      onOpenFile={openFile}
                     />
                   )}
                 </>

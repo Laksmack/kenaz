@@ -55,6 +55,17 @@ const api = {
   getVaultFolders: () => ipcRenderer.invoke('laguz:getVaultFolders'),
   getFolderContext: (folderName: string) => ipcRenderer.invoke('laguz:getFolderContext', folderName),
 
+  // Cabinet
+  getCabinetFolders: (parent?: string) => ipcRenderer.invoke('laguz:getCabinetFolders', parent),
+  getCabinetDocuments: (folder?: string, ext?: string) => ipcRenderer.invoke('laguz:getCabinetDocuments', folder, ext),
+  searchCabinet: (q: string, filters?: { folder?: string; ext?: string }) => ipcRenderer.invoke('laguz:searchCabinet', q, filters),
+  getCabinetDocument: (docPath: string) => ipcRenderer.invoke('laguz:getCabinetDocument', docPath),
+  tagCabinetDocument: (docPath: string, tags: string[]) => ipcRenderer.invoke('laguz:tagCabinetDocument', docPath, tags),
+  createCabinetFolder: (folderPath: string) => ipcRenderer.invoke('laguz:createCabinetFolder', folderPath),
+  moveCabinetDocument: (from: string, to: string) => ipcRenderer.invoke('laguz:moveCabinetDocument', from, to),
+  getCabinetOcrStatus: () => ipcRenderer.invoke('laguz:getCabinetOcrStatus'),
+  copyCabinetFile: (sourcePath: string, targetFolder: string) => ipcRenderer.invoke('laguz:copyCabinetFile', sourcePath, targetFolder),
+
   // Cross-app
   crossAppFetch: (url: string, options?: any) => ipcRenderer.invoke('cross-app:fetch', url, options),
 

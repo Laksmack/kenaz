@@ -13,10 +13,11 @@ process.on('uncaughtException', (e) => {
 });
 
 import { config } from './config';
-import { startApiServer } from './api-server';
+import { startApiServer, setCabinetService } from './api-server';
 import { VaultStore } from './vault-store';
 import { VaultWatcher } from './watcher';
 import { LaguzConfigManager } from './laguz-config';
+import { CabinetService } from './cabinet-service';
 import * as pdfService from './pdf-service';
 import { SignatureStore } from './signature-store';
 
@@ -25,6 +26,7 @@ let store: VaultStore;
 let watcher: VaultWatcher;
 let configManager: LaguzConfigManager;
 let signatureStore: SignatureStore;
+let cabinetService: CabinetService;
 let pendingFilePath: string | null = null;
 
 const isDev = process.env.NODE_ENV === 'development';
@@ -413,6 +415,46 @@ function registerIpcHandlers() {
     };
   });
 
+  // ── Cabinet Handlers ──────────────────────────────────────────
+
+  ipcMain.handle('laguz:getCabinetFolders', async (_event, parent?: string) => {
+    return store.getCabinetFolders(parent);
+  });
+
+  ipcMain.handle('laguz:getCabinetDocuments', async (_event, folder?: string, ext?: string) => {
+    return store.getCabinetDocuments(folder, ext);
+  });
+
+  ipcMain.handle('laguz:searchCabinet', async (_event, q: string, filters?: { folder?: string; ext?: string }) => {
+    return store.searchCabinet(q, filters);
+  });
+
+  ipcMain.handle('laguz:getCabinetDocument', async (_event, docPath: string) => {
+    return store.getCabinetDocument(docPath);
+  });
+
+  ipcMain.handle('laguz:tagCabinetDocument', async (_event, docPath: string, tags: string[]) => {
+    store.tagCabinetDocument(docPath, tags);
+    return { success: true };
+  });
+
+  ipcMain.handle('laguz:createCabinetFolder', async (_event, folderPath: string) => {
+    store.createCabinetFolder(folderPath);
+    return { success: true };
+  });
+
+  ipcMain.handle('laguz:moveCabinetDocument', async (_event, from: string, to: string) => {
+    return store.moveCabinetDocument(from, to);
+  });
+
+  ipcMain.handle('laguz:getCabinetOcrStatus', async () => {
+    return store.getCabinetOcrStatus();
+  });
+
+  ipcMain.handle('laguz:copyCabinetFile', async (_event, sourcePath: string, targetFolder: string) => {
+    return cabinetService.copyCabinetFile(sourcePath, targetFolder || '');
+  });
+
   // Cross-app
   ipcMain.handle('cross-app:fetch', async (_event, url: string, options?: any) => {
     const res = await fetch(url, {
@@ -432,6 +474,10 @@ async function initServices() {
   configManager = new LaguzConfigManager();
   store = new VaultStore();
   signatureStore = new SignatureStore();
+  cabinetService = new CabinetService(store);
+  cabinetService.ensureCabinetDir();
+
+  setCabinetService(cabinetService);
 
   try {
     startApiServer(store, signatureStore, config.apiPort);
@@ -440,7 +486,11 @@ async function initServices() {
   }
 
   watcher = new VaultWatcher(store);
+  watcher.setCabinetService(cabinetService);
   await watcher.start();
+
+  cabinetService.reprocessPending();
+
   console.log('[Laguz] Services initialized');
 }
 

@@ -18,12 +18,14 @@ interface SidebarProps {
 const BUILTIN_ICONS: Record<string, string> = {
   scratch: '📝',
   vault: '🗄',
+  cabinet: '🗃',
 };
 
 export function Sidebar({ config, currentView, onViewChange, subfolders, selectedItem, onSelectItem, onFolderNavigate, onOpenFile, contextFolder }: SidebarProps) {
   const sections = config.sections.filter(s => s.enabled);
-  const builtins = sections.filter(s => s.type === 'scratch' || s.type === 'vault');
-  const custom = sections.filter(s => s.type !== 'scratch' && s.type !== 'vault');
+  const builtinTypes = new Set(['scratch', 'vault']);
+  const builtins = sections.filter(s => builtinTypes.has(s.type));
+  const custom = sections.filter(s => !builtinTypes.has(s.type));
 
   return (
     <div className="flex flex-col h-full bg-bg-secondary">
@@ -41,6 +43,13 @@ export function Sidebar({ config, currentView, onViewChange, subfolders, selecte
             <span className="flex-1 text-left">{section.label}</span>
           </button>
         ))}
+        <button
+          onClick={() => onViewChange('cabinet')}
+          className={cn('sidebar-item w-full', currentView === 'cabinet' && !selectedItem && 'active')}
+        >
+          <span className="text-base w-6 text-center">🗃</span>
+          <span className="flex-1 text-left">Cabinet</span>
+        </button>
       </nav>
 
       <div className="mx-4 my-3 border-t border-border-subtle flex-shrink-0" />
