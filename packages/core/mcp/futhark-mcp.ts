@@ -104,7 +104,7 @@ function readFileAsAttachment(filePath: string): { filename: string; mimeType: s
 
 const server = new McpServer({
   name: 'futhark',
-  version: '1.5.4',
+  version: '1.6.0',
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -222,62 +222,49 @@ server.tool(
 // ── Attachments ──
 
 server.tool(
-  'kenaz_list_thread_attachments',
-  'List all attachments in an email thread. Returns attachment metadata (id, filename, mimeType, size) for each message.',
-  { thread_id: z.string().describe('Gmail thread ID') },
-  async ({ thread_id }) => {
-    const data = await api('kenaz', `/api/thread/${thread_id}/attachments`);
-    return { content: [{ type: 'text', text: JSON.stringify(data.attachments, null, 2) }] };
-  }
-);
-
-server.tool(
-  'kenaz_download_attachment',
-  "Download a specific attachment to the user's Downloads folder. Returns the file path.",
+  'kenaz_attachment',
+  'Email attachment operations. Actions: "list" (list attachments in a thread, requires thread_id), "download" (download one attachment, requires message_id + attachment_id + filename), "download_all" (download all as zip, requires thread_id).',
   {
-    message_id: z.string().describe('Gmail message ID containing the attachment'),
-    attachment_id: z.string().describe('Attachment ID from list_thread_attachments'),
-    filename: z.string().describe('Original filename for the saved file'),
+    action: z.enum(['list', 'download', 'download_all']).describe('Attachment operation'),
+    thread_id: z.string().optional().describe('Gmail thread ID (for list, download_all)'),
+    message_id: z.string().optional().describe('Gmail message ID (for download)'),
+    attachment_id: z.string().optional().describe('Attachment ID from list (for download)'),
+    filename: z.string().optional().describe('Filename to save as (for download)'),
   },
-  async ({ message_id, attachment_id, filename }) => {
-    const data = await api('kenaz', `/api/attachment/${message_id}/${attachment_id}/download?filename=${encodeURIComponent(filename)}`, {
-      method: 'POST',
-    });
-    return { content: [{ type: 'text', text: `Downloaded to: ${data.path}` }] };
-  }
-);
+  async ({ action, thread_id, message_id, attachment_id, filename }) => {
+    switch (action) {
+      case 'list': {
+        if (!thread_id) return { content: [{ type: 'text', text: 'Error: list requires thread_id' }] };
+        const data = await api('kenaz', `/api/thread/${thread_id}/attachments`);
+        return { content: [{ type: 'text', text: JSON.stringify(data.attachments, null, 2) }] };
+      }
+      case 'download': {
+        if (!message_id || !attachment_id || !filename) return { content: [{ type: 'text', text: 'Error: download requires message_id, attachment_id, and filename' }] };
+        const data = await api('kenaz', `/api/attachment/${message_id}/${attachment_id}/download?filename=${encodeURIComponent(filename)}`, { method: 'POST' });
+        return { content: [{ type: 'text', text: `Downloaded to: ${data.path}` }] };
+      }
+      case 'download_all': {
+        if (!thread_id) return { content: [{ type: 'text', text: 'Error: download_all requires thread_id' }] };
+        const listData = await api('kenaz', `/api/thread/${thread_id}/attachments`);
+        const attachments = listData.attachments || [];
+        if (attachments.length === 0) return { content: [{ type: 'text', text: 'No attachments found in this thread.' }] };
 
-server.tool(
-  'kenaz_download_all_thread_attachments',
-  "Download all attachments from a thread as a zip file to the user's Downloads folder.",
-  { thread_id: z.string().describe('Gmail thread ID') },
-  async ({ thread_id }) => {
-    const listData = await api('kenaz', `/api/thread/${thread_id}/attachments`);
-    const attachments = listData.attachments || [];
-    if (attachments.length === 0) {
-      return { content: [{ type: 'text', text: 'No attachments found in this thread.' }] };
+        const url = `${baseUrl('kenaz')}/api/thread/${thread_id}/attachments/download-all`;
+        const res = await fetch(url);
+        if (!res.ok) { const text = await res.text(); throw new Error(`Failed to download: ${text}`); }
+
+        const downloadsDir = join(homedir(), 'Downloads');
+        let filePath = join(downloadsDir, `attachments-${thread_id}.zip`);
+        let counter = 1;
+        while (existsSync(filePath)) { filePath = join(downloadsDir, `attachments-${thread_id} (${counter}).zip`); counter++; }
+
+        const buffer = Buffer.from(await res.arrayBuffer());
+        writeFileSync(filePath, buffer);
+
+        const fileList = attachments.map((a: any) => `  - ${a.filename} (${(a.size / 1024).toFixed(1)} KB)`).join('\n');
+        return { content: [{ type: 'text', text: `Downloaded ${attachments.length} attachments to:\n${filePath}\n\nFiles:\n${fileList}` }] };
+      }
     }
-
-    const url = `${baseUrl('kenaz')}/api/thread/${thread_id}/attachments/download-all`;
-    const res = await fetch(url);
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Failed to download: ${text}`);
-    }
-
-    const downloadsDir = join(homedir(), 'Downloads');
-    let filePath = join(downloadsDir, `attachments-${thread_id}.zip`);
-    let counter = 1;
-    while (existsSync(filePath)) {
-      filePath = join(downloadsDir, `attachments-${thread_id} (${counter}).zip`);
-      counter++;
-    }
-
-    const buffer = Buffer.from(await res.arrayBuffer());
-    writeFileSync(filePath, buffer);
-
-    const fileList = attachments.map((a: any) => `  - ${a.filename} (${(a.size / 1024).toFixed(1)} KB)`).join('\n');
-    return { content: [{ type: 'text', text: `Downloaded ${attachments.length} attachments to:\n${filePath}\n\nFiles:\n${fileList}` }] };
   }
 );
 
@@ -367,84 +354,67 @@ server.tool(
 // ── Drafts ──
 
 server.tool(
-  'kenaz_list_drafts',
-  'List all email drafts',
-  {},
-  async () => {
-    const data = await api('kenaz', '/api/drafts');
-    return { content: [{ type: 'text', text: JSON.stringify(data.drafts, null, 2) }] };
-  }
-);
-
-server.tool(
-  'kenaz_get_draft',
-  'Get a draft with full body content',
-  { draft_id: z.string().describe('Draft ID') },
-  async ({ draft_id }) => {
-    const data = await api('kenaz', `/api/draft/${draft_id}`);
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-  }
-);
-
-server.tool(
-  'kenaz_delete_draft',
-  'Delete a draft',
-  { draft_id: z.string().describe('Draft ID') },
-  async ({ draft_id }) => {
-    await api('kenaz', `/api/draft/${draft_id}`, { method: 'DELETE' });
-    return { content: [{ type: 'text', text: 'Draft deleted.' }] };
+  'kenaz_draft',
+  'Manage email drafts. Actions: "list" (all drafts), "get" (full body, requires draft_id), "delete" (requires draft_id). To create a draft, use kenaz_draft_email instead.',
+  {
+    action: z.enum(['list', 'get', 'delete']).describe('Draft operation'),
+    draft_id: z.string().optional().describe('Draft ID (required for get/delete)'),
+  },
+  async ({ action, draft_id }) => {
+    switch (action) {
+      case 'list': {
+        const data = await api('kenaz', '/api/drafts');
+        return { content: [{ type: 'text', text: JSON.stringify(data.drafts, null, 2) }] };
+      }
+      case 'get': {
+        if (!draft_id) return { content: [{ type: 'text', text: 'Error: get requires draft_id' }] };
+        const data = await api('kenaz', `/api/draft/${draft_id}`);
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+      case 'delete': {
+        if (!draft_id) return { content: [{ type: 'text', text: 'Error: delete requires draft_id' }] };
+        await api('kenaz', `/api/draft/${draft_id}`, { method: 'DELETE' });
+        return { content: [{ type: 'text', text: 'Draft deleted.' }] };
+      }
+    }
   }
 );
 
 // ── Email Actions ──
 
 server.tool(
-  'kenaz_archive_thread',
-  'Archive an email thread (remove from inbox)',
-  { thread_id: z.string().describe('Thread ID to archive') },
-  async ({ thread_id }) => {
-    await api('kenaz', `/api/archive/${thread_id}`, { method: 'POST' });
-    return { content: [{ type: 'text', text: `Thread ${thread_id} archived.` }] };
-  }
-);
-
-server.tool(
-  'kenaz_trash_thread',
-  'Move an email thread to trash',
-  { thread_id: z.string().describe('Thread ID to trash') },
-  async ({ thread_id }) => {
-    await api('kenaz', `/api/thread/${thread_id}`, { method: 'DELETE' });
-    return { content: [{ type: 'text', text: `Thread ${thread_id} trashed.` }] };
-  }
-);
-
-server.tool(
-  'kenaz_modify_labels',
-  'Add or remove labels from an email thread. Common labels: INBOX, STARRED, UNREAD, IMPORTANT.',
+  'kenaz_thread_action',
+  'Perform actions on email threads. Actions: "archive" (remove from inbox), "trash" (move to trash), "label" (add/remove labels like STARRED, UNREAD, IMPORTANT), "batch_archive" (archive multiple threads). Use thread_id for single-thread actions, thread_ids for batch.',
   {
-    thread_id: z.string().describe('Thread ID'),
-    add: z.string().optional().describe('Label name to add'),
-    remove: z.string().optional().describe('Label name to remove'),
+    action: z.enum(['archive', 'trash', 'label', 'batch_archive']).describe('Thread action'),
+    thread_id: z.string().optional().describe('Thread ID (for archive, trash, label)'),
+    thread_ids: z.array(z.string()).optional().describe('Thread IDs (for batch_archive)'),
+    add_label: z.string().optional().describe('Label to add (for label action)'),
+    remove_label: z.string().optional().describe('Label to remove (for label action)'),
   },
-  async ({ thread_id, add, remove }) => {
-    await api('kenaz', `/api/label/${thread_id}`, {
-      method: 'POST',
-      body: JSON.stringify({ add: add || null, remove: remove || null }),
-    });
-    return { content: [{ type: 'text', text: `Labels updated on thread ${thread_id}.` }] };
-  }
-);
-
-server.tool(
-  'kenaz_batch_archive',
-  'Archive multiple email threads at once',
-  { thread_ids: z.array(z.string()).describe('Array of thread IDs to archive') },
-  async ({ thread_ids }) => {
-    const data = await api('kenaz', '/api/batch/archive', {
-      method: 'POST',
-      body: JSON.stringify({ threadIds: thread_ids }),
-    });
-    return { content: [{ type: 'text', text: `Archived ${data.archived} threads.` }] };
+  async ({ action, thread_id, thread_ids, add_label, remove_label }) => {
+    switch (action) {
+      case 'archive': {
+        if (!thread_id) return { content: [{ type: 'text', text: 'Error: archive requires thread_id' }] };
+        await api('kenaz', `/api/archive/${thread_id}`, { method: 'POST' });
+        return { content: [{ type: 'text', text: `Thread ${thread_id} archived.` }] };
+      }
+      case 'trash': {
+        if (!thread_id) return { content: [{ type: 'text', text: 'Error: trash requires thread_id' }] };
+        await api('kenaz', `/api/thread/${thread_id}`, { method: 'DELETE' });
+        return { content: [{ type: 'text', text: `Thread ${thread_id} trashed.` }] };
+      }
+      case 'label': {
+        if (!thread_id) return { content: [{ type: 'text', text: 'Error: label requires thread_id' }] };
+        await api('kenaz', `/api/label/${thread_id}`, { method: 'POST', body: JSON.stringify({ add: add_label || null, remove: remove_label || null }) });
+        return { content: [{ type: 'text', text: `Labels updated on thread ${thread_id}.` }] };
+      }
+      case 'batch_archive': {
+        if (!thread_ids?.length) return { content: [{ type: 'text', text: 'Error: batch_archive requires thread_ids' }] };
+        const data = await api('kenaz', '/api/batch/archive', { method: 'POST', body: JSON.stringify({ threadIds: thread_ids }) });
+        return { content: [{ type: 'text', text: `Archived ${data.archived} threads.` }] };
+      }
+    }
   }
 );
 
@@ -461,43 +431,37 @@ server.tool(
 // ── HubSpot CRM ──
 
 server.tool(
-  'kenaz_hubspot_lookup',
-  'Look up a HubSpot contact by email. Returns contact info, associated deals, and recent activities.',
-  { email: z.string().describe('Contact email address') },
-  async ({ email }) => {
-    const data = await api('kenaz', `/api/hubspot/contact/${encodeURIComponent(email)}`);
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-  }
-);
-
-server.tool(
-  'kenaz_hubspot_deals',
-  'List active HubSpot deals. Optionally filter by stage or owner.',
+  'kenaz_hubspot',
+  'HubSpot CRM operations. Actions: "lookup" (contact by email), "deals" (list active deals, optional stage/owner filter), "activities" (recent activities for a contact email).',
   {
-    stage: z.string().optional().describe('Filter by deal stage'),
-    owner: z.string().optional().describe('Filter by owner ID'),
+    action: z.enum(['lookup', 'deals', 'activities']).describe('HubSpot operation'),
+    email: z.string().optional().describe('Contact email (for lookup, activities)'),
+    stage: z.string().optional().describe('Filter by deal stage (for deals)'),
+    owner: z.string().optional().describe('Filter by owner ID (for deals)'),
+    limit: z.number().optional().describe('Max results (for activities, default 10)'),
   },
-  async ({ stage, owner }) => {
-    const params = new URLSearchParams();
-    if (stage) params.set('stage', stage);
-    if (owner) params.set('owner', owner);
-    const qs = params.toString();
-    const data = await api('kenaz', `/api/hubspot/deals${qs ? '?' + qs : ''}`);
-    return { content: [{ type: 'text', text: JSON.stringify(data.deals, null, 2) }] };
-  }
-);
-
-server.tool(
-  'kenaz_hubspot_recent_activities',
-  'Get recent HubSpot activities (emails, notes, meetings, calls) for a contact',
-  {
-    email: z.string().describe('Contact email address'),
-    limit: z.number().optional().describe('Max results (default 10)'),
-  },
-  async ({ email, limit }) => {
-    const qs = limit ? `?limit=${limit}` : '';
-    const data = await api('kenaz', `/api/hubspot/recent/${encodeURIComponent(email)}${qs}`);
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  async ({ action, email, stage, owner, limit }) => {
+    switch (action) {
+      case 'lookup': {
+        if (!email) return { content: [{ type: 'text', text: 'Error: lookup requires email' }] };
+        const data = await api('kenaz', `/api/hubspot/contact/${encodeURIComponent(email)}`);
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+      case 'deals': {
+        const params = new URLSearchParams();
+        if (stage) params.set('stage', stage);
+        if (owner) params.set('owner', owner);
+        const qs = params.toString();
+        const data = await api('kenaz', `/api/hubspot/deals${qs ? '?' + qs : ''}`);
+        return { content: [{ type: 'text', text: JSON.stringify(data.deals, null, 2) }] };
+      }
+      case 'activities': {
+        if (!email) return { content: [{ type: 'text', text: 'Error: activities requires email' }] };
+        const qs = limit ? `?limit=${limit}` : '';
+        const data = await api('kenaz', `/api/hubspot/recent/${encodeURIComponent(email)}${qs}`);
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+    }
   }
 );
 
@@ -532,41 +496,6 @@ server.tool(
       }
     }
     return { content: [{ type: 'text', text: JSON.stringify(Array.from(contacts.values()), null, 2) }] };
-  }
-);
-
-// ── Calendar (via Kenaz) ──
-
-server.tool(
-  'kenaz_calendar_events',
-  'List calendar events in a time range (via Kenaz). Defaults to today.',
-  {
-    time_min: z.string().optional().describe('Start time (ISO format). Defaults to now.'),
-    time_max: z.string().optional().describe('End time (ISO format). Defaults to end of today.'),
-  },
-  async ({ time_min, time_max }) => {
-    const params = new URLSearchParams();
-    if (time_min) params.set('timeMin', time_min);
-    if (time_max) params.set('timeMax', time_max);
-    const qs = params.toString();
-    const data = await api('kenaz', `/api/calendar/events${qs ? '?' + qs : ''}`);
-    return { content: [{ type: 'text', text: JSON.stringify(data.events, null, 2) }] };
-  }
-);
-
-server.tool(
-  'kenaz_calendar_rsvp',
-  'RSVP to a calendar event (via Kenaz)',
-  {
-    event_id: z.string().describe('Calendar event ID (local UUID or Google Calendar ID)'),
-    response: z.enum(['accepted', 'tentative', 'declined']).describe('RSVP response'),
-  },
-  async ({ event_id, response }) => {
-    const data = await api('kenaz', `/api/calendar/rsvp/${event_id}`, {
-      method: 'POST',
-      body: JSON.stringify({ response }),
-    });
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
   }
 );
 
@@ -697,15 +626,22 @@ server.tool(
 );
 
 server.tool(
-  'dagaz_find_free_time',
-  'Find free time slots across calendars in a date range',
+  'dagaz_find_availability',
+  'Find available time slots. For free/busy checking, pass calendar_ids. For meeting scheduling with multiple people, also pass attendees and duration_minutes to get ranked suggestions.',
   {
-    calendar_ids: z.array(z.string()).describe('Calendar IDs or email addresses to check'),
     start: z.string().describe('Search range start (ISO datetime)'),
     end: z.string().describe('Search range end (ISO datetime)'),
+    calendar_ids: z.array(z.string()).optional().describe('Calendar IDs or email addresses to check free/busy'),
+    attendees: z.array(z.string()).optional().describe('Attendee emails (for meeting time suggestions)'),
+    duration_minutes: z.number().optional().describe('Meeting length in minutes (for meeting time suggestions)'),
   },
-  async ({ calendar_ids, start, end }) => {
-    const calendars = calendar_ids.join(',');
+  async ({ start, end, calendar_ids, attendees, duration_minutes }) => {
+    if (attendees && duration_minutes) {
+      const url = `/api/find-meeting-time?attendees=${encodeURIComponent(attendees.join(','))}&duration_minutes=${duration_minutes}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
+      const data = await api('dagaz', url);
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    }
+    const calendars = (calendar_ids || []).join(',');
     const data = await api('dagaz', `/api/freebusy?calendars=${encodeURIComponent(calendars)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
     return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
   }
@@ -893,59 +829,40 @@ server.tool(
 // ── Integration ──
 
 server.tool(
-  'dagaz_get_day_plan',
-  'Get combined events and tasks for a date. Pulls events from Dagaz and tasks from Raidō.',
+  'dagaz_meeting_context',
+  'Cross-app context for meetings and day planning. Types: "event" (attendee details + emails + CRM for one event), "meeting_prep" (full briefing: attendees + email history + CRM + related tasks), "day_plan" (combined events + tasks for a date).',
   {
-    date: z.string().optional().describe('ISO date (YYYY-MM-DD), defaults to today'),
+    type: z.enum(['event', 'meeting_prep', 'day_plan']).describe('Context type'),
+    event_id: z.string().optional().describe('Event ID (for event, meeting_prep)'),
+    date: z.string().optional().describe('ISO date YYYY-MM-DD (for day_plan, defaults to today)'),
   },
-  async ({ date }) => {
-    let url = '/api/day-plan';
-    if (date) url += `?date=${encodeURIComponent(date)}`;
-    const data = await api('dagaz', url);
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-  }
-);
-
-server.tool(
-  'dagaz_get_event_context',
-  'Get rich context for an event: attendee details, recent email threads (from Kenaz), CRM data (from HubSpot). Perfect for meeting prep.',
-  { event_id: z.string().describe('Event ID (local UUID or Google Calendar ID — either works)') },
-  async ({ event_id }) => {
-    const data = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}/context`);
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-  }
-);
-
-server.tool(
-  'dagaz_get_meeting_prep',
-  'Comprehensive meeting prep: attendee profiles (HubSpot), email history (Kenaz), related tasks (Raidō). Returns a structured briefing.',
-  { event_id: z.string().describe('Event ID (local UUID or Google Calendar ID — either works)') },
-  async ({ event_id }) => {
-    const contextData = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}/context`);
-    let relatedTasks: any[] = [];
-    try {
-      const event = contextData.event;
-      if (event?.summary) {
-        const raidoRes = await fetch(`${baseUrl('raido')}/api/search?q=${encodeURIComponent(event.summary)}`, {
-          signal: AbortSignal.timeout(3000),
-        });
-        if (raidoRes.ok) {
-          const data = await raidoRes.json();
-          relatedTasks = (data.tasks || []).slice(0, 5);
-        }
+  async ({ type, event_id, date }) => {
+    switch (type) {
+      case 'event': {
+        if (!event_id) return { content: [{ type: 'text', text: 'Error: event requires event_id' }] };
+        const data = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}/context`);
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
       }
-    } catch { /* Raidō not available */ }
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          event: contextData.event,
-          attendeeContext: contextData.emailThreads || [],
-          hubspotContacts: contextData.hubspotContacts || [],
-          relatedTasks,
-        }, null, 2),
-      }],
-    };
+      case 'meeting_prep': {
+        if (!event_id) return { content: [{ type: 'text', text: 'Error: meeting_prep requires event_id' }] };
+        const contextData = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}/context`);
+        let relatedTasks: any[] = [];
+        try {
+          const event = contextData.event;
+          if (event?.summary) {
+            const raidoRes = await fetch(`${baseUrl('raido')}/api/search?q=${encodeURIComponent(event.summary)}`, { signal: AbortSignal.timeout(3000) });
+            if (raidoRes.ok) { const data = await raidoRes.json(); relatedTasks = (data.tasks || []).slice(0, 5); }
+          }
+        } catch { /* Raidō not available */ }
+        return { content: [{ type: 'text', text: JSON.stringify({ event: contextData.event, attendeeContext: contextData.emailThreads || [], hubspotContacts: contextData.hubspotContacts || [], relatedTasks }, null, 2) }] };
+      }
+      case 'day_plan': {
+        let url = '/api/day-plan';
+        if (date) url += `?date=${encodeURIComponent(date)}`;
+        const data = await api('dagaz', url);
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+    }
   }
 );
 
@@ -967,46 +884,6 @@ server.tool(
   }
 );
 
-server.tool(
-  'dagaz_find_meeting_time',
-  'Find available meeting times across multiple people. Returns ranked suggestions.',
-  {
-    attendees: z.array(z.string()).describe('Email addresses of attendees'),
-    duration_minutes: z.number().describe('Meeting length in minutes'),
-    start: z.string().describe('Search range start (ISO datetime)'),
-    end: z.string().describe('Search range end (ISO datetime)'),
-  },
-  async ({ attendees, duration_minutes, start, end }) => {
-    const url = `/api/find-meeting-time?attendees=${encodeURIComponent(attendees.join(','))}&duration_minutes=${duration_minutes}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`;
-    const data = await api('dagaz', url);
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-  }
-);
-
-// ── Utility ──
-
-server.tool(
-  'dagaz_parse_event_text',
-  'Parse natural language into structured event fields without creating the event.',
-  { text: z.string().describe('Natural language event description') },
-  async ({ text }) => {
-    const data = await api('dagaz', '/api/parse-event', {
-      method: 'POST',
-      body: JSON.stringify({ text }),
-    });
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-  }
-);
-
-server.tool(
-  'dagaz_get_sync_status',
-  'Get sync status: last sync time, pending offline changes, connection state',
-  {},
-  async () => {
-    const data = await api('dagaz', '/api/sync/status');
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-  }
-);
 
 // ═══════════════════════════════════════════════════════════
 // RAIDŌ — Tasks (port 3142)
@@ -1122,20 +999,10 @@ server.tool(
 // ── Search & Stats ──
 
 server.tool(
-  'raido_search_todos',
-  'Search tasks by title or notes',
-  { query: z.string().describe('Search query') },
-  async ({ query }) => {
-    const data = await api('raido', `/api/search?q=${encodeURIComponent(query)}`);
-    return { content: [{ type: 'text', text: JSON.stringify(data.tasks, null, 2) }] };
-  }
-);
-
-server.tool(
-  'raido_search_advanced',
-  'Advanced search with filters',
+  'raido_search',
+  'Search tasks by title or notes. Supports optional filters for tags and status.',
   {
-    query: z.string().describe('Search text'),
+    query: z.string().describe('Search query'),
     tags: z.array(z.string()).optional().describe('Filter by tags'),
     completed: z.boolean().optional().describe('Include completed tasks'),
     canceled: z.boolean().optional().describe('Include canceled tasks'),
@@ -1227,47 +1094,33 @@ server.tool(
 // ── Checklist Items ──
 
 server.tool(
-  'raido_add_checklist_item',
-  'Add a checklist item (sub-step) to an existing task',
+  'raido_checklist',
+  'Manage checklist items (sub-steps) on a task. Actions: "add" (requires task_id + title), "update" (requires item_id, optional title/completed), "delete" (requires item_id).',
   {
-    task_id: z.string().describe('Task ID'),
-    title: z.string().describe('Checklist item text'),
+    action: z.enum(['add', 'update', 'delete']).describe('Checklist operation'),
+    task_id: z.string().optional().describe('Task ID (required for add)'),
+    item_id: z.string().optional().describe('Checklist item ID (required for update/delete)'),
+    title: z.string().optional().describe('Item text (required for add, optional for update)'),
+    completed: z.boolean().optional().describe('Toggle completed state (for update)'),
   },
-  async ({ task_id, title }) => {
-    const data = await api('raido', `/api/task/${task_id}/checklist`, {
-      method: 'POST',
-      body: JSON.stringify({ title }),
-    });
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-  }
-);
-
-server.tool(
-  'raido_update_checklist_item',
-  'Update a checklist item (toggle completed, edit title)',
-  {
-    item_id: z.string().describe('Checklist item ID'),
-    title: z.string().optional().describe('New title'),
-    completed: z.boolean().optional().describe('Toggle completed state'),
-  },
-  async ({ item_id, ...updates }) => {
-    const data = await api('raido', `/api/checklist/${item_id}`, {
-      method: 'PUT',
-      body: JSON.stringify(updates),
-    });
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-  }
-);
-
-server.tool(
-  'raido_delete_checklist_item',
-  'Delete a checklist item from a task',
-  {
-    item_id: z.string().describe('Checklist item ID'),
-  },
-  async ({ item_id }) => {
-    const data = await api('raido', `/api/checklist/${item_id}`, { method: 'DELETE' });
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  async ({ action, task_id, item_id, title, completed }) => {
+    switch (action) {
+      case 'add': {
+        if (!task_id || !title) return { content: [{ type: 'text', text: 'Error: add requires task_id and title' }] };
+        const data = await api('raido', `/api/task/${task_id}/checklist`, { method: 'POST', body: JSON.stringify({ title }) });
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+      case 'update': {
+        if (!item_id) return { content: [{ type: 'text', text: 'Error: update requires item_id' }] };
+        const data = await api('raido', `/api/checklist/${item_id}`, { method: 'PUT', body: JSON.stringify({ title, completed }) });
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+      case 'delete': {
+        if (!item_id) return { content: [{ type: 'text', text: 'Error: delete requires item_id' }] };
+        const data = await api('raido', `/api/checklist/${item_id}`, { method: 'DELETE' });
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+    }
   }
 );
 
@@ -1401,164 +1254,75 @@ server.tool(
 // ── Laguz: PDF ──────────────────────────────────────────────
 
 server.tool(
-  'laguz_read_pdf',
-  'Extract full text from a PDF. Returns page-by-page text content for analysis. Accepts vault-relative or absolute paths (e.g. from kenaz_download_attachment).',
+  'laguz_pdf',
+  'PDF operations. Actions: "read" (extract text), "info" (metadata), "fields" (detect blank fields), "annotate" (add highlight/underline/text), "fill" (fill a detected field), "sign" (stamp stored signature), "flatten" (bake annotations into final copy). All accept vault-relative or absolute paths. Typical signing workflow: laguz_pdf(read) → laguz_pdf(fields) → laguz_pdf(fill) → laguz_pdf(sign) → laguz_pdf(flatten) → kenaz_draft_email with attachment.',
   {
-    path: z.string().describe('Path to the PDF — vault-relative (e.g. "contracts/Acme NDA.pdf") or absolute (e.g. "/Users/.../Downloads/doc.pdf")'),
+    action: z.enum(['read', 'info', 'fields', 'annotate', 'fill', 'sign', 'flatten']).describe('PDF operation to perform'),
+    path: z.string().describe('Path to the PDF — vault-relative or absolute'),
+    page: z.number().optional().describe('Zero-based page index (for annotate, sign)'),
+    annotation_type: z.enum(['highlight', 'underline', 'text-note', 'text-box']).optional().describe('For annotate action'),
+    rect: z.object({ x: z.number(), y: z.number(), width: z.number(), height: z.number() }).optional().describe('Bounding rectangle in PDF coordinates (for annotate, sign)'),
+    field_rect: z.object({ page: z.number(), x: z.number(), y: z.number(), width: z.number(), height: z.number() }).optional().describe('Field position (for fill action)'),
+    text: z.string().optional().describe('Text content (for annotate text-note/text-box)'),
+    value: z.string().optional().describe('Text value to fill (for fill action)'),
+    color: z.string().optional().describe('Hex color for annotations (default #4AA89A)'),
+    signature_name: z.string().optional().describe('Stored signature name (for sign action, uses default if omitted)'),
+    output_path: z.string().optional().describe('Output path for flatten (defaults to "(signed)" suffix)'),
   },
-  async ({ path: pdfPath }) => {
-    const data = await api('laguz', `/api/pdf/text?path=${encodeURIComponent(pdfPath)}`);
-    return { content: [{ type: 'text', text: data.text || '[No text extracted]' }] };
+  async ({ action, path: pdfPath, page, annotation_type, rect, field_rect, text, value, color, signature_name, output_path }) => {
+    switch (action) {
+      case 'read': {
+        const data = await api('laguz', `/api/pdf/text?path=${encodeURIComponent(pdfPath)}`);
+        return { content: [{ type: 'text', text: data.text || '[No text extracted]' }] };
+      }
+      case 'info': {
+        const data = await api('laguz', `/api/pdf/info?path=${encodeURIComponent(pdfPath)}`);
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+      case 'fields': {
+        const data = await api('laguz', `/api/pdf/fields?path=${encodeURIComponent(pdfPath)}`);
+        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      }
+      case 'annotate': {
+        if (page === undefined || !annotation_type || !rect) return { content: [{ type: 'text', text: 'Error: annotate requires page, annotation_type, and rect' }] };
+        await api('laguz', '/api/pdf/annotate', {
+          method: 'POST',
+          body: JSON.stringify({ path: pdfPath, annotation: { id: `ann-${Date.now()}`, type: annotation_type, page, rect, text, color: color || '#4AA89A', author: 'claude' } }),
+        });
+        return { content: [{ type: 'text', text: `Annotation added to page ${page + 1}` }] };
+      }
+      case 'fill': {
+        if (!field_rect || !value) return { content: [{ type: 'text', text: 'Error: fill requires field_rect and value' }] };
+        await api('laguz', '/api/pdf/fill-field', { method: 'POST', body: JSON.stringify({ path: pdfPath, field_rect, value }) });
+        return { content: [{ type: 'text', text: `Field filled with "${value}" on page ${field_rect.page + 1}` }] };
+      }
+      case 'sign': {
+        if (page === undefined || !rect) return { content: [{ type: 'text', text: 'Error: sign requires page and rect' }] };
+        await api('laguz', '/api/pdf/sign', { method: 'POST', body: JSON.stringify({ path: pdfPath, page, rect, signature_name }) });
+        return { content: [{ type: 'text', text: `Signature placed on page ${page + 1}` }] };
+      }
+      case 'flatten': {
+        const data = await api('laguz', '/api/pdf/flatten', { method: 'POST', body: JSON.stringify({ path: pdfPath, output_path }) });
+        return { content: [{ type: 'text', text: `Flattened PDF saved to: ${data.output_path}` }] };
+      }
+    }
   }
 );
 
 server.tool(
-  'laguz_get_pdf_info',
-  'Get PDF metadata: page count, title, author, dates. Accepts vault-relative or absolute paths.',
+  'laguz_sidecar',
+  'Read or write the companion .md sidecar note for a PDF. Omit content to read, provide content to write.',
   {
     path: z.string().describe('Path to the PDF — vault-relative or absolute'),
-  },
-  async ({ path: pdfPath }) => {
-    const data = await api('laguz', `/api/pdf/info?path=${encodeURIComponent(pdfPath)}`);
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-  }
-);
-
-server.tool(
-  'laguz_get_pdf_fields',
-  'Detect blank fields in a PDF (e.g. [Company Name], ___, [Date]). Returns field IDs, labels, and page positions for filling. Accepts vault-relative or absolute paths.',
-  {
-    path: z.string().describe('Path to the PDF — vault-relative or absolute'),
-  },
-  async ({ path: pdfPath }) => {
-    const data = await api('laguz', `/api/pdf/fields?path=${encodeURIComponent(pdfPath)}`);
-    return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
-  }
-);
-
-server.tool(
-  'laguz_add_annotation',
-  'Add an annotation to a PDF (highlight, underline, text note, or text box). Coordinates use PDF coordinate system (bottom-left origin). Accepts vault-relative or absolute paths.',
-  {
-    path: z.string().describe('Path to the PDF — vault-relative or absolute'),
-    page: z.number().describe('Zero-based page index'),
-    type: z.enum(['highlight', 'underline', 'text-note', 'text-box']).describe('Annotation type'),
-    rect: z.object({
-      x: z.number(),
-      y: z.number(),
-      width: z.number(),
-      height: z.number(),
-    }).describe('Bounding rectangle in PDF coordinates'),
-    text: z.string().optional().describe('Text content for text-note or text-box annotations'),
-    color: z.string().optional().describe('Hex color, defaults to teal (#4AA89A) for Claude annotations'),
-  },
-  async ({ path: pdfPath, page, type, rect, text, color }) => {
-    await api('laguz', '/api/pdf/annotate', {
-      method: 'POST',
-      body: JSON.stringify({
-        path: pdfPath,
-        annotation: {
-          id: `ann-${Date.now()}`,
-          type,
-          page,
-          rect,
-          text,
-          color: color || '#4AA89A',
-          author: 'claude',
-        },
-      }),
-    });
-    return { content: [{ type: 'text', text: `Annotation added to page ${page + 1}` }] };
-  }
-);
-
-server.tool(
-  'laguz_fill_field',
-  'Fill a detected field in a PDF with a text value. Places text at the specified coordinates. Accepts vault-relative or absolute paths.',
-  {
-    path: z.string().describe('Path to the PDF — vault-relative or absolute'),
-    field_rect: z.object({
-      page: z.number().describe('Zero-based page index'),
-      x: z.number(),
-      y: z.number(),
-      width: z.number(),
-      height: z.number(),
-    }).describe('Position from field detection or manual coordinates'),
-    value: z.string().describe('Text value to fill in'),
-  },
-  async ({ path: pdfPath, field_rect, value }) => {
-    await api('laguz', '/api/pdf/fill-field', {
-      method: 'POST',
-      body: JSON.stringify({ path: pdfPath, field_rect, value }),
-    });
-    return { content: [{ type: 'text', text: `Field filled with "${value}" on page ${field_rect.page + 1}` }] };
-  }
-);
-
-server.tool(
-  'laguz_place_signature',
-  'Stamp the user\'s stored signature onto a PDF page at the specified position. Accepts vault-relative or absolute paths. Typical cross-app workflow: kenaz_download_attachment → laguz_fill_field → laguz_place_signature → laguz_flatten_pdf → kenaz_draft_email with attachment.',
-  {
-    path: z.string().describe('Path to the PDF — vault-relative or absolute'),
-    page: z.number().describe('Zero-based page index'),
-    rect: z.object({
-      x: z.number(),
-      y: z.number(),
-      width: z.number(),
-      height: z.number(),
-    }).describe('Position and size for the signature in PDF coordinates'),
-    signature_name: z.string().optional().describe('Name of the stored signature to use. Uses default if omitted.'),
-  },
-  async ({ path: pdfPath, page, rect, signature_name }) => {
-    await api('laguz', '/api/pdf/sign', {
-      method: 'POST',
-      body: JSON.stringify({ path: pdfPath, page, rect, signature_name }),
-    });
-    return { content: [{ type: 'text', text: `Signature placed on page ${page + 1}` }] };
-  }
-);
-
-server.tool(
-  'laguz_flatten_pdf',
-  'Bake all annotations into the PDF and save a final copy. Creates a "(signed).pdf" file alongside the original. Returns the output path (absolute if input was absolute) — pass this to kenaz_draft_email attachment_paths.',
-  {
-    path: z.string().describe('Path to the annotated PDF — vault-relative or absolute'),
-    output_path: z.string().optional().describe('Optional output path. Defaults to same name with "(signed)" suffix.'),
-  },
-  async ({ path: pdfPath, output_path }) => {
-    const data = await api('laguz', '/api/pdf/flatten', {
-      method: 'POST',
-      body: JSON.stringify({ path: pdfPath, output_path }),
-    });
-    return { content: [{ type: 'text', text: `Flattened PDF saved to: ${data.output_path}` }] };
-  }
-);
-
-server.tool(
-  'laguz_get_sidecar',
-  'Read the companion .md sidecar note for a PDF. Returns null if no sidecar exists.',
-  {
-    path: z.string().describe('Path to the PDF — vault-relative or absolute'),
-  },
-  async ({ path: pdfPath }) => {
-    const data = await api('laguz', `/api/pdf/sidecar?path=${encodeURIComponent(pdfPath)}`);
-    return { content: [{ type: 'text', text: data.content || '[No sidecar notes]' }] };
-  }
-);
-
-server.tool(
-  'laguz_write_sidecar',
-  'Write or update the companion .md sidecar note for a PDF.',
-  {
-    path: z.string().describe('Path to the PDF — vault-relative or absolute'),
-    content: z.string().describe('Markdown content for the sidecar note'),
+    content: z.string().optional().describe('Markdown content to write. Omit to read existing sidecar.'),
   },
   async ({ path: pdfPath, content }) => {
-    await api('laguz', '/api/pdf/sidecar', {
-      method: 'POST',
-      body: JSON.stringify({ path: pdfPath, content }),
-    });
-    return { content: [{ type: 'text', text: 'Sidecar note updated' }] };
+    if (content !== undefined) {
+      await api('laguz', '/api/pdf/sidecar', { method: 'POST', body: JSON.stringify({ path: pdfPath, content }) });
+      return { content: [{ type: 'text', text: 'Sidecar note updated' }] };
+    }
+    const data = await api('laguz', `/api/pdf/sidecar?path=${encodeURIComponent(pdfPath)}`);
+    return { content: [{ type: 'text', text: data.content || '[No sidecar notes]' }] };
   }
 );
 
@@ -1692,7 +1456,7 @@ server.tool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('[Futhark MCP] Server started on stdio — 80 tools across 4 apps');
+  console.error('[Futhark MCP] Server started on stdio — 62 tools across 4 apps');
 }
 
 main().catch((e) => {
