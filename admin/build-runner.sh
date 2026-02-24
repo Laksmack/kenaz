@@ -19,6 +19,11 @@
 #   bash admin/build-runner.sh            # normal mode: build only if new commits
 #   bash admin/build-runner.sh --force    # skip commit check, build all apps
 
+# Wrap in main() so bash parses the entire script into memory before
+# executing. This prevents git pull from corrupting the running script
+# by changing the file mid-execution.
+main() {
+
 FORCE=false
 if [ "${1:-}" = "--force" ] || [ "${1:-}" = "-f" ]; then
   FORCE=true
@@ -312,3 +317,7 @@ if [ ${#FAILED[@]} -gt 0 ]; then
 else
   echo "━━━ Done ━━━"
 fi
+
+}
+
+main "$@"
