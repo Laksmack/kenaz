@@ -169,13 +169,22 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
     local log="$REPO_ROOT/.upload-$app.log"
     {
       echo "$(date '+%H:%M:%S') starting upload of $name v$version"
-      echo "local files: $(ls "$release_dir"/*.dmg "$release_dir"/*.zip "$release_dir"/latest-mac.yml 2>&1)"
       ssh "$REMOTE_HOST" "mkdir -p $REMOTE_PATH/$app"
 
-      if ! rsync -ahz --info=progress2 \
-        "$release_dir"/*.dmg "$release_dir"/*.zip "$release_dir"/latest-mac.yml \
-        "$REMOTE_HOST:$REMOTE_PATH/$app/"; then
-        echo "error: rsync failed (exit $?)"
+      local remote_dest="$REMOTE_HOST:$REMOTE_PATH/$app/"
+      local failed=false
+
+      for f in "$release_dir"/*.dmg "$release_dir"/*.zip "$release_dir"/latest-mac.yml; do
+        [ -f "$f" ] || continue
+        local basename_f="${f##*/}"
+        echo "  uploading $basename_f ($(du -h "$f" | cut -f1))..."
+        if ! scp -q "$f" "$remote_dest"; then
+          echo "  error: failed to upload $basename_f"
+          failed=true
+        fi
+      done
+
+      if [ "$failed" = true ]; then
         echo "$(date '+%H:%M:%S') upload FAILED"
         return 1
       fi
@@ -284,7 +293,7 @@ if [ ${#UPLOAD_PIDS[@]} -gt 0 ]; then
 
     log="$REPO_ROOT/.upload-$app.log"
     if [ -f "$log" ]; then
-      grep -E '(progress|cleaned|complete|error)' "$log" 2>/dev/null | tail -3 | sed 's/^/    /'
+      grep -E '(uploading|cleaned|complete|error|FAILED)' "$log" 2>/dev/null | tail -5 | sed 's/^/    /'
       rm -f "$log"
     fi
   done
