@@ -227,6 +227,7 @@ export class TaskStore {
       SELECT * FROM tasks
       WHERE status = 'open'
         AND due_date IS NULL
+        AND title NOT LIKE '[%'
       ORDER BY created_at DESC
     `).all() as any[];
     return rows.map(r => this.enrichTask(r));
@@ -433,7 +434,7 @@ export class TaskStore {
 
     const inbox = (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks
-      WHERE due_date IS NULL AND status = 'open'
+      WHERE due_date IS NULL AND status = 'open' AND title NOT LIKE '[%'
     `).get() as any).c;
 
     const total_open = (this.db.prepare(`
