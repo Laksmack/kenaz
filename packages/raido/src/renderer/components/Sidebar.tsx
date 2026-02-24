@@ -79,7 +79,7 @@ export function Sidebar({ currentView, onViewChange, stats, groups, selectedGrou
                   key={group.name}
                   onClick={() => onSelectGroup(group.name)}
                   className={cn(
-                    'sidebar-item w-full',
+                    'sidebar-item w-full group/grp',
                     isActive && 'active'
                   )}
                 >
@@ -88,6 +88,18 @@ export function Sidebar({ currentView, onViewChange, stats, groups, selectedGrou
                     style={{ color: isActive ? 'rgb(var(--accent-primary))' : 'rgb(var(--accent-primary) / 0.4)' }}
                   >■</span>
                   <span className="flex-1 text-left truncate">{group.name}</span>
+                  <span
+                    className="opacity-0 group-hover/grp:opacity-100 p-0.5 rounded hover:bg-bg-hover text-text-muted/40 hover:text-text-secondary transition-all"
+                    title="Copy reference"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigator.clipboard.writeText(`[${group.name}] (raido:group:${group.name})`);
+                    }}
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </span>
                   <span className="text-xs text-text-muted">{group.count}</span>
                 </button>
               );
