@@ -169,11 +169,16 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
     local log="$REPO_ROOT/.upload-$app.log"
     {
       echo "$(date '+%H:%M:%S') starting upload of $name v$version"
+      echo "local files: $(ls "$release_dir"/*.dmg "$release_dir"/*.zip "$release_dir"/latest-mac.yml 2>&1)"
       ssh "$REMOTE_HOST" "mkdir -p $REMOTE_PATH/$app"
 
-      rsync -ahz --info=progress2 \
+      if ! rsync -ahz --info=progress2 \
         "$release_dir"/*.dmg "$release_dir"/*.zip "$release_dir"/latest-mac.yml \
-        "$REMOTE_HOST:$REMOTE_PATH/$app/" 2>/dev/null || true
+        "$REMOTE_HOST:$REMOTE_PATH/$app/"; then
+        echo "error: rsync failed (exit $?)"
+        echo "$(date '+%H:%M:%S') upload FAILED"
+        return 1
+      fi
 
       local dmg_name
       dmg_name=$(ls -t "$release_dir"/*.dmg 2>/dev/null | head -1 | xargs basename)
@@ -181,6 +186,7 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
         ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && ln -sf '$dmg_name' ${app}_latest.dmg"
       fi
 
+      # Only clean old versions after a successful upload
       local cleaned
       cleaned=$(ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && find . -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.zip' \) ! -name '*${version}*' -print -delete 2>/dev/null" | wc -l | tr -d ' ')
       if [ "$cleaned" -gt 0 ] 2>/dev/null; then
