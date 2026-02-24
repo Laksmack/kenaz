@@ -16,8 +16,9 @@
 #      */10 * * * * /path/to/futhark/admin/build-runner.sh >> ~/.futhark/build-runner.log 2>&1
 #
 # Usage:
-#   bash admin/build-runner.sh            # normal mode: build only if new commits
-#   bash admin/build-runner.sh --force    # skip commit check, build all apps
+#   bash admin/build-runner.sh                  # normal mode: build only if new commits
+#   bash admin/build-runner.sh --force          # skip commit check, build all apps
+#   bash admin/build-runner.sh --no-notarize    # skip Apple notarization
 
 # Wrap in main() so bash parses the entire script into memory before
 # executing. This prevents git pull from corrupting the running script
@@ -25,9 +26,13 @@
 main() {
 
 FORCE=false
-if [ "${1:-}" = "--force" ] || [ "${1:-}" = "-f" ]; then
-  FORCE=true
-fi
+NOTARIZE=true
+for arg in "$@"; do
+  case "$arg" in
+    --force|-f) FORCE=true ;;
+    --no-notarize) NOTARIZE=false ;;
+  esac
+done
 
 # Ensure SSH agent is available for git (needed in cron)
 if [ -z "${SSH_AUTH_SOCK:-}" ]; then
@@ -129,10 +134,11 @@ fi
 # Load credentials (keychain password for codesign access)
 source "$REPO_ROOT/.env.notarize"
 
-# Export notarize vars only if --notarize flag is passed
-if [ "${2:-}" = "--notarize" ]; then
+if [ "$NOTARIZE" = true ]; then
   export APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID
   echo "  notarization enabled"
+else
+  echo "  notarization skipped"
 fi
 
 # Build apps if any need building
