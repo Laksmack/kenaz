@@ -491,12 +491,14 @@ export class TaskStore {
       else noDue.push(t);
     }
 
+    const primaryTag = (t: Task) =>
+      t.tags && t.tags.length > 0 ? [...t.tags].sort()[0] : '\uffff';
+
     const byDateThenTag = (a: Task, b: Task) => {
       const dateCmp = a.due_date!.localeCompare(b.due_date!);
       if (dateCmp !== 0) return dateCmp;
-      const aTag = a.tags.length > 0 ? [...a.tags].sort()[0] : '\uffff';
-      const bTag = b.tags.length > 0 ? [...b.tags].sort()[0] : '\uffff';
-      if (aTag !== bTag) return aTag.localeCompare(bTag);
+      const tagCmp = primaryTag(a).localeCompare(primaryTag(b));
+      if (tagCmp !== 0) return tagCmp;
       return a.created_at.localeCompare(b.created_at);
     };
 
@@ -504,9 +506,8 @@ export class TaskStore {
     upcoming.sort(byDateThenTag);
 
     noDue.sort((a, b) => {
-      const aTag = a.tags.length > 0 ? [...a.tags].sort()[0] : '\uffff';
-      const bTag = b.tags.length > 0 ? [...b.tags].sort()[0] : '\uffff';
-      if (aTag !== bTag) return aTag.localeCompare(bTag);
+      const tagCmp = primaryTag(a).localeCompare(primaryTag(b));
+      if (tagCmp !== 0) return tagCmp;
       return a.created_at.localeCompare(b.created_at);
     });
 
