@@ -354,7 +354,8 @@ export function startApiServer(
       const result = await google.getFreeBusy(calendars, start, end);
       res.json(result);
     } catch (e: any) {
-      res.status(500).json({ error: e.message });
+      const status = e.message?.includes('Google FreeBusy API') ? 502 : 500;
+      res.status(status).json({ error: e.message });
     }
   });
 

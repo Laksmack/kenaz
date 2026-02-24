@@ -378,13 +378,23 @@ export class GoogleCalendarService {
 
   async getFreeBusy(calendarIds: string[], timeMin: string, timeMax: string): Promise<FreeBusyResponse> {
     if (!this.calendar) throw new Error('Not authenticated');
-    const res = await this.calendar.freebusy.query({
-      requestBody: {
-        timeMin,
-        timeMax,
-        items: calendarIds.map(id => ({ id })),
-      },
-    });
+
+    // Google freebusy requires RFC 3339 datetimes — normalise date-only strings
+    const ensureDateTime = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00:00Z` : s;
+
+    let res;
+    try {
+      res = await this.calendar.freebusy.query({
+        requestBody: {
+          timeMin: ensureDateTime(timeMin),
+          timeMax: ensureDateTime(timeMax),
+          items: calendarIds.map(id => ({ id })),
+        },
+      });
+    } catch (e: any) {
+      const detail = e.response?.data?.error?.message || e.response?.data?.error || e.message;
+      throw new Error(`Google FreeBusy API: ${detail}`);
+    }
 
     const calendars: FreeBusyResponse['calendars'] = {};
     for (const [id, data] of Object.entries(res.data.calendars || {})) {

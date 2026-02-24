@@ -40,6 +40,20 @@ interface NoteRow {
   word_count: number;
 }
 
+export interface CabinetDocumentRow {
+  id: string;
+  path: string;
+  filename: string;
+  ext: string;
+  folder: string;
+  size: number;
+  modified: string | null;
+  created: string | null;
+  ocr_status: string;
+  page_count: number | null;
+  tags: string[];
+}
+
 const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})\s*[-–—]\s*/;
 
 function pathToId(relativePath: string): string {
@@ -124,7 +138,36 @@ export class VaultStore {
       CREATE INDEX IF NOT EXISTS idx_vault_files_modified ON vault_files(modified);
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS cabinet_documents (
+        id             TEXT PRIMARY KEY,
+        path           TEXT UNIQUE NOT NULL,
+        filename       TEXT NOT NULL,
+        ext            TEXT NOT NULL,
+        folder         TEXT NOT NULL,
+        size           INTEGER,
+        modified       TEXT,
+        created        TEXT,
+        ocr_status     TEXT DEFAULT 'pending',
+        extracted_text TEXT,
+        page_count     INTEGER
+      );
+
+      CREATE TABLE IF NOT EXISTS cabinet_tags (
+        doc_id TEXT,
+        tag    TEXT,
+        FOREIGN KEY (doc_id) REFERENCES cabinet_documents(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_cabinet_docs_folder ON cabinet_documents(folder);
+      CREATE INDEX IF NOT EXISTS idx_cabinet_docs_ext ON cabinet_documents(ext);
+      CREATE INDEX IF NOT EXISTS idx_cabinet_docs_status ON cabinet_documents(ocr_status);
+      CREATE INDEX IF NOT EXISTS idx_cabinet_tags_tag ON cabinet_tags(tag);
+      CREATE INDEX IF NOT EXISTS idx_cabinet_tags_doc ON cabinet_tags(doc_id);
+    `);
+
     this.ensureFts();
+    this.ensureCabinetFts();
   }
 
   private ensureFts(): void {
@@ -137,6 +180,20 @@ export class VaultStore {
       CREATE VIRTUAL TABLE notes_fts USING fts5(
         title, content,
         content='notes', content_rowid='rowid'
+      );
+    `);
+  }
+
+  private ensureCabinetFts(): void {
+    const hasFts = this.db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='cabinet_fts'"
+    ).get();
+    if (hasFts) return;
+
+    this.db.exec(`
+      CREATE VIRTUAL TABLE cabinet_fts USING fts5(
+        filename, extracted_text,
+        content='cabinet_documents', content_rowid='rowid'
       );
     `);
   }
@@ -633,6 +690,212 @@ export class VaultStore {
     };
     walk(config.vaultPath, '');
     return folders;
+  }
+
+  // ── Cabinet Operations ───────────────────────────────────────
+
+  indexCabinetDocument(filePath: string): void {
+    const relativePath = path.relative(config.vaultPath, filePath);
+    if (!relativePath.startsWith('_cabinet/')) return;
+
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(filePath);
+    } catch {
+      return;
+    }
+
+    const id = pathToId(relativePath);
+    const filename = path.basename(relativePath);
+    const ext = path.extname(relativePath).toLowerCase().replace('.', '');
+    const folder = path.dirname(relativePath).replace(/^_cabinet\/?/, '') || '/';
+
+    this.db.prepare(`
+      INSERT INTO cabinet_documents (id, path, filename, ext, folder, size, modified, created, ocr_status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+      ON CONFLICT(id) DO UPDATE SET
+        path=excluded.path, filename=excluded.filename, ext=excluded.ext,
+        folder=excluded.folder, size=excluded.size, modified=excluded.modified
+    `).run(id, relativePath, filename, ext, folder, stat.size, stat.mtime.toISOString(), stat.birthtime.toISOString());
+  }
+
+  updateCabinetOcr(docPath: string, status: string, text: string | null, pageCount?: number): void {
+    const relativePath = docPath.startsWith('/') ? path.relative(config.vaultPath, docPath) : docPath;
+    const id = pathToId(relativePath);
+
+    this.db.transaction(() => {
+      this.db.prepare(`
+        UPDATE cabinet_documents SET ocr_status = ?, extracted_text = ?, page_count = ? WHERE id = ?
+      `).run(status, text, pageCount ?? null, id);
+
+      if (status === 'done' && text) {
+        const row = this.db.prepare('SELECT rowid FROM cabinet_documents WHERE id = ?').get(id) as any;
+        if (row?.rowid != null) {
+          const filename = this.db.prepare('SELECT filename FROM cabinet_documents WHERE id = ?').get(id) as any;
+          this.db.prepare('INSERT OR REPLACE INTO cabinet_fts(rowid, filename, extracted_text) VALUES (?, ?, ?)').run(
+            row.rowid, filename?.filename ?? '', text
+          );
+        }
+      }
+    })();
+  }
+
+  removeCabinetDocument(filePath: string): void {
+    const relativePath = path.relative(config.vaultPath, filePath);
+    const id = pathToId(relativePath);
+
+    this.db.transaction(() => {
+      const row = this.db.prepare('SELECT rowid FROM cabinet_documents WHERE id = ?').get(id) as any;
+      if (row?.rowid != null) {
+        this.db.prepare("INSERT INTO cabinet_fts(cabinet_fts, rowid, filename, extracted_text) VALUES('delete', ?, '', '')").run(row.rowid);
+      }
+      this.db.prepare('DELETE FROM cabinet_tags WHERE doc_id = ?').run(id);
+      this.db.prepare('DELETE FROM cabinet_documents WHERE id = ?').run(id);
+    })();
+  }
+
+  getCabinetDocuments(folder?: string, ext?: string): CabinetDocumentRow[] {
+    let sql = 'SELECT id, path, filename, ext, folder, size, modified, created, ocr_status, page_count FROM cabinet_documents WHERE 1=1';
+    const params: any[] = [];
+
+    if (folder) {
+      sql += ' AND (folder = ? OR folder LIKE ?)';
+      params.push(folder, `${folder}/%`);
+    }
+    if (ext) {
+      sql += ' AND ext = ?';
+      params.push(ext);
+    }
+
+    sql += ' ORDER BY modified DESC LIMIT 200';
+    const rows = this.db.prepare(sql).all(...params) as CabinetDocumentRow[];
+    return rows.map(r => ({ ...r, tags: this.getCabinetTags(r.id) }));
+  }
+
+  getCabinetDocument(docPath: string): (CabinetDocumentRow & { extracted_text: string | null }) | null {
+    const row = this.db.prepare(
+      'SELECT * FROM cabinet_documents WHERE path = ?'
+    ).get(docPath) as (CabinetDocumentRow & { extracted_text: string | null }) | undefined;
+    if (!row) return null;
+    return { ...row, tags: this.getCabinetTags(row.id) };
+  }
+
+  searchCabinet(query: string, filters?: { folder?: string; ext?: string }): CabinetDocumentRow[] {
+    if (!query) return this.getCabinetDocuments(filters?.folder, filters?.ext);
+
+    const ftsQuery = query.split(/\s+/).map(w => `"${w}"`).join(' ');
+    let sql = `
+      SELECT d.id, d.path, d.filename, d.ext, d.folder, d.size, d.modified, d.created, d.ocr_status, d.page_count
+      FROM cabinet_documents d
+      JOIN cabinet_fts f ON f.rowid = d.rowid
+      WHERE cabinet_fts MATCH ?
+    `;
+    const params: any[] = [ftsQuery];
+
+    if (filters?.folder) {
+      sql += ' AND (d.folder = ? OR d.folder LIKE ?)';
+      params.push(filters.folder, `${filters.folder}/%`);
+    }
+    if (filters?.ext) {
+      sql += ' AND d.ext = ?';
+      params.push(filters.ext);
+    }
+
+    sql += ' ORDER BY rank LIMIT 100';
+    const rows = this.db.prepare(sql).all(...params) as CabinetDocumentRow[];
+    return rows.map(r => ({ ...r, tags: this.getCabinetTags(r.id) }));
+  }
+
+  getCabinetFolders(parent?: string): string[] {
+    const cabinetDir = path.join(config.vaultPath, '_cabinet', parent || '');
+    const folders: string[] = [];
+    try {
+      const entries = fs.readdirSync(cabinetDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        if (entry.isDirectory()) folders.push(entry.name);
+      }
+    } catch {}
+    return folders.sort();
+  }
+
+  createCabinetFolder(folderPath: string): void {
+    const abs = path.join(config.vaultPath, '_cabinet', folderPath);
+    if (!fs.existsSync(abs)) {
+      fs.mkdirSync(abs, { recursive: true });
+    }
+  }
+
+  moveCabinetDocument(fromPath: string, toFolder: string): { newPath: string } {
+    const absFrom = fromPath.startsWith('/') ? fromPath : path.join(config.vaultPath, fromPath);
+    const filename = path.basename(fromPath);
+    const destDir = path.join(config.vaultPath, '_cabinet', toFolder);
+    if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
+
+    const absTo = path.join(destDir, filename);
+    fs.renameSync(absFrom, absTo);
+
+    const oldRelative = path.relative(config.vaultPath, absFrom);
+    const newRelative = path.relative(config.vaultPath, absTo);
+    const oldId = pathToId(oldRelative);
+    const newId = pathToId(newRelative);
+    const newFolder = toFolder || '/';
+
+    this.db.transaction(() => {
+      const old = this.db.prepare('SELECT * FROM cabinet_documents WHERE id = ?').get(oldId) as any;
+      if (old) {
+        this.removeCabinetDocument(absFrom);
+        this.db.prepare(`
+          INSERT INTO cabinet_documents (id, path, filename, ext, folder, size, modified, created, ocr_status, extracted_text, page_count)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(newId, newRelative, filename, old.ext, newFolder, old.size, old.modified, old.created, old.ocr_status, old.extracted_text, old.page_count);
+
+        if (old.ocr_status === 'done' && old.extracted_text) {
+          const rowid = (this.db.prepare('SELECT rowid FROM cabinet_documents WHERE id = ?').get(newId) as any)?.rowid;
+          if (rowid != null) {
+            this.db.prepare('INSERT OR REPLACE INTO cabinet_fts(rowid, filename, extracted_text) VALUES (?, ?, ?)').run(rowid, filename, old.extracted_text);
+          }
+        }
+      }
+    })();
+
+    return { newPath: newRelative };
+  }
+
+  tagCabinetDocument(docPath: string, tags: string[]): void {
+    const relativePath = docPath.startsWith('_cabinet/') ? docPath : `_cabinet/${docPath}`;
+    const id = pathToId(relativePath);
+
+    this.db.transaction(() => {
+      this.db.prepare('DELETE FROM cabinet_tags WHERE doc_id = ?').run(id);
+      const insert = this.db.prepare('INSERT INTO cabinet_tags (doc_id, tag) VALUES (?, ?)');
+      for (const tag of [...new Set(tags)]) {
+        insert.run(id, tag);
+      }
+    })();
+  }
+
+  private getCabinetTags(docId: string): string[] {
+    const rows = this.db.prepare('SELECT tag FROM cabinet_tags WHERE doc_id = ?').all(docId) as { tag: string }[];
+    return rows.map(r => r.tag);
+  }
+
+  getCabinetPending(): CabinetDocumentRow[] {
+    const rows = this.db.prepare(
+      "SELECT id, path, filename, ext, folder, size, modified, created, ocr_status, page_count FROM cabinet_documents WHERE ocr_status = 'pending' ORDER BY modified DESC"
+    ).all() as CabinetDocumentRow[];
+    return rows;
+  }
+
+  getCabinetOcrStatus(): { pending: number; processing: number; done: number; failed: number } {
+    const rows = this.db.prepare(
+      'SELECT ocr_status, COUNT(*) as count FROM cabinet_documents GROUP BY ocr_status'
+    ).all() as { ocr_status: string; count: number }[];
+    const result = { pending: 0, processing: 0, done: 0, failed: 0 };
+    for (const r of rows) {
+      if (r.ocr_status in result) (result as any)[r.ocr_status] = r.count;
+    }
+    return result;
   }
 
   // ── Cleanup ──────────────────────────────────────────────────

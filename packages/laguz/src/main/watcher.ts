@@ -1,14 +1,20 @@
 import { watch, type FSWatcher } from 'chokidar';
 import { config } from './config';
 import type { VaultStore } from './vault-store';
+import type { CabinetService } from './cabinet-service';
 
 export class VaultWatcher {
   private watcher: FSWatcher | null = null;
   private store: VaultStore;
+  private cabinetService: CabinetService | null = null;
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(store: VaultStore) {
     this.store = store;
+  }
+
+  setCabinetService(service: CabinetService): void {
+    this.cabinetService = service;
   }
 
   async start(): Promise<void> {
@@ -32,6 +38,11 @@ export class VaultWatcher {
   }
 
   private handleAdd(filePath: string): void {
+    if (this.cabinetService?.isCabinetPath(filePath) && this.cabinetService.isSupportedExt(filePath)) {
+      this.cabinetService.indexDocument(filePath);
+      return;
+    }
+
     if (filePath.endsWith('.md')) {
       this.store.indexNote(filePath);
     } else if (filePath.endsWith('.pdf')) {
@@ -40,6 +51,11 @@ export class VaultWatcher {
   }
 
   private handleRemove(filePath: string): void {
+    if (this.cabinetService?.isCabinetPath(filePath)) {
+      this.cabinetService.removeDocument(filePath);
+      return;
+    }
+
     if (filePath.endsWith('.md')) {
       this.store.removeNote(filePath);
     } else if (filePath.endsWith('.pdf')) {
@@ -48,7 +64,9 @@ export class VaultWatcher {
   }
 
   private debounce(filePath: string, fn: () => void): void {
-    if (!filePath.endsWith('.md') && !filePath.endsWith('.pdf')) return;
+    const isCabinet = this.cabinetService?.isCabinetPath(filePath) && this.cabinetService.isSupportedExt(filePath);
+    if (!isCabinet && !filePath.endsWith('.md') && !filePath.endsWith('.pdf')) return;
+
     const existing = this.debounceTimers.get(filePath);
     if (existing) clearTimeout(existing);
     this.debounceTimers.set(filePath, setTimeout(() => {

@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import type { VaultStore } from './vault-store';
 import type { SignatureStore } from './signature-store';
+import type { CabinetService } from './cabinet-service';
 import * as pdfService from './pdf-service';
 import { detectPdfFields } from './pdf-fields';
 import { config } from './config';
@@ -12,6 +13,12 @@ try {
   mammoth = require('mammoth');
 } catch {
   console.warn('[Laguz] mammoth not available — DOCX text extraction disabled');
+}
+
+let _cabinetService: CabinetService | null = null;
+
+export function setCabinetService(service: CabinetService) {
+  _cabinetService = service;
 }
 
 export function startApiServer(store: VaultStore, signatureStore: SignatureStore, port: number) {
