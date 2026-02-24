@@ -1,6 +1,6 @@
 {
   "name": "@futhark/dagaz",
-  "version": "0.17.1",
+  "version": "0.17.2",
   "description": "Dagaz ᛞ — Personal calendar",
   "main": "dist/main/main/main.js",
   "private": true,

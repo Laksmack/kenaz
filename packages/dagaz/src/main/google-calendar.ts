@@ -335,11 +335,23 @@ export class GoogleCalendarService {
     });
   }
 
-  async rsvpEvent(calendarId: string, eventId: string, response: 'accepted' | 'declined' | 'tentative'): Promise<void> {
+  async rsvpEvent(
+    calendarId: string,
+    eventId: string,
+    response: 'accepted' | 'declined' | 'tentative',
+  ): Promise<{ recurringEventId?: string }> {
     if (!this.calendar) throw new Error('Not authenticated');
 
     const event = await this.calendar.events.get({ calendarId, eventId });
-    const attendees = event.data.attendees || [];
+
+    // For recurring instances, RSVP on the parent event so it applies to the whole series
+    const parentId = event.data.recurringEventId;
+    const targetId = parentId || eventId;
+    const targetEvent = parentId
+      ? await this.calendar.events.get({ calendarId, eventId: targetId })
+      : event;
+
+    const attendees = targetEvent.data.attendees || [];
 
     let found = false;
     for (const attendee of attendees) {
@@ -354,10 +366,12 @@ export class GoogleCalendarService {
 
     await this.calendar.events.patch({
       calendarId,
-      eventId,
+      eventId: targetId,
       sendUpdates: 'all',
       requestBody: { attendees },
     });
+
+    return { recurringEventId: parentId || undefined };
   }
 
   // ── Availability ──────────────────────────────────────────

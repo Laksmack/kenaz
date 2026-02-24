@@ -508,6 +508,14 @@ export class CacheStore {
     });
   }
 
+  updateRecurringSeriesResponse(recurringEventId: string, response: string): number {
+    const result = this.db.prepare(`
+      UPDATE events SET self_response = ?, updated_at = datetime('now')
+      WHERE recurring_event_id = ? AND self_response = 'needsAction'
+    `).run(response, recurringEventId);
+    return result.changes;
+  }
+
   getNeedsActionCount(): number {
     const now = new Date().toISOString();
     return (this.db.prepare(`

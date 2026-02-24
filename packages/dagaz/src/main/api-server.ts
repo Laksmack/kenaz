@@ -298,12 +298,13 @@ export function startApiServer(
       if (!event) return res.status(404).json({ error: 'Event not found' });
 
       if (connectivity.isOnline && google.isAuthorized() && event.google_id) {
-        await google.rsvpEvent(event.calendar_id, event.google_id, response);
-        // Re-fetch to update cache
+        const { recurringEventId } = await google.rsvpEvent(event.calendar_id, event.google_id, response);
         const updated = await google.getEvent(event.calendar_id, event.google_id);
         cache.upsertEvent(updated);
+        if (recurringEventId) {
+          cache.updateRecurringSeriesResponse(recurringEventId, response);
+        }
 
-        // Cross-app: archive invite email in Kenaz if "Archive on Reply" is enabled
         archiveInviteInKenaz(event.summary || '').catch(() => {});
       } else if (event.google_id) {
         cache.enqueueSync(event.google_id, event.calendar_id, 'rsvp', { response });

@@ -511,15 +511,35 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
   useEffect(() => {
     if (!invite.isInvite) return;
 
-    // If we extracted an event ID from the email, use it directly
     if (invite.iCalUID) {
       setEventId(invite.iCalUID);
       return;
     }
 
-    // Otherwise try to find the event by searching the calendar for the subject
-    // This is a fallback — the eid extraction usually works for Google invites
-  }, [invite.isInvite, invite.iCalUID]);
+    // Fallback: fetch .ics attachment, parse UID, look up event in Google Calendar
+    const icsAttachment = message.attachments.find(
+      (a) => a.filename.endsWith('.ics') || a.mimeType === 'text/calendar' || a.mimeType === 'application/ics'
+    );
+    if (!icsAttachment) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const base64 = await window.kenaz.getAttachmentBase64(message.id, icsAttachment.id);
+        if (cancelled) return;
+        const icsText = atob(base64);
+        const uidMatch = icsText.match(/^UID:(.+)$/m);
+        if (!uidMatch) return;
+        const uid = uidMatch[1].trim();
+        const googleEventId = await window.kenaz.calendarFindEvent(uid);
+        if (cancelled) return;
+        if (googleEventId) setEventId(googleEventId);
+      } catch (e) {
+        console.error('[RsvpBar] ICS UID fallback failed:', e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [invite.isInvite, invite.iCalUID, message.id]);
 
   const handleRsvp = useCallback(async (response: 'accepted' | 'tentative' | 'declined') => {
     if (!eventId) {

@@ -404,9 +404,12 @@ function registerIpcHandlers() {
 
     if (connectivity.isOnline && google.isAuthorized() && existing.google_id) {
       try {
-        await google.rsvpEvent(existing.calendar_id, existing.google_id, response);
+        const { recurringEventId } = await google.rsvpEvent(existing.calendar_id, existing.google_id, response);
         const updated = await google.getEvent(existing.calendar_id, existing.google_id);
         cache.upsertEvent(updated);
+        if (recurringEventId) {
+          cache.updateRecurringSeriesResponse(recurringEventId, response);
+        }
         notifyEventsChanged();
         return;
       } catch (e: any) {
