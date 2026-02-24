@@ -177,9 +177,19 @@ async function updateDockBadge() {
     app.dock.setBadge('');
     return;
   }
-  const invites = await getPendingInvites();
-  const badge = invites.length > 0 ? invites.length.toString() : '';
-  console.log(`[Badge] Setting dock badge to "${badge || '(clear)'}" (${invites.length} invite(s))`);
+  // Primary: calendar events where self_response = 'needsAction' (authoritative)
+  const needsActionCount = cache.getNeedsActionCount();
+  // Secondary: Kenaz email invites (catches invites not yet synced to calendar)
+  let kenazExtra = 0;
+  try {
+    const invites = await getPendingInvites();
+    if (invites.length > needsActionCount) {
+      kenazExtra = invites.length - needsActionCount;
+    }
+  } catch { /* Kenaz unavailable — ignore */ }
+  const total = needsActionCount + kenazExtra;
+  const badge = total > 0 ? total.toString() : '';
+  console.log(`[Badge] Setting dock badge to "${badge || '(clear)'}" (${needsActionCount} needsAction + ${kenazExtra} extra from Kenaz)`);
   app.dock.setBadge(badge);
 }
 
@@ -625,6 +635,11 @@ function registerIpcHandlers() {
   // Pending Invites (from Kenaz)
   ipcMain.handle(IPC.PENDING_INVITES, async () => {
     return getPendingInvites();
+  });
+
+  // Needs-action events (from calendar DB — authoritative source)
+  ipcMain.handle(IPC.NEEDS_ACTION_EVENTS, async () => {
+    return cache.getNeedsActionEvents();
   });
 
   ipcMain.handle('invite:rsvp', async (_event, threadId: string) => {

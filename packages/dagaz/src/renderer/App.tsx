@@ -11,6 +11,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { AuthScreen } from './components/AuthScreen';
 import { useCalendar, useSync } from './hooks/useCalendar';
 import { usePendingInvites } from './hooks/usePendingInvites';
+import { useNeedsAction } from './hooks/useNeedsAction';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
 import { isSameDay, formatDayHeader, dateKey, setUse24HourClock } from './lib/utils';
@@ -50,6 +51,11 @@ export default function App() {
     refresh: refreshPendingInvites,
     dismissInvite: dismissPendingInvite,
   } = usePendingInvites(appConfig?.pendingInviteCheckInterval);
+  const {
+    events: needsActionEvents,
+    isLoading: needsActionLoading,
+    refresh: refreshNeedsAction,
+  } = useNeedsAction();
 
   // Filter out declined events when setting is enabled
   const events = useMemo(() => {
@@ -207,6 +213,7 @@ export default function App() {
   const handleRSVP = useCallback(async (id: string, response: 'accepted' | 'declined' | 'tentative') => {
     await window.dagaz.rsvpEvent(id, response);
     refresh({ full: false });
+    refreshNeedsAction();
     const updated = await window.dagaz.getEvent(id);
     if (updated) setSelectedEvent(updated);
 
@@ -221,7 +228,7 @@ export default function App() {
         } catch {}
       }
     }
-  }, [refresh, pendingInvites, dismissPendingInvite, refreshPendingInvites]);
+  }, [refresh, refreshNeedsAction, pendingInvites, dismissPendingInvite, refreshPendingInvites]);
 
   const handleInviteRsvp = useCallback(async (invite: { threadId: string; title: string; startTime: string | null }, response: 'accepted' | 'declined' | 'tentative') => {
     // Find matching calendar event to RSVP on
@@ -236,7 +243,8 @@ export default function App() {
     // Archive in Kenaz
     await window.dagaz.rsvpInvite(invite.threadId, 'done');
     refreshPendingInvites();
-  }, [events, refresh, refreshPendingInvites]);
+    refreshNeedsAction();
+  }, [events, refresh, refreshPendingInvites, refreshNeedsAction]);
 
   const handleCalendarToggle = useCallback(async (id: string, visible: boolean) => {
     await window.dagaz.updateCalendar(id, { visible });
@@ -551,15 +559,15 @@ export default function App() {
 
           {/* View tabs */}
           <div className="titlebar-no-drag flex items-center gap-1 mr-3">
-            {pendingInvites.length > 0 && (
+            {needsActionEvents.length > 0 && (
               <button
                 onClick={() => { setShowInvitesPanel(true); setSelectedEvent(null); }}
                 className={`view-tab flex items-center gap-1.5 ${showInvitesPanel && !selectedEvent ? 'active' : ''}`}
-                title="Pending Invites"
+                title="Events needing your response"
               >
                 Pending
                 <span className="px-1.5 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary text-[10px] font-semibold leading-none">
-                  {pendingInvites.length}
+                  {needsActionEvents.length}
                 </span>
               </button>
             )}
@@ -682,23 +690,23 @@ export default function App() {
             {currentView === 'agenda' && renderAgendaView()}
           </div>
 
-          {/* Right panel: event detail or pending invites */}
+          {/* Right panel: event detail or needs-action review */}
           {selectedEvent ? (
             <EventDetail
               event={selectedEvent}
-              onClose={() => { setSelectedEvent(null); if (pendingInvites.length > 0) setShowInvitesPanel(true); }}
+              onClose={() => { setSelectedEvent(null); if (needsActionEvents.length > 0) setShowInvitesPanel(true); }}
               onDelete={handleDeleteEvent}
               onRSVP={handleRSVP}
               onEdit={() => { /* TODO */ }}
             />
-          ) : (showInvitesPanel || pendingInvites.length > 0) && (
+          ) : (showInvitesPanel || needsActionEvents.length > 0) && (
             <InviteReviewPanel
-              invites={pendingInvites}
-              isLoading={pendingInvitesLoading}
-              onRefresh={refreshPendingInvites}
-              onDismiss={dismissPendingInvite}
-              onRsvp={handleInviteRsvp}
-              confirmedEvents={todayEvents}
+              events={needsActionEvents}
+              allEvents={events}
+              isLoading={needsActionLoading}
+              onRefresh={refreshNeedsAction}
+              onRsvp={handleRSVP}
+              onSelectEvent={selectEvent}
               onDateSelect={handleDateSelect}
             />
           )}

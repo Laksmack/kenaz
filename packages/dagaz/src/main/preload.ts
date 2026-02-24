@@ -28,6 +28,7 @@ const IPC = {
   OVERLAY_FETCH: 'overlay:fetch',
   OVERLAY_CHECK: 'overlay:check',
   OVERLAY_SEARCH_CONTACTS: 'overlay:search-contacts',
+  NEEDS_ACTION_EVENTS: 'events:needs-action',
 } as const;
 
 const api = {
@@ -82,6 +83,9 @@ const api = {
   // Pending Invites
   getPendingInvites: () => ipcRenderer.invoke('pending-invites:list'),
   rsvpInvite: (threadId: string, response: string) => ipcRenderer.invoke('invite:rsvp', threadId, response),
+
+  // Needs-action events (calendar events awaiting RSVP)
+  getNeedsActionEvents: () => ipcRenderer.invoke(IPC.NEEDS_ACTION_EVENTS),
 
   // Cross-app
   crossAppFetch: (url: string, options?: any) => ipcRenderer.invoke('cross-app:fetch', url, options),

@@ -250,6 +250,9 @@ export const IPC = {
 
   // Pending Invites (from Kenaz)
   PENDING_INVITES: 'pending-invites:list',
+
+  // Needs-action events (from calendar DB)
+  NEEDS_ACTION_EVENTS: 'events:needs-action',
 } as const;
 
 // ── Pending Invites ─────────────────────────────────────────

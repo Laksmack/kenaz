@@ -488,6 +488,39 @@ export class CacheStore {
     `).all(pattern, pattern, limit) as any[];
   }
 
+  getNeedsActionEvents(): CalendarEvent[] {
+    const now = new Date().toISOString();
+    const rows = this.db.prepare(`
+      SELECT e.*, c.background_color as calendar_bg_color, c.color_override as calendar_color_override
+      FROM events e
+      JOIN calendars c ON e.calendar_id = c.id
+      WHERE c.visible = 1
+        AND e.status != 'cancelled'
+        AND e.self_response = 'needsAction'
+        AND e.is_organizer = 0
+        AND e.end_time > ?
+      ORDER BY e.start_time ASC
+    `).all(now) as any[];
+    return rows.map(r => {
+      const event = this.rowToEvent(r);
+      event.attendees = this.getAttendees(event.id);
+      return event;
+    });
+  }
+
+  getNeedsActionCount(): number {
+    const now = new Date().toISOString();
+    return (this.db.prepare(`
+      SELECT COUNT(*) as c FROM events e
+      JOIN calendars c ON e.calendar_id = c.id
+      WHERE c.visible = 1
+        AND e.status != 'cancelled'
+        AND e.self_response = 'needsAction'
+        AND e.is_organizer = 0
+        AND e.end_time > ?
+    `).get(now) as any).c;
+  }
+
   getUpcomingEventCount(minutesAhead: number = 15): number {
     const now = new Date();
     const ahead = new Date(now.getTime() + minutesAhead * 60000);
