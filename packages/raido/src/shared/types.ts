@@ -40,6 +40,14 @@ export interface TaskAttachment {
   created_at: string;
 }
 
+export interface TaskComment {
+  id: string;
+  task_id: string;
+  body_html: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface TaskGroup {
   name: string;
   count: number;
@@ -95,6 +103,12 @@ export const IPC = {
 
   // Tags
   TAGS_LIST: 'tags:list',
+
+  // Comments
+  COMMENTS_LIST: 'comments:list',
+  COMMENT_ADD: 'comment:add',
+  COMMENT_UPDATE: 'comment:update',
+  COMMENT_DELETE: 'comment:delete',
 
   // App
   APP_GET_CONFIG: 'app:get-config',

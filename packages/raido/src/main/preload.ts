@@ -21,6 +21,10 @@ const IPC = {
   ATTACHMENT_ADD: 'attachment:add',
   ATTACHMENT_OPEN: 'attachment:open',
   ATTACHMENT_DELETE: 'attachment:delete',
+  COMMENTS_LIST: 'comments:list',
+  COMMENT_ADD: 'comment:add',
+  COMMENT_UPDATE: 'comment:update',
+  COMMENT_DELETE: 'comment:delete',
   GROUPS_LIST: 'groups:list',
   GROUP_GET: 'group:get',
   TAGS_LIST: 'tags:list',
@@ -57,6 +61,12 @@ const api = {
   addAttachment: (taskId: string) => ipcRenderer.invoke(IPC.ATTACHMENT_ADD, taskId),
   openAttachment: (taskId: string, attachmentId: string) => ipcRenderer.invoke(IPC.ATTACHMENT_OPEN, taskId, attachmentId),
   deleteAttachment: (taskId: string, attachmentId: string) => ipcRenderer.invoke(IPC.ATTACHMENT_DELETE, taskId, attachmentId),
+
+  // Comments
+  getComments: (taskId: string) => ipcRenderer.invoke(IPC.COMMENTS_LIST, taskId),
+  addComment: (taskId: string, bodyHtml: string) => ipcRenderer.invoke(IPC.COMMENT_ADD, taskId, bodyHtml),
+  updateComment: (id: string, bodyHtml: string) => ipcRenderer.invoke(IPC.COMMENT_UPDATE, id, bodyHtml),
+  deleteComment: (id: string) => ipcRenderer.invoke(IPC.COMMENT_DELETE, id),
 
   // Groups
   getGroups: () => ipcRenderer.invoke(IPC.GROUPS_LIST),

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { marked } from 'marked';
 import type { Task, TaskAttachment, ChecklistItem } from '../../shared/types';
+import { CommentSection } from './CommentSection';
 import { extractGroup } from '../../shared/types';
 import { cn, isOverdue, isToday, formatDateLabel } from '../lib/utils';
 
@@ -454,29 +455,37 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
         </div>
       )}
 
-      {/* Notes */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 scrollbar-hide">
-        {editingNotes ? (
-          <textarea
-            className="w-full h-full bg-transparent border-none outline-none text-sm text-text-primary resize-none leading-relaxed selectable placeholder-text-muted font-mono"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            onBlur={saveNotes}
-            placeholder="Add notes (markdown supported)..."
-            autoFocus
-          />
-        ) : (
-          <div
-            className="text-sm text-text-primary leading-relaxed selectable cursor-text min-h-[100px]"
-            onClick={() => setEditingNotes(true)}
-          >
-            {notes ? (
-              <div className="prose-raido" dangerouslySetInnerHTML={{ __html: renderMarkdown(notes) }} />
-            ) : (
-              <span className="text-text-muted">Add notes...</span>
-            )}
-          </div>
-        )}
+      {/* Notes + Comments — scrollable */}
+      <div className="flex-1 overflow-y-auto scrollbar-hide">
+        {/* Notes */}
+        <div className="px-6 py-4">
+          {editingNotes ? (
+            <textarea
+              className="w-full min-h-[100px] bg-transparent border-none outline-none text-sm text-text-primary resize-none leading-relaxed selectable placeholder-text-muted font-mono"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={saveNotes}
+              placeholder="Add notes (markdown supported)..."
+              autoFocus
+            />
+          ) : (
+            <div
+              className="text-sm text-text-primary leading-relaxed selectable cursor-text min-h-[60px]"
+              onClick={() => setEditingNotes(true)}
+            >
+              {notes ? (
+                <div className="prose-raido" dangerouslySetInnerHTML={{ __html: renderMarkdown(notes) }} />
+              ) : (
+                <span className="text-text-muted">Add notes...</span>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Comments */}
+        <div className="border-t border-border-subtle">
+          <CommentSection taskId={task.id} />
+        </div>
       </div>
     </div>
   );

@@ -20,7 +20,9 @@ function buildQuery(currentView: ViewType, searchQuery: string, views: View[]): 
 
 const PAGE_SIZE = 50;
 
-export function useEmails(currentView: ViewType, searchQuery: string, enabled: boolean = true, views: View[] = []) {
+export type InboxSort = 'newest' | 'oldest';
+
+export function useEmails(currentView: ViewType, searchQuery: string, enabled: boolean = true, views: View[] = [], sort: InboxSort = 'newest') {
   const [threads, setThreads] = useState<EmailThread[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -33,6 +35,10 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
   // Derive query string directly (no useCallback indirection)
   const query = buildQuery(currentView, searchQuery, views);
 
+  const applySort = useCallback((list: EmailThread[]) => {
+    return sort === 'oldest' ? [...list].reverse() : list;
+  }, [sort]);
+
   const fetchThreads = useCallback(async () => {
     if (!enabled) return;
     setLoading(true);
@@ -41,14 +47,15 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
       const result = await window.kenaz.fetchThreads(query, PAGE_SIZE);
       nextPageTokenRef.current = result.nextPageToken;
       setHasMore(!!result.nextPageToken);
-      cacheRef.current[query] = result.threads;
-      setThreads(result.threads);
+      const sorted = applySort(result.threads);
+      cacheRef.current[query] = sorted;
+      setThreads(sorted);
     } catch (e) {
       console.error('Failed to fetch threads:', e);
     } finally {
       setLoading(false);
     }
-  }, [query, enabled]);
+  }, [query, enabled, applySort]);
 
   const loadMore = useCallback(async () => {
     if (!enabled || !nextPageTokenRef.current || loadingMore) return;
@@ -60,7 +67,10 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
       setThreads((prev) => {
         const existingIds = new Set(prev.map((t) => t.id));
         const newThreads = result.threads.filter((t: EmailThread) => !existingIds.has(t.id));
-        const merged = [...prev, ...newThreads];
+        // Gmail pages go further back in time; for oldest-first those go to the top
+        const merged = sort === 'oldest'
+          ? [...newThreads.reverse(), ...prev]
+          : [...prev, ...newThreads];
         cacheRef.current[query] = merged;
         return merged;
       });
@@ -69,9 +79,9 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     } finally {
       setLoadingMore(false);
     }
-  }, [query, enabled, loadingMore]);
+  }, [query, enabled, loadingMore, sort]);
 
-  // Fetch whenever query or enabled changes
+  // Fetch whenever query, enabled, or sort changes
   useEffect(() => {
     if (!enabled) return;
     // Show cached version instantly if available
@@ -81,7 +91,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     }
     // Always fetch fresh data in the background
     fetchThreads();
-  }, [query, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, enabled, sort]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for push updates from sync engine
   useEffect(() => {

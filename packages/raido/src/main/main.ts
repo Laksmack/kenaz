@@ -220,6 +220,27 @@ function registerIpcHandlers() {
     return ok;
   });
 
+  // Comments
+  ipcMain.handle(IPC.COMMENTS_LIST, async (_event, taskId: string) => store.getComments(taskId));
+
+  ipcMain.handle(IPC.COMMENT_ADD, async (_event, taskId: string, bodyHtml: string) => {
+    const comment = store.addComment(taskId, bodyHtml);
+    notifyTasksChanged();
+    return comment;
+  });
+
+  ipcMain.handle(IPC.COMMENT_UPDATE, async (_event, id: string, bodyHtml: string) => {
+    const comment = store.updateComment(id, bodyHtml);
+    notifyTasksChanged();
+    return comment;
+  });
+
+  ipcMain.handle(IPC.COMMENT_DELETE, async (_event, id: string) => {
+    const ok = store.deleteComment(id);
+    notifyTasksChanged();
+    return ok;
+  });
+
   // Cross-app
   ipcMain.handle('cross-app:fetch', async (_event, url: string, options?: any) => {
     const res = await fetch(url, {

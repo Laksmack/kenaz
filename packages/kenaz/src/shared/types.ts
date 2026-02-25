@@ -178,6 +178,7 @@ export const IPC = {
   CALENDAR_RANGE: 'calendar:range',
   CALENDAR_RSVP: 'calendar:rsvp',
   CALENDAR_FIND_EVENT: 'calendar:find-event',
+  CALENDAR_IMPORT_ICS: 'calendar:import-ics',
   CALENDAR_LIST: 'calendar:list',
 
   // HubSpot
@@ -275,6 +276,7 @@ export interface AccountConfig {
   autoBccExcludedDomains: string[];
   archiveOnReply: boolean;
   composeMode: 'html' | 'markdown';
+  inboxSort: 'newest' | 'oldest';
   excludedCalendarIds: string[];
 }
 
@@ -321,6 +323,7 @@ export const DEFAULT_ACCOUNT_CONFIG: AccountConfig = {
   autoBccExcludedDomains: [],
   archiveOnReply: false,
   composeMode: 'html',
+  inboxSort: 'newest',
   excludedCalendarIds: [],
 };
 

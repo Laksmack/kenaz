@@ -1,4 +1,4 @@
-import type { Task, TaskGroup, Tag, TaskStats, AppConfig, TaskAttachment, ChecklistItem } from '../shared/types';
+import type { Task, TaskGroup, Tag, TaskStats, AppConfig, TaskAttachment, ChecklistItem, TaskComment } from '../shared/types';
 
 declare global {
   interface Window {
@@ -28,6 +28,12 @@ declare global {
       addAttachment: (taskId: string) => Promise<TaskAttachment | null>;
       openAttachment: (taskId: string, attachmentId: string) => Promise<void>;
       deleteAttachment: (taskId: string, attachmentId: string) => Promise<void>;
+
+      // Comments
+      getComments: (taskId: string) => Promise<TaskComment[]>;
+      addComment: (taskId: string, bodyHtml: string) => Promise<TaskComment>;
+      updateComment: (id: string, bodyHtml: string) => Promise<TaskComment | null>;
+      deleteComment: (id: string) => Promise<boolean>;
 
       // Groups
       getGroups: () => Promise<TaskGroup[]>;

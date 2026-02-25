@@ -151,6 +151,60 @@ export class CalendarService {
     }
   }
 
+  /**
+   * Import an event from ICS text into Google Calendar.
+   * Uses the events.import endpoint which won't send notifications.
+   * Returns the Google Calendar event ID if successful.
+   */
+  async importIcsEvent(rawIcsText: string, calendarId: string = 'primary'): Promise<string | null> {
+    if (!this.calendar) throw new Error('Calendar not authenticated');
+
+    // Unfold RFC 5545 continuation lines (lines starting with space/tab)
+    const icsText = rawIcsText.replace(/\r?\n[ \t]/g, '');
+
+    const uid = icsText.match(/^UID:(.+)$/m)?.[1]?.trim();
+    const summary = icsText.match(/^SUMMARY[^:]*:(.+)$/m)?.[1]?.trim();
+    const location = icsText.match(/^LOCATION[^:]*:(.+)$/m)?.[1]?.trim();
+    const description = icsText.match(/^DESCRIPTION[^:]*:(.+)$/m)?.[1]?.trim()?.replace(/\\n/g, '\n');
+    const dtstart = icsText.match(/^DTSTART[^:]*:(.+)$/m)?.[1]?.trim();
+    const dtend = icsText.match(/^DTEND[^:]*:(.+)$/m)?.[1]?.trim();
+
+    if (!uid || !dtstart) return null;
+
+    const parseIcsDt = (dt: string): { date: string } | { dateTime: string } | null => {
+      if (dt.length === 8) {
+        return { date: `${dt.slice(0, 4)}-${dt.slice(4, 6)}-${dt.slice(6, 8)}` };
+      }
+      const m = dt.match(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?/);
+      if (!m) return null;
+      const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}${dt.endsWith('Z') ? 'Z' : ''}`;
+      return { dateTime: iso };
+    };
+
+    const start = parseIcsDt(dtstart);
+    const end = dtend ? parseIcsDt(dtend) : start;
+    if (!start || !end) return null;
+
+    try {
+      const res = await this.calendar.events.import({
+        calendarId,
+        requestBody: {
+          iCalUID: uid,
+          summary: summary || 'Imported Event',
+          start,
+          end,
+          location: location || undefined,
+          description: description || undefined,
+        },
+      });
+      console.log(`[Calendar] Imported event from ICS: ${res.data.id}`);
+      return res.data.id || null;
+    } catch (e: any) {
+      console.error('[Calendar] Failed to import ICS event:', e.message);
+      return null;
+    }
+  }
+
   private parseEvent(event: calendar_v3.Schema$Event, calendarColor: string): CalendarEvent {
     const isAllDay = !event.start?.dateTime;
     const start = event.start?.dateTime || event.start?.date || '';

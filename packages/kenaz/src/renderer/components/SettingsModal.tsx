@@ -160,6 +160,7 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
   useEffect(() => { window.kenaz.listViews().then(setViewOptions); }, []);
   const [displayName, setDisplayName] = useState(config.displayName ?? '');
   const [archiveOnReply, setArchiveOnReply] = useState(config.archiveOnReply ?? false);
+  const [inboxSort, setInboxSort] = useState<'newest' | 'oldest'>(config.inboxSort ?? 'newest');
   const [composeMode, setComposeMode] = useState<'html' | 'markdown'>(config.composeMode ?? 'html');
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(config.theme ?? 'dark');
 
@@ -193,6 +194,17 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
           <ToggleSwitch checked={archiveOnReply} onChange={setArchiveOnReply} />
         </SettingsField>
 
+        <SettingsField label="Inbox Sort Order" description="Newest first is the default. Oldest first is great for inbox-zero workflows — work through emails from oldest to newest.">
+          <select
+            value={inboxSort}
+            onChange={(e) => setInboxSort(e.target.value as 'newest' | 'oldest')}
+            className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary"
+          >
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+          </select>
+        </SettingsField>
+
         <SettingsField label="Compose Mode" description="Choose the editor for composing emails">
           <select
             value={composeMode}
@@ -220,6 +232,7 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
           displayName: displayName.trim(),
           defaultView,
           archiveOnReply,
+          inboxSort,
           composeMode,
           theme,
         })} saving={saving} saved={saved} />

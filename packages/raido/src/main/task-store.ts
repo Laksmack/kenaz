@@ -3,7 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
 import crypto from 'crypto';
-import type { Task, TaskAttachment, TaskGroup, Tag, TaskStats, ChecklistItem } from '../shared/types';
+import type { Task, TaskAttachment, TaskGroup, Tag, TaskStats, ChecklistItem, TaskComment } from '../shared/types';
 import { extractGroup } from '../shared/types';
 
 export class TaskStore {
@@ -77,6 +77,17 @@ export class TaskStore {
       );
 
       CREATE INDEX IF NOT EXISTS idx_checklist_items_task ON checklist_items(task_id);
+
+      CREATE TABLE IF NOT EXISTS task_comments (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL,
+        body_html TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_task_comments_task ON task_comments(task_id);
     `);
 
     this.migrateDropProjects();
@@ -642,6 +653,35 @@ export class TaskStore {
 
   deleteChecklistItem(id: string): boolean {
     return this.db.prepare('DELETE FROM checklist_items WHERE id = ?').run(id).changes > 0;
+  }
+
+  // ── Comments ────────────────────────────────────────────────
+
+  getComments(taskId: string): TaskComment[] {
+    return this.db.prepare(
+      'SELECT * FROM task_comments WHERE task_id = ? ORDER BY created_at ASC'
+    ).all(taskId) as TaskComment[];
+  }
+
+  addComment(taskId: string, bodyHtml: string): TaskComment {
+    const id = this.genId();
+    const now = this.now();
+    this.db.prepare(`
+      INSERT INTO task_comments (id, task_id, body_html, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(id, taskId, bodyHtml, now, now);
+    return this.db.prepare('SELECT * FROM task_comments WHERE id = ?').get(id) as TaskComment;
+  }
+
+  updateComment(id: string, bodyHtml: string): TaskComment | null {
+    this.db.prepare(
+      'UPDATE task_comments SET body_html = ?, updated_at = ? WHERE id = ?'
+    ).run(bodyHtml, this.now(), id);
+    return this.db.prepare('SELECT * FROM task_comments WHERE id = ?').get(id) as TaskComment | null;
+  }
+
+  deleteComment(id: string): boolean {
+    return this.db.prepare('DELETE FROM task_comments WHERE id = ?').run(id).changes > 0;
   }
 
   // ── Cleanup ───────────────────────────────────────────────

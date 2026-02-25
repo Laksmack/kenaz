@@ -504,6 +504,7 @@ function ThreadMessages({ thread, onArchive }: { thread: EmailThread; onArchive:
 function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => void }) {
   const [rsvpStatus, setRsvpStatus] = useState<'none' | 'accepted' | 'tentative' | 'declined' | 'loading'>('none');
   const [eventId, setEventId] = useState<string | null>(null);
+  const [resolving, setResolving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const invite = detectCalendarInvite(message);
@@ -511,31 +512,44 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
   useEffect(() => {
     if (!invite.isInvite) return;
 
-    if (invite.iCalUID) {
-      setEventId(invite.iCalUID);
-      return;
-    }
-
-    // Fallback: fetch .ics attachment, parse UID, look up event in Google Calendar
     const icsAttachment = message.attachments.find(
       (a) => a.filename.endsWith('.ics') || a.mimeType === 'text/calendar' || a.mimeType === 'application/ics'
     );
-    if (!icsAttachment) return;
 
     let cancelled = false;
+    setResolving(true);
+
     (async () => {
       try {
+        // Step 1: If we have an iCalUID from the email body, look it up
+        if (invite.iCalUID) {
+          const id = await window.kenaz.calendarFindEvent(invite.iCalUID);
+          if (cancelled) return;
+          if (id) { setEventId(id); return; }
+        }
+
+        // Step 2: Try fetching the .ics attachment and looking up by UID
+        if (!icsAttachment) return;
         const base64 = await window.kenaz.getAttachmentBase64(message.id, icsAttachment.id);
         if (cancelled) return;
-        const icsText = atob(base64);
+        const icsRaw = atob(base64);
+        const icsText = icsRaw.replace(/\r?\n[ \t]/g, '');
         const uidMatch = icsText.match(/^UID:(.+)$/m);
         if (!uidMatch) return;
         const uid = uidMatch[1].trim();
+
         const googleEventId = await window.kenaz.calendarFindEvent(uid);
         if (cancelled) return;
-        if (googleEventId) setEventId(googleEventId);
+        if (googleEventId) { setEventId(googleEventId); return; }
+
+        // Step 3: Event not in Google Calendar yet — import from ICS
+        const importedId = await window.kenaz.calendarImportIcs(icsText);
+        if (cancelled) return;
+        if (importedId) setEventId(importedId);
       } catch (e) {
-        console.error('[RsvpBar] ICS UID fallback failed:', e);
+        console.error('[RsvpBar] Event resolution failed:', e);
+      } finally {
+        if (!cancelled) setResolving(false);
       }
     })();
     return () => { cancelled = true; };
@@ -631,8 +645,15 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
 
       {error && <span className="text-[11px] text-red-400">{error}</span>}
 
-      {!eventId && invite.isInvite && (
-        <span className="text-[10px] text-text-muted italic">Could not extract event ID — open in Google Calendar to respond</span>
+      {!eventId && invite.isInvite && resolving && (
+        <span className="text-[10px] text-text-muted italic animate-pulse">Looking up calendar event...</span>
+      )}
+      {!eventId && invite.isInvite && !resolving && (
+        <span className="text-[10px] text-text-muted italic">
+          {message.subject.toLowerCase().startsWith('fwd:')
+            ? 'Forwarded invite — not in your calendar'
+            : 'Could not find event — open in Google Calendar to respond'}
+        </span>
       )}
     </div>
   );

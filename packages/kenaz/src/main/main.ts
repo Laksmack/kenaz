@@ -566,6 +566,10 @@ function registerIpcHandlers() {
     return active().calendar.findEventByICalUID(iCalUID);
   });
 
+  ipcMain.handle(IPC.CALENDAR_IMPORT_ICS, async (_event, icsText: string) => {
+    return active().calendar.importIcsEvent(icsText);
+  });
+
   ipcMain.handle(IPC.CALENDAR_LIST, async () => {
     return active().calendar.listCalendars();
   });

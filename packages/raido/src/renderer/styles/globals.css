@@ -227,4 +227,23 @@
 
   /* First child in prose shouldn't have top margin */
   .prose-raido > :first-child { margin-top: 0; }
+
+  .prose-raido img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 6px;
+    margin: 0.5em 0;
+  }
+
+  /* ── TipTap / ProseMirror editor baseline ─────────────── */
+  .ProseMirror {
+    outline: none;
+  }
+  .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    color: rgb(var(--text-muted));
+    pointer-events: none;
+    height: 0;
+  }
 }

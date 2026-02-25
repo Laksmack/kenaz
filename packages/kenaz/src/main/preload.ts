@@ -17,6 +17,7 @@ const IPC = {
   CALENDAR_RANGE: 'calendar:range',
   CALENDAR_RSVP: 'calendar:rsvp',
   CALENDAR_FIND_EVENT: 'calendar:find-event',
+  CALENDAR_IMPORT_ICS: 'calendar:import-ics',
   CALENDAR_LIST: 'calendar:list',
   HUBSPOT_LOOKUP: 'hubspot:lookup',
   HUBSPOT_LOG: 'hubspot:log',
@@ -105,6 +106,8 @@ const api = {
     ipcRenderer.invoke(IPC.CALENDAR_RSVP, eventId, response, calendarId),
   calendarFindEvent: (iCalUID: string) =>
     ipcRenderer.invoke(IPC.CALENDAR_FIND_EVENT, iCalUID),
+  calendarImportIcs: (icsText: string) =>
+    ipcRenderer.invoke(IPC.CALENDAR_IMPORT_ICS, icsText),
   listCalendars: () => ipcRenderer.invoke(IPC.CALENDAR_LIST),
 
   // HubSpot

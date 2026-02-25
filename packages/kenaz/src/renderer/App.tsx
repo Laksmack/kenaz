@@ -96,7 +96,7 @@ export default function App() {
     removeThread,
     labelThread,
     markRead,
-  } = useEmails(currentView, searchQuery, authenticated === true, views);
+  } = useEmails(currentView, searchQuery, authenticated === true, views, appConfig?.inboxSort ?? 'newest');
 
   // ── View counts (background fetch) ──────────────────────
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
@@ -424,18 +424,32 @@ export default function App() {
   }, [views]);
 
   // Helper: find the next thread to select after removing targets from the list.
-  // Prefers the thread just ABOVE (idx - 1), falls back to just BELOW (idx + 1).
+  // Newest-first: prefers thread ABOVE (newer), falls back to BELOW.
+  // Oldest-first: prefers thread BELOW (next older), falls back to ABOVE.
+  const sortOrder = appConfig?.inboxSort ?? 'newest';
   const findNextThread = useCallback((idx: number, excludeIds: Set<string> | string[]) => {
     const excluded = excludeIds instanceof Set ? excludeIds : new Set(excludeIds);
-    // Try the closest thread above (backwards from idx)
-    for (let i = idx - 1; i >= 0; i--) {
-      if (!excluded.has(threads[i].id)) return threads[i];
+    const preferForward = sortOrder === 'oldest';
+
+    if (preferForward) {
+      // Oldest-first: prefer below (next older), fall back to above
+      for (let i = idx + 1; i < threads.length; i++) {
+        if (!excluded.has(threads[i].id)) return threads[i];
+      }
+      for (let i = idx - 1; i >= 0; i--) {
+        if (!excluded.has(threads[i].id)) return threads[i];
+      }
+    } else {
+      // Newest-first: prefer above (newer), fall back to below
+      for (let i = idx - 1; i >= 0; i--) {
+        if (!excluded.has(threads[i].id)) return threads[i];
+      }
+      for (let i = idx + 1; i < threads.length; i++) {
+        if (!excluded.has(threads[i].id)) return threads[i];
+      }
     }
-    // Fall back to the thread just below
-    const after = threads.find((t, i) => i > idx && !excluded.has(t.id));
-    if (after) return after;
     return null;
-  }, [threads]);
+  }, [threads, sortOrder]);
 
   const handleDeleteDraft = useCallback(async (thread: EmailThread) => {
     try {
@@ -660,12 +674,24 @@ export default function App() {
             const currentThreads = threadsRef.current;
             const idx = currentThreads.findIndex((t) => t.id === replyThreadId);
             if (idx >= 0) {
+              const preferForward = appConfig?.inboxSort === 'oldest';
               let nextThread: EmailThread | null = null;
-              for (let i = idx - 1; i >= 0; i--) {
-                if (currentThreads[i].id !== replyThreadId) { nextThread = currentThreads[i]; break; }
-              }
-              if (!nextThread) {
-                nextThread = currentThreads.find((t, i) => i > idx && t.id !== replyThreadId) ?? null;
+              if (preferForward) {
+                for (let i = idx + 1; i < currentThreads.length; i++) {
+                  if (currentThreads[i].id !== replyThreadId) { nextThread = currentThreads[i]; break; }
+                }
+                if (!nextThread) {
+                  for (let i = idx - 1; i >= 0; i--) {
+                    if (currentThreads[i].id !== replyThreadId) { nextThread = currentThreads[i]; break; }
+                  }
+                }
+              } else {
+                for (let i = idx - 1; i >= 0; i--) {
+                  if (currentThreads[i].id !== replyThreadId) { nextThread = currentThreads[i]; break; }
+                }
+                if (!nextThread) {
+                  nextThread = currentThreads.find((t, i) => i > idx && t.id !== replyThreadId) ?? null;
+                }
               }
               pendingSelectIdRef.current = nextThread?.id ?? null;
               setSelectedThread(nextThread);
@@ -718,7 +744,7 @@ export default function App() {
       });
       setComposeOpen(true);
     });
-  }, [addUndo, refresh, appConfig?.archiveOnReply, getManagedLabels, archiveThread, labelThread, isOnline]);
+  }, [addUndo, refresh, appConfig?.archiveOnReply, appConfig?.inboxSort, getManagedLabels, archiveThread, labelThread, isOnline]);
 
   // Send a draft directly without opening the composer
   const sendDraft = useCallback(async (thread: EmailThread) => {
