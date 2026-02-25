@@ -14,6 +14,7 @@ interface Props {
   onCreateEvent: (start: Date, end: Date) => void;
   onUpdateEvent?: (event: CalendarEvent, newStart: Date, newEnd: Date) => void;
   onRSVP?: (eventId: string, response: 'accepted' | 'declined' | 'tentative') => void;
+  onDeleteEvent?: (eventId: string) => void;
   defaultEventDurationMinutes?: number;
 }
 
@@ -94,7 +95,7 @@ function timeOverlaps(s1: string, e1: string, s2: string, e2: string): boolean {
   return new Date(s1).getTime() < new Date(e2).getTime() && new Date(s2).getTime() < new Date(e1).getTime();
 }
 
-export function DayView({ currentDate, events, overlayEvents = [], pendingInvites = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP, defaultEventDurationMinutes = 60 }: Props) {
+export function DayView({ currentDate, events, overlayEvents = [], pendingInvites = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP, onDeleteEvent, defaultEventDurationMinutes = 60 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const today = useMemo(() => new Date(), []);
   const isToday = isSameDay(currentDate, today);
@@ -245,7 +246,7 @@ export function DayView({ currentDate, events, overlayEvents = [], pendingInvite
         {allDayEvents.length > 0 && (
           <div className="mt-2 space-y-1">
             {allDayEvents.map(event => (
-              <EventBlock key={event.id} event={event} selected={selectedEvent?.id === event.id} onClick={onSelectEvent} compact />
+              <EventBlock key={event.id} event={event} selected={selectedEvent?.id === event.id} onClick={onSelectEvent} onDelete={onDeleteEvent} compact />
             ))}
           </div>
         )}
@@ -339,6 +340,7 @@ export function DayView({ currentDate, events, overlayEvents = [], pendingInvite
                   selected={selectedEvent?.id === event.id}
                   onClick={onSelectEvent}
                   onRSVP={onRSVP}
+                  onDelete={onDeleteEvent}
                   onDragStart={onUpdateEvent ? (ev, mode, mouseY) => handleEventDragStart(ev, mode, mouseY) : undefined}
                 />
                 {conflictingEventIds.has(event.id) && (

@@ -9,6 +9,7 @@ interface Props {
   selected: boolean;
   onClick: (event: CalendarEvent) => void;
   onRSVP?: (eventId: string, response: 'accepted' | 'declined' | 'tentative') => void;
+  onDelete?: (eventId: string) => void;
   onDragStart?: (event: CalendarEvent, mode: DragMode, mouseY: number) => void;
   style?: React.CSSProperties;
   compact?: boolean;
@@ -17,7 +18,7 @@ interface Props {
 
 const DRAG_THRESHOLD = 4;
 
-export function EventBlock({ event, selected, onClick, onRSVP, onDragStart, style, compact, isDragGhost }: Props) {
+export function EventBlock({ event, selected, onClick, onRSVP, onDelete, onDragStart, style, compact, isDragGhost }: Props) {
   const color = event.calendar_color || '#4A9AC2';
   const isInvite = event.self_response === 'needsAction' && !event.is_organizer;
   const canDrag = !event.all_day && !compact && !!onDragStart;
@@ -165,19 +166,23 @@ export function EventBlock({ event, selected, onClick, onRSVP, onDragStart, styl
           organizerEmail: event.organizer_email,
         };
         const fetcher = window.dagaz.crossAppFetch;
-        const actions = [
+        const actions: { label: string; icon: string; fn: () => void; danger?: boolean }[] = [
           { label: 'Email Recipients', icon: 'ᚲ', fn: async () => { try { await createDraftFromEvent(fetcher, ctx); window.dagaz.notify('Kenaz', `Draft created for: ${ctx.summary}`); } catch { window.dagaz.notify('Kenaz', 'Failed — is Kenaz running?'); } } },
           { label: 'Create Meeting Note', icon: 'ᛚ', fn: async () => { try { await createNoteFromEvent(fetcher, ctx); window.dagaz.notify('Laguz', `Note created: ${ctx.summary}`); } catch { window.dagaz.notify('Laguz', 'Failed — is Laguz running?'); } } },
           { label: 'Create Prep Todo', icon: 'ᚱ', fn: async () => { try { await createTodoFromEvent(fetcher, ctx); window.dagaz.notify('Raidō', `Todo created: Prepare: ${ctx.summary}`); } catch { window.dagaz.notify('Raidō', 'Failed — is Raidō running?'); } } },
         ];
+        if (onDelete) {
+          actions.push({ label: 'Delete This Event', icon: '🗑', fn: () => onDelete(event.id), danger: true });
+        }
         return (
           <div
             ref={ctxRef}
-            className="fixed z-[100] py-1 min-w-[200px] bg-bg-secondary border border-border-subtle rounded-lg shadow-2xl"
+            className="fixed z-[100] py-1 min-w-[200px] rounded-lg shadow-2xl border border-[#2a3f5a]"
             style={{
               left: ctxPos?.left ?? ctxMenu.x,
               top: ctxPos?.top ?? ctxMenu.y,
               visibility: ctxPos ? 'visible' : 'hidden',
+              backgroundColor: '#111d2e',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -185,7 +190,11 @@ export function EventBlock({ event, selected, onClick, onRSVP, onDragStart, styl
               <button
                 key={i}
                 onClick={() => { a.fn(); setCtxMenu(null); }}
-                className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+                className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-bg-hover transition-colors ${
+                  a.danger
+                    ? 'text-red-400 hover:text-red-300 border-t border-[#2a3f5a] mt-0.5 pt-2'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
               >
                 <span className="w-4 text-center">{a.icon}</span>
                 {a.label}

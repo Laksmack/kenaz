@@ -14,6 +14,7 @@ interface Props {
   onCreateEvent: (start: Date, end: Date) => void;
   onUpdateEvent?: (event: CalendarEvent, newStart: Date, newEnd: Date) => void;
   onRSVP?: (eventId: string, response: 'accepted' | 'declined' | 'tentative') => void;
+  onDeleteEvent?: (eventId: string) => void;
   weekDays: 5 | 7;
   defaultEventDurationMinutes?: number;
 }
@@ -141,7 +142,7 @@ function overlayToEvent(oe: OverlayEvent): CalendarEvent {
   };
 }
 
-export function WeekView({ currentDate, events, overlayEvents = [], pendingInvites = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP, weekDays, defaultEventDurationMinutes = 60 }: Props) {
+export function WeekView({ currentDate, events, overlayEvents = [], pendingInvites = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP, onDeleteEvent, weekDays, defaultEventDurationMinutes = 60 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const today = useMemo(() => new Date(), []);
   const weekDates = useMemo(() => getWeekDates(currentDate, weekDays), [currentDate, weekDays]);
@@ -348,7 +349,7 @@ export function WeekView({ currentDate, events, overlayEvents = [], pendingInvit
               {allDayEvents.length > 0 && (
                 <div className="px-1 pb-1 space-y-0.5">
                   {allDayEvents.slice(0, 3).map(event => (
-                    <EventBlock key={event.id} event={event} selected={selectedEvent?.id === event.id} onClick={onSelectEvent} compact />
+                    <EventBlock key={event.id} event={event} selected={selectedEvent?.id === event.id} onClick={onSelectEvent} onDelete={onDeleteEvent} compact />
                   ))}
                   {allDayEvents.length > 3 && (
                     <div className="text-[10px] text-text-muted px-1">+{allDayEvents.length - 3} more</div>
@@ -466,6 +467,7 @@ export function WeekView({ currentDate, events, overlayEvents = [], pendingInvit
                       selected={selectedEvent?.id === event.id}
                       onClick={onSelectEvent}
                       onRSVP={onRSVP}
+                      onDelete={onDeleteEvent}
                       onDragStart={onUpdateEvent ? (ev, mode, mouseY) => handleEventDragStart(ev, mode, mouseY, dayIdx) : undefined}
                     />
                     {conflictingEventIds.has(event.id) && (

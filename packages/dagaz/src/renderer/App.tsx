@@ -660,6 +660,7 @@ export default function App() {
                 onCreateEvent={(start, end) => openQuickCreate(start, end)}
                 onUpdateEvent={handleUpdateEvent}
                 onRSVP={handleRSVP}
+                onDeleteEvent={handleDeleteEvent}
                 weekDays={weekDays as 5 | 7}
                 defaultEventDurationMinutes={appConfig?.defaultEventDurationMinutes}
               />
@@ -675,6 +676,7 @@ export default function App() {
                 onCreateEvent={(start, end) => openQuickCreate(start, end)}
                 onUpdateEvent={handleUpdateEvent}
                 onRSVP={handleRSVP}
+                onDeleteEvent={handleDeleteEvent}
                 defaultEventDurationMinutes={appConfig?.defaultEventDurationMinutes}
               />
             )}
