@@ -27,29 +27,27 @@ export function UpdateBanner({ api }: { api: UpdateAPI }) {
   if (state.status === 'error') return null;
 
   return (
-    <div className="flex-shrink-0 flex items-center justify-between px-4 py-1.5 bg-bg-secondary border-b border-border-subtle text-xs text-text-secondary">
-      <div className="flex items-center gap-2">
-        {state.status === 'available' && (
-          <span>Update v{state.version} available — downloading...</span>
-        )}
-        {state.status === 'downloading' && (
-          <span>Downloading update... {state.percent}%</span>
-        )}
-        {state.status === 'ready' && (
-          <>
-            <span>v{state.version} is ready</span>
-            <button
-              onClick={() => api.installUpdate()}
-              className="px-2 py-0.5 rounded bg-text-primary text-bg-primary font-medium hover:opacity-90 transition-opacity"
-            >
-              Restart to Update
-            </button>
-          </>
-        )}
-      </div>
+    <div className="flex items-center gap-2 text-xs text-text-secondary mr-2">
+      {state.status === 'available' && (
+        <span className="text-text-muted">Downloading v{state.version}...</span>
+      )}
+      {state.status === 'downloading' && (
+        <span className="text-text-muted">Downloading... {state.percent}%</span>
+      )}
+      {state.status === 'ready' && (
+        <>
+          <span className="text-text-muted">v{state.version} ready</span>
+          <button
+            onClick={() => api.installUpdate()}
+            className="px-2 py-0.5 rounded bg-text-primary text-bg-primary font-medium hover:opacity-90 transition-opacity"
+          >
+            Restart to Update
+          </button>
+        </>
+      )}
       <button
         onClick={() => setDismissed(true)}
-        className="text-text-tertiary hover:text-text-secondary ml-2"
+        className="text-text-tertiary hover:text-text-secondary"
       >
         ✕
       </button>

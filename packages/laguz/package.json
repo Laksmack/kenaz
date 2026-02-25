@@ -1,6 +1,6 @@
 {
   "name": "@futhark/laguz",
-  "version": "1.8.2",
+  "version": "1.8.3",
   "description": "Laguz ᛚ — Notes and vault browser",
   "main": "dist/main/main/main.js",
   "private": true,

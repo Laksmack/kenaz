@@ -230,9 +230,9 @@ export default function App() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <UpdateBanner api={window.raido} />
         {/* Title bar */}
         <div className="titlebar-drag h-12 flex items-center px-4 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
+          <div className="titlebar-no-drag"><UpdateBanner api={window.raido} /></div>
           <div className="flex-1" />
           <div className="titlebar-no-drag flex items-center gap-2">
             {currentView === 'search' ? (

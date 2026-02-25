@@ -304,12 +304,12 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
 
       {/* New messages in thread banner */}
       {threadUpdateAvailable && onRefreshThread && (
-        <div className="flex-shrink-0 px-6 py-2 bg-accent/10 border-b border-accent/30">
+        <div className="flex-shrink-0 px-6 py-2.5 bg-accent-primary/15 border-b border-accent-primary/30">
           <button
             onClick={onRefreshThread}
-            className="w-full text-sm text-accent hover:text-accent-hover flex items-center justify-center gap-2 transition-colors"
+            className="w-full text-sm font-medium text-accent-primary hover:text-accent-warm flex items-center justify-center gap-2 transition-colors"
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <svg className="w-4 h-4 animate-spin-slow" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.992 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182M20.993 4.356v4.992" />
             </svg>
             New activity in this thread — click to refresh

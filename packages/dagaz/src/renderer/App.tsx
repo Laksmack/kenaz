@@ -529,11 +529,11 @@ export default function App() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        <UpdateBanner api={window.dagaz} />
         {/* Title bar */}
         <div className="titlebar-drag h-12 flex items-center px-4 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
           {/* Navigation */}
           <div className="titlebar-no-drag flex items-center gap-1">
+            <UpdateBanner api={window.dagaz} />
             <button onClick={navigatePrev} className="p-1.5 rounded hover:bg-bg-hover text-text-secondary">
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />

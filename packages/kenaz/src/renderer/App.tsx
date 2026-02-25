@@ -995,9 +995,11 @@ export default function App() {
   return (
     <ErrorBoundary>
     <div className="h-screen flex flex-col bg-bg-primary">
-      <UpdateBanner api={window.kenaz} />
       {/* Title bar drag region */}
       <div className="titlebar-drag h-12 flex items-center pl-20 pr-3 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
+        <div className="titlebar-no-drag">
+          <UpdateBanner api={window.kenaz} />
+        </div>
         <div className="titlebar-no-drag">
           <ViewNav currentView={currentView} onViewChange={handleViewChange} views={views} counts={viewCounts} />
         </div>
