@@ -179,7 +179,7 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
   echo "  keychain unlocked"
 
   echo "  installing dependencies..."
-  npm ci --quiet 2>&1
+  npm ci --loglevel=error 2>&1
   echo "  ✓ dependencies installed"
 
   # Build core library first (auto-updater etc.)
