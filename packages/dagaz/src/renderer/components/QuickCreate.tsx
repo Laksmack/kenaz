@@ -39,6 +39,22 @@ function durationLabel(startD: Date, endD: Date): string {
   return m > 0 ? `${h}h ${m}m` : `${h}h`;
 }
 
+function daySpanLabel(startStr: string, endStr: string): string {
+  const [sy, sm, sd] = startStr.split('-').map(Number);
+  const [ey, em, ed] = endStr.split('-').map(Number);
+  const s = new Date(sy, sm - 1, sd);
+  const e = new Date(ey, em - 1, ed);
+  const days = Math.round((e.getTime() - s.getTime()) / 86400000) + 1;
+  if (days <= 1) return '';
+  return `${days} days`;
+}
+
+function addDays(dateStr: string, n: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + n);
+  return toDateStr(dt);
+}
+
 function buildTimeOptions(): Array<{ value: string; label: string }> {
   const opts: Array<{ value: string; label: string }> = [];
   for (let h = 0; h < 24; h++) {
@@ -57,6 +73,7 @@ const TIME_OPTIONS = buildTimeOptions();
 export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalendarId, defaultStart, defaultEnd, defaultAttendees }: Props) {
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [allDay, setAllDay] = useState(false);
@@ -78,6 +95,7 @@ export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalenda
 
     setTitle('');
     setDate(toDateStr(start));
+    setEndDate(toDateStr(start));
     setStartTime(toTimeStr(start));
     setEndTime(toTimeStr(end));
     setAllDay(false);
@@ -115,7 +133,7 @@ export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalenda
     const data: CreateEventInput = {
       summary: title.trim(),
       start: allDay ? date : startD.toISOString(),
-      end: allDay ? date : endD.toISOString(),
+      end: allDay ? addDays(endDate, 1) : endD.toISOString(),
       all_day: allDay || undefined,
       attendees: attendees.length > 0 ? attendees : undefined,
       location: location || undefined,
@@ -126,7 +144,7 @@ export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalenda
 
     onCreate(data);
     onClose();
-  }, [title, buildDates, allDay, date, attendees, location, description, calendarId, addConferencing, onCreate, onClose]);
+  }, [title, buildDates, allDay, date, endDate, attendees, location, description, calendarId, addConferencing, onCreate, onClose]);
 
   const addAttendee = useCallback((raw: string) => {
     const email = raw.trim().toLowerCase();
@@ -169,7 +187,7 @@ export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalenda
           <select
             value={calendarId}
             onChange={e => setCalendarId(e.target.value)}
-            className="bg-transparent text-[10px] text-text-muted outline-none cursor-pointer"
+            className="bg-bg-tertiary border border-border-subtle rounded-md px-2 py-0.5 text-[11px] text-text-secondary outline-none cursor-pointer hover:border-accent-primary/40 transition-colors"
           >
             {calendars.filter(c => c.visible).map(c => (
               <option key={c.id} value={c.id}>{c.summary}</option>
@@ -197,12 +215,28 @@ export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalenda
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             {allDay ? (
-              <input
-                type="date"
-                value={date}
-                onChange={e => setDate(e.target.value)}
-                className="bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary/40"
-              />
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <input
+                  type="date"
+                  value={date}
+                  onChange={e => {
+                    setDate(e.target.value);
+                    if (e.target.value > endDate) setEndDate(e.target.value);
+                  }}
+                  className="bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary/40"
+                />
+                <span className="text-text-muted text-xs">→</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  min={date}
+                  onChange={e => setEndDate(e.target.value)}
+                  className="bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary/40"
+                />
+                {daySpanLabel(date, endDate) && (
+                  <span className="text-[10px] text-text-muted">{daySpanLabel(date, endDate)}</span>
+                )}
+              </div>
             ) : (
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs text-text-primary font-medium">{friendlyDate(startD)}</span>

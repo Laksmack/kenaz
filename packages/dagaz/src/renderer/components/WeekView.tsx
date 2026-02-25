@@ -318,8 +318,10 @@ export function WeekView({ currentDate, events, overlayEvents = [], pendingInvit
 
   const handleTimeSlotClick = useCallback((dayDate: Date, e: React.MouseEvent) => {
     if (isDragging) return;
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const y = e.clientY - rect.top;
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+    const scrollRect = scrollEl.getBoundingClientRect();
+    const y = e.clientY - scrollRect.top + scrollEl.scrollTop;
     const hour = Math.floor(y / HOUR_HEIGHT);
     const minutes = Math.round(((y % HOUR_HEIGHT) / HOUR_HEIGHT) * 60 / 15) * 15;
     const start = new Date(dayDate);
