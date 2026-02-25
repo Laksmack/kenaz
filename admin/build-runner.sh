@@ -45,6 +45,7 @@ export PATH="/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:$PAT
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOCK_FILE="/tmp/futhark-build-runner.lock"
+RETRY_FILE="$HOME/.futhark/build-retry.txt"
 APPS=(kenaz raido dagaz laguz)
 UPLOAD_PIDS=()
 
@@ -68,32 +69,45 @@ trap 'rm -f "$LOCK_FILE"' EXIT
 
 cd "$REPO_ROOT"
 
+# Check for failed builds that need retrying
+RETRY_APPS=()
+if [ -f "$RETRY_FILE" ] && [ "$FORCE" = false ]; then
+  while IFS= read -r line; do
+    [ -n "$line" ] && RETRY_APPS+=("$line")
+  done < "$RETRY_FILE"
+fi
+
 # Determine what changed
 CHANGED_FILES=""
+HAS_NEW_COMMITS=false
 if [ "$FORCE" = false ]; then
   git fetch origin "$BRANCH" --quiet
   LOCAL=$(git rev-parse HEAD)
   REMOTE=$(git rev-parse "origin/$BRANCH")
 
-  if [ "$LOCAL" = "$REMOTE" ]; then
+  if [ "$LOCAL" = "$REMOTE" ] && [ ${#RETRY_APPS[@]} -eq 0 ]; then
     exit 0
   fi
 
-  # Reset any build artifacts (e.g. package-lock.json modified by npm ci)
-  # so git pull doesn't fail on dirty working tree
-  git checkout -- . 2>/dev/null
-  git clean -fd 2>/dev/null
+  if [ "$LOCAL" != "$REMOTE" ]; then
+    HAS_NEW_COMMITS=true
 
-  if ! git pull --quiet; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') — git pull failed, aborting"
-    exit 1
-  fi
+    # Reset any build artifacts (e.g. package-lock.json modified by npm ci)
+    # so git pull doesn't fail on dirty working tree
+    git checkout -- . 2>/dev/null
+    git clean -fd 2>/dev/null
 
-  CHANGED_FILES=$(git diff --name-only "$LOCAL" "$REMOTE")
-  RELEVANT=$(echo "$CHANGED_FILES" | grep -E '^(packages/|signing/|web/|package\.json|package-lock\.json)')
-  if [ -z "$RELEVANT" ]; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') — pulled but no relevant changes, skipping"
-    exit 0
+    if ! git pull --quiet; then
+      echo "$(date '+%Y-%m-%d %H:%M:%S') — git pull failed, aborting"
+      exit 1
+    fi
+
+    CHANGED_FILES=$(git diff --name-only "$LOCAL" "$REMOTE")
+    RELEVANT=$(echo "$CHANGED_FILES" | grep -E '^(packages/|signing/|web/|package\.json|package-lock\.json)')
+    if [ -z "$RELEVANT" ] && [ ${#RETRY_APPS[@]} -eq 0 ]; then
+      echo "$(date '+%Y-%m-%d %H:%M:%S') — pulled but no relevant changes, skipping"
+      exit 0
+    fi
   fi
 fi
 
@@ -101,8 +115,11 @@ echo ""
 echo "━━━ Build Runner: $(date '+%Y-%m-%d %H:%M:%S') ━━━"
 if [ "$FORCE" = true ]; then
   echo "  forced build ($(git rev-parse --short HEAD))"
-else
+elif [ "$HAS_NEW_COMMITS" = true ]; then
   echo "  new commits detected ($LOCAL → $REMOTE)"
+fi
+if [ ${#RETRY_APPS[@]} -gt 0 ]; then
+  echo "  retrying previously failed: ${RETRY_APPS[*]}"
 fi
 
 # Figure out which apps need rebuilding
@@ -123,7 +140,18 @@ else
       APPS_TO_BUILD+=("$app")
     fi
   done
+  # Merge in retry apps (deduplicated)
+  for rapp in "${RETRY_APPS[@]}"; do
+    _found=false
+    for existing in "${APPS_TO_BUILD[@]}"; do
+      [ "$existing" = "$rapp" ] && _found=true && break
+    done
+    [ "$_found" = false ] && APPS_TO_BUILD+=("$rapp")
+  done
 fi
+
+# Clear the retry file — we'll re-populate it with any new failures
+rm -f "$RETRY_FILE"
 
 # Check if web changed
 WEB_CHANGED=false
@@ -319,8 +347,12 @@ fi
 
 echo ""
 if [ ${#FAILED[@]} -gt 0 ]; then
-  echo "━━━ Done (${#FAILED[@]} failed: ${FAILED[*]}) ━━━"
+  # Persist failed apps so next cron run retries them
+  mkdir -p "$(dirname "$RETRY_FILE")"
+  printf '%s\n' "${FAILED[@]}" > "$RETRY_FILE"
+  echo "━━━ Done (${#FAILED[@]} failed: ${FAILED[*]} — will retry next run) ━━━"
 else
+  rm -f "$RETRY_FILE"
   echo "━━━ Done ━━━"
 fi
 
