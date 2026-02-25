@@ -805,10 +805,13 @@ server.tool(
 
 server.tool(
   'dagaz_delete_event',
-  'Delete a calendar event',
-  { event_id: z.string().describe('Event ID (local UUID or Google Calendar ID)') },
-  async ({ event_id }) => {
-    const data = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}`, { method: 'DELETE' });
+  'Delete a calendar event. For recurring events, scope="single" deletes one instance, scope="all" deletes the entire series.',
+  {
+    event_id: z.string().describe('Event ID (local UUID or Google Calendar ID)'),
+    scope: z.enum(['single', 'all']).default('single').describe('Delete scope: "single" for this instance, "all" for entire recurring series'),
+  },
+  async ({ event_id, scope }) => {
+    const data = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}?scope=${scope}`, { method: 'DELETE' });
     return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
   }
 );

@@ -46,7 +46,7 @@ const api = {
   getEvent: (id: string) => ipcRenderer.invoke(IPC.EVENT_GET, id),
   createEvent: (data: any) => ipcRenderer.invoke(IPC.EVENT_CREATE, data),
   updateEvent: (id: string, updates: any) => ipcRenderer.invoke(IPC.EVENT_UPDATE, id, updates),
-  deleteEvent: (id: string) => ipcRenderer.invoke(IPC.EVENT_DELETE, id),
+  deleteEvent: (id: string, scope?: 'single' | 'all') => ipcRenderer.invoke(IPC.EVENT_DELETE, id, scope),
   rsvpEvent: (id: string, response: string) => ipcRenderer.invoke(IPC.EVENT_RSVP, id, response),
 
   // Agenda / Today

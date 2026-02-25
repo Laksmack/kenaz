@@ -274,18 +274,29 @@ export function startApiServer(
       const event = resolveEvent(req.params.id);
       if (!event) return res.status(404).json({ error: 'Event not found' });
 
+      const scope = (req.query.scope as string) || 'single';
+      const deleteSeries = scope === 'all' && event.recurring_event_id;
+
       if (connectivity.isOnline && google.isAuthorized() && event.google_id) {
-        await google.deleteEvent(event.calendar_id, event.google_id);
-        cache.deleteEvent(event.id);
+        if (deleteSeries) {
+          await google.deleteEvent(event.calendar_id, event.recurring_event_id!);
+          const removed = cache.deleteRecurringSeries(event.recurring_event_id!);
+          res.json({ success: true, deleted: removed, scope: 'all' });
+        } else {
+          await google.deleteEvent(event.calendar_id, event.google_id);
+          cache.deleteEvent(event.id);
+          res.json({ success: true, scope: 'single' });
+        }
       } else {
         if (event.google_id) {
+          const targetId = deleteSeries ? event.recurring_event_id! : event.google_id;
           cache.markEventPending(event.id, 'delete');
-          cache.enqueueSync(event.google_id, event.calendar_id, 'delete', {});
+          cache.enqueueSync(targetId, event.calendar_id, 'delete', {});
         } else {
           cache.deleteEvent(event.id);
         }
+        res.json({ success: true, queued: true });
       }
-      res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

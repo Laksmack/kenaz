@@ -386,6 +386,13 @@ export class CacheStore {
     }
   }
 
+  deleteRecurringSeries(recurringEventId: string): number {
+    const result = this.db.prepare(
+      'DELETE FROM events WHERE recurring_event_id = ? OR google_id = ?'
+    ).run(recurringEventId, recurringEventId);
+    return result.changes;
+  }
+
   reconcileCalendarEvents(calendarId: string, liveGoogleIds: Set<string>, timeMin: string, timeMax: string): number {
     const localRows = this.db.prepare(`
       SELECT id, google_id FROM events

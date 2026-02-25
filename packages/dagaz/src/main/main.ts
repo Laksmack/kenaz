@@ -374,14 +374,21 @@ function registerIpcHandlers() {
     return cache.getEvent(id);
   });
 
-  ipcMain.handle(IPC.EVENT_DELETE, async (_event, id: string) => {
+  ipcMain.handle(IPC.EVENT_DELETE, async (_event, id: string, scope?: 'single' | 'all') => {
     const existing = cache.getEvent(id);
     if (!existing) return;
 
+    const deleteSeries = scope === 'all' && existing.recurring_event_id;
+
     if (connectivity.isOnline && google.isAuthorized() && existing.google_id) {
       try {
-        await google.deleteEvent(existing.calendar_id, existing.google_id);
-        cache.deleteEvent(id);
+        if (deleteSeries) {
+          await google.deleteEvent(existing.calendar_id, existing.recurring_event_id!);
+          cache.deleteRecurringSeries(existing.recurring_event_id!);
+        } else {
+          await google.deleteEvent(existing.calendar_id, existing.google_id);
+          cache.deleteEvent(id);
+        }
         notifyEventsChanged();
         return;
       } catch (e: any) {
@@ -390,8 +397,13 @@ function registerIpcHandlers() {
     }
 
     if (existing.google_id) {
-      cache.markEventPending(id, 'delete');
-      cache.enqueueSync(existing.google_id, existing.calendar_id, 'delete', {});
+      if (deleteSeries) {
+        cache.markEventPending(id, 'delete');
+        cache.enqueueSync(existing.recurring_event_id!, existing.calendar_id, 'delete', {});
+      } else {
+        cache.markEventPending(id, 'delete');
+        cache.enqueueSync(existing.google_id, existing.calendar_id, 'delete', {});
+      }
     } else {
       cache.deleteEvent(id);
     }

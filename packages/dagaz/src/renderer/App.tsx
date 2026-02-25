@@ -35,6 +35,7 @@ export default function App() {
   const [showInvitesPanel, setShowInvitesPanel] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; summary: string } | null>(null);
 
   const showToast = useCallback((msg: string, durationMs = 3000) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -195,18 +196,17 @@ export default function App() {
     }
   }, [refresh, selectedEvent, showToast]);
 
-  const handleDeleteEvent = useCallback(async (id: string) => {
-    // Find the event to check if it's recurring
+  const handleDeleteEvent = useCallback(async (id: string, scope?: 'single' | 'all') => {
     const event = rawEvents.find(e => e.id === id) || selectedEvent;
-    if (event?.recurring_event_id) {
-      const ok = window.confirm(
-        `"${event.summary}" is a recurring event.\n\nOK = Delete only this event\nCancel = Don't delete`
-      );
-      if (!ok) return;
+    if (event?.recurring_event_id && !scope) {
+      setDeleteConfirm({ id, summary: event.summary });
+      return;
     }
-    await window.dagaz.deleteEvent(id);
+    await window.dagaz.deleteEvent(id, scope);
     setSelectedEvent(prev => prev?.id === id ? null : prev);
-    showToast(event ? `"${event.summary}" deleted` : 'Event deleted');
+    setDeleteConfirm(null);
+    const label = scope === 'all' ? 'series' : 'event';
+    showToast(event ? `"${event.summary}" ${label} deleted` : 'Event deleted');
     refresh({ full: false });
   }, [refresh, rawEvents, selectedEvent, showToast]);
 
@@ -767,6 +767,44 @@ export default function App() {
                   </div>
                 </React.Fragment>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation for recurring events */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setDeleteConfirm(null)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="relative bg-bg-secondary border border-border-subtle rounded-xl shadow-2xl w-[340px] animate-slide-up"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 pt-4 pb-2">
+              <h3 className="text-sm font-semibold text-text-primary">Delete recurring event</h3>
+              <p className="text-xs text-text-secondary mt-1.5 leading-relaxed">
+                "{deleteConfirm.summary}" is part of a series.
+              </p>
+            </div>
+            <div className="px-5 pb-4 pt-3 flex flex-col gap-2">
+              <button
+                onClick={() => handleDeleteEvent(deleteConfirm.id, 'single')}
+                className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors"
+              >
+                This event only
+              </button>
+              <button
+                onClick={() => handleDeleteEvent(deleteConfirm.id, 'all')}
+                className="w-full text-left px-3 py-2 rounded-lg text-xs text-red-400 bg-bg-tertiary border border-border-subtle hover:border-red-400/40 transition-colors"
+              >
+                All events in series
+              </button>
+              <button
+                onClick={() => setDeleteConfirm(null)}
+                className="w-full text-center px-3 py-1.5 text-xs text-text-muted hover:text-text-primary transition-colors mt-1"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>
