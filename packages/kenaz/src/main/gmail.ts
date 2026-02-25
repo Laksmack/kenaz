@@ -868,6 +868,139 @@ export class GmailService {
     };
   }
 
+  // ── Forward ─────────────────────────────────────────────────
+
+  /**
+   * Forward a message server-side, preserving original attachments without
+   * requiring the caller to download and re-upload them.
+   */
+  async forwardEmail(params: {
+    messageId: string;
+    to: string;
+    cc?: string;
+    bcc?: string;
+    body?: string;
+  }): Promise<{ id: string; threadId: string }> {
+    if (!this.gmail) throw new Error('Not authenticated');
+
+    // Fetch the original message
+    const msgRes = await this.gmail.users.messages.get({
+      userId: 'me',
+      id: params.messageId,
+      format: 'full',
+    });
+
+    const original = this.parseMessage(msgRes.data);
+    const appConfig = this.config.get();
+
+    const fromHeader = appConfig.displayName
+      ? `From: ${mimeEncodeHeader(appConfig.displayName)} <${this.userEmail}>`
+      : `From: ${this.userEmail}`;
+
+    const subject = original.subject.startsWith('Fwd:')
+      ? original.subject
+      : `Fwd: ${original.subject}`;
+
+    // Build forwarded body
+    const fwdHeader = [
+      '---------- Forwarded message ----------',
+      `From: ${original.from.name ? `${original.from.name} <${original.from.email}>` : original.from.email}`,
+      `Date: ${new Date(original.date).toLocaleString()}`,
+      `Subject: ${original.subject}`,
+      `To: ${original.to.map((t) => t.email).join(', ')}`,
+    ].join('<br/>');
+
+    const prefixHtml = params.body ? `${params.body}<br/><br/>` : '';
+    const htmlBody = `${prefixHtml}<div style="color:#666;">${fwdHeader}<br/><br/>${original.body || original.bodyText?.replace(/\n/g, '<br/>') || ''}</div>`;
+
+    // Fetch all attachments server-side
+    const attachments: { filename: string; mimeType: string; base64: string }[] = [];
+    for (const att of original.attachments) {
+      const buf = await this.getAttachmentBuffer(params.messageId, att.id);
+      attachments.push({
+        filename: att.filename,
+        mimeType: att.mimeType,
+        base64: buf.toString('base64'),
+      });
+    }
+
+    // Build MIME message
+    const boundary = `kenaz_fwd_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+    const topHeaders = [
+      fromHeader,
+      `To: ${params.to}`,
+      params.cc ? `Cc: ${params.cc}` : null,
+      params.bcc ? `Bcc: ${params.bcc}` : null,
+      `Subject: ${mimeEncodeHeader(subject)}`,
+      'MIME-Version: 1.0',
+      attachments.length > 0
+        ? `Content-Type: multipart/mixed; boundary="${boundary}"`
+        : 'Content-Type: text/html; charset=utf-8',
+    ].filter(Boolean);
+
+    let rawMessage: string;
+
+    if (attachments.length > 0) {
+      const mimeBody: string[] = [];
+
+      mimeBody.push(`--${boundary}`);
+      mimeBody.push('Content-Type: text/html; charset=utf-8');
+      mimeBody.push('Content-Transfer-Encoding: 7bit');
+      mimeBody.push('');
+      mimeBody.push(htmlBody);
+
+      for (const att of attachments) {
+        const wrappedBase64 = att.base64.replace(/(.{76})/g, '$1\r\n');
+        mimeBody.push(`--${boundary}`);
+        mimeBody.push(`Content-Type: ${att.mimeType}; name="${att.filename}"`);
+        mimeBody.push('Content-Transfer-Encoding: base64');
+        mimeBody.push(`Content-Disposition: attachment; filename="${att.filename}"`);
+        mimeBody.push('');
+        mimeBody.push(wrappedBase64);
+      }
+
+      mimeBody.push(`--${boundary}--`);
+      rawMessage = [...topHeaders, '', ...mimeBody].join('\r\n');
+    } else {
+      rawMessage = [...topHeaders, '', htmlBody].join('\r\n');
+    }
+
+    console.log(`[FORWARD] ${params.messageId} → ${params.to} (${attachments.length} attachments, ${(rawMessage.length / 1024).toFixed(0)} KB)`);
+
+    const messageBuffer = Buffer.from(rawMessage);
+    const MESSAGE_SIZE_THRESHOLD = 4 * 1024 * 1024;
+
+    let res;
+    if (messageBuffer.length > MESSAGE_SIZE_THRESHOLD) {
+      const { Readable } = await import('stream');
+      res = await this.gmail.users.messages.send({
+        userId: 'me',
+        requestBody: {},
+        media: {
+          mimeType: 'message/rfc822',
+          body: Readable.from(messageBuffer),
+        },
+      });
+    } else {
+      const encodedMessage = messageBuffer
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+
+      res = await this.gmail.users.messages.send({
+        userId: 'me',
+        requestBody: { raw: encodedMessage },
+      });
+    }
+
+    return {
+      id: res.data.id || '',
+      threadId: res.data.threadId || '',
+    };
+  }
+
   // ── Drafts ──────────────────────────────────────────────────
 
   async createDraft(payload: Partial<SendEmailPayload>): Promise<string> {

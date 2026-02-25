@@ -147,6 +147,21 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
     }
   });
 
+  // ── Gmail: Forward ───────────────────────────────────────────
+
+  app.post('/api/forward', async (req, res) => {
+    try {
+      const { messageId, to, cc, bcc, body } = req.body;
+      if (!messageId || !to) {
+        return res.status(400).json({ error: 'messageId and to are required' });
+      }
+      const result = await g().forwardEmail({ messageId, to, cc, bcc, body });
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Gmail: Labels & Actions ────────────────────────────────
 
   app.get('/api/labels', async (_req, res) => {
@@ -561,6 +576,9 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
         },
         '/api/send': {
           post: { summary: 'Send an email', operationId: 'sendEmail', tags: ['Gmail'], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/SendEmailPayload' } } } }, responses: { '200': { description: 'Sent message ID and thread ID' } } },
+        },
+        '/api/forward': {
+          post: { summary: 'Forward a message with original attachments preserved server-side', operationId: 'forwardEmail', tags: ['Gmail'], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['messageId', 'to'], properties: { messageId: { type: 'string', description: 'ID of the message to forward' }, to: { type: 'string', description: 'Comma-separated recipient emails' }, cc: { type: 'string' }, bcc: { type: 'string' }, body: { type: 'string', description: 'Optional HTML to prepend above the forwarded content' } } } } } }, responses: { '200': { description: 'Sent message ID and thread ID', content: { 'application/json': { schema: { type: 'object', properties: { id: { type: 'string' }, threadId: { type: 'string' } } } } } } } },
         },
         '/api/draft': {
           post: { summary: 'Create a draft', operationId: 'createDraft', tags: ['Gmail'], requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/SendEmailPayload' } } } }, responses: { '200': { description: 'Draft ID' } } },
