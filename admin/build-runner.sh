@@ -208,19 +208,32 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
     local log="$REPO_ROOT/.upload-$app.log"
     {
       echo "$(date '+%H:%M:%S') starting upload of $name v$version"
-      ssh "$REMOTE_HOST" "mkdir -p $REMOTE_PATH/$app"
+      local ssh_opts=(-o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+      ssh "${ssh_opts[@]}" "$REMOTE_HOST" "mkdir -p $REMOTE_PATH/$app"
 
       local remote_dest="$REMOTE_HOST:$REMOTE_PATH/$app/"
+      local scp_opts=(-q -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
       local failed=false
+      local max_retries=2
 
       for f in "$release_dir"/*.dmg "$release_dir"/*.zip "$release_dir"/latest-mac.yml; do
         [ -f "$f" ] || continue
         local basename_f="${f##*/}"
         echo "  uploading $basename_f ($(du -h "$f" | cut -f1))..."
-        if ! scp -q "$f" "$remote_dest"; then
-          echo "  error: failed to upload $basename_f"
-          failed=true
-        fi
+        local attempt=0
+        while [ $attempt -le $max_retries ]; do
+          if scp "${scp_opts[@]}" "$f" "$remote_dest"; then
+            break
+          fi
+          attempt=$((attempt + 1))
+          if [ $attempt -le $max_retries ]; then
+            echo "  retrying $basename_f (attempt $((attempt + 1))/$((max_retries + 1)))..."
+            sleep 5
+          else
+            echo "  error: failed to upload $basename_f after $((max_retries + 1)) attempts"
+            failed=true
+          fi
+        done
       done
 
       if [ "$failed" = true ]; then
@@ -231,12 +244,12 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
       local dmg_name
       dmg_name=$(ls -t "$release_dir"/*.dmg 2>/dev/null | head -1 | xargs basename)
       if [ -n "$dmg_name" ]; then
-        ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && ln -sf '$dmg_name' ${app}_latest.dmg"
+        ssh "${ssh_opts[@]}" "$REMOTE_HOST" "cd $REMOTE_PATH/$app && ln -sf '$dmg_name' ${app}_latest.dmg"
       fi
 
       # Only clean old versions after a successful upload
       local cleaned
-      cleaned=$(ssh "$REMOTE_HOST" "cd $REMOTE_PATH/$app && find . -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.zip' \) ! -name '*${version}*' -print -delete 2>/dev/null" | wc -l | tr -d ' ')
+      cleaned=$(ssh "${ssh_opts[@]}" "$REMOTE_HOST" "cd $REMOTE_PATH/$app && find . -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.zip' \) ! -name '*${version}*' -print -delete 2>/dev/null" | wc -l | tr -d ' ')
       if [ "$cleaned" -gt 0 ] 2>/dev/null; then
         echo "cleaned $cleaned old release file(s)"
       fi
