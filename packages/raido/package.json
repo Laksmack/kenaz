@@ -1,6 +1,6 @@
 {
   "name": "@futhark/raido",
-  "version": "1.3.4",
+  "version": "1.3.5",
   "description": "Raidō ᚱ — Personal task manager",
   "main": "dist/main/main/main.js",
   "private": true,
