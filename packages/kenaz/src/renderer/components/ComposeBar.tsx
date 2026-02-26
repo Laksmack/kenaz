@@ -299,14 +299,18 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
   });
 
   // Auto-focus: TO field for new compose, body for replies (markdown only — TipTap handles its own autofocus)
+  // Deferred with requestAnimationFrame so the triggering keypress (e.g. 'c') finishes
+  // before the input receives focus — otherwise the character leaks into the field.
   useEffect(() => {
-    if (composeMode === 'markdown' && initialData?.replyToThreadId && bodyRef.current) {
-      bodyRef.current.focus();
-      bodyRef.current.setSelectionRange(0, 0);
-      bodyRef.current.scrollTop = 0;
-    } else if (!initialData?.replyToThreadId && toRef.current) {
-      toRef.current.focus();
-    }
+    requestAnimationFrame(() => {
+      if (composeMode === 'markdown' && initialData?.replyToThreadId && bodyRef.current) {
+        bodyRef.current.focus();
+        bodyRef.current.setSelectionRange(0, 0);
+        bodyRef.current.scrollTop = 0;
+      } else if (!initialData?.replyToThreadId && toRef.current) {
+        toRef.current.focus();
+      }
+    });
   }, []);
 
   const hasChanges = (() => {
