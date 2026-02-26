@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useState, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { CalendarEvent } from '../../shared/types';
 import { formatTime } from '../lib/utils';
 import type { DragMode } from '../hooks/useEventDrag';
@@ -153,7 +154,7 @@ export function EventBlock({ event, selected, onClick, onRSVP, onDelete, onDragS
         </div>
       )}
 
-      {/* Cross-app context menu */}
+      {/* Cross-app context menu — portaled to body to escape stacking contexts */}
       {ctxMenu && (() => {
         const ctx: EventContext = {
           id: event.id,
@@ -174,16 +175,17 @@ export function EventBlock({ event, selected, onClick, onRSVP, onDelete, onDragS
         if (onDelete) {
           actions.push({ label: 'Delete This Event', icon: '🗑', fn: () => onDelete(event.id), danger: true });
         }
-        return (
+        return createPortal(
           <div
             ref={ctxRef}
-            className="fixed z-[100] py-1 min-w-[200px] rounded-lg shadow-2xl border border-[#2a3f5a]"
+            className="fixed z-[9999] py-1 min-w-[200px] rounded-lg shadow-2xl border border-[#2a3f5a]"
             style={{
               left: ctxPos?.left ?? ctxMenu.x,
               top: ctxPos?.top ?? ctxMenu.y,
               visibility: ctxPos ? 'visible' : 'hidden',
               backgroundColor: '#111d2e',
             }}
+            onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
           >
             {actions.map((a, i) => (
@@ -200,7 +202,8 @@ export function EventBlock({ event, selected, onClick, onRSVP, onDelete, onDragS
                 {a.label}
               </button>
             ))}
-          </div>
+          </div>,
+          document.body
         );
       })()}
     </div>
