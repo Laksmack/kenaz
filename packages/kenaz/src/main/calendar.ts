@@ -166,19 +166,34 @@ export class CalendarService {
     const summary = icsText.match(/^SUMMARY[^:]*:(.+)$/m)?.[1]?.trim();
     const location = icsText.match(/^LOCATION[^:]*:(.+)$/m)?.[1]?.trim();
     const description = icsText.match(/^DESCRIPTION[^:]*:(.+)$/m)?.[1]?.trim()?.replace(/\\n/g, '\n');
-    const dtstart = icsText.match(/^DTSTART[^:]*:(.+)$/m)?.[1]?.trim();
-    const dtend = icsText.match(/^DTEND[^:]*:(.+)$/m)?.[1]?.trim();
+    const dtstartLine = icsText.match(/^DTSTART[^:]*:(.+)$/m);
+    const dtendLine = icsText.match(/^DTEND[^:]*:(.+)$/m);
+    const dtstart = dtstartLine?.[1]?.trim();
+    const dtend = dtendLine?.[1]?.trim();
+
+    const tzidMatch = icsText.match(/DTSTART[^;]*;TZID=([^:]+):/);
+    const tzid = tzidMatch?.[1]?.trim();
+    const TZID_TO_IANA: Record<string, string> = {
+      'Pacific Standard Time': 'America/Los_Angeles',
+      'Eastern Standard Time': 'America/New_York',
+      'Central Standard Time': 'America/Chicago',
+      'Mountain Standard Time': 'America/Denver',
+      'GMT Standard Time': 'Europe/London',
+      'W. Europe Standard Time': 'Europe/Berlin',
+      'Central European Standard Time': 'Europe/Paris',
+    };
+    const timeZone = tzid && TZID_TO_IANA[tzid] ? TZID_TO_IANA[tzid] : undefined;
 
     if (!uid || !dtstart) return null;
 
-    const parseIcsDt = (dt: string): { date: string } | { dateTime: string } | null => {
+    const parseIcsDt = (dt: string): { date: string } | { dateTime: string; timeZone?: string } | null => {
       if (dt.length === 8) {
         return { date: `${dt.slice(0, 4)}-${dt.slice(4, 6)}-${dt.slice(6, 8)}` };
       }
       const m = dt.match(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?/);
       if (!m) return null;
       const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}${dt.endsWith('Z') ? 'Z' : ''}`;
-      return { dateTime: iso };
+      return timeZone ? { dateTime: iso, timeZone } : { dateTime: iso };
     };
 
     const start = parseIcsDt(dtstart);

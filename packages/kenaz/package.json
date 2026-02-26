@@ -1,6 +1,6 @@
 {
   "name": "@futhark/kenaz",
-  "version": "0.21.2",
+  "version": "0.21.3",
   "description": "Kenaz ᚲ — Personal Gmail client with HubSpot CRM, Google Calendar, and Claude API",
   "main": "dist/main/main/main.js",
   "bin": {

@@ -506,8 +506,12 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
   const [eventId, setEventId] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copying, setCopying] = useState(false);
 
   const invite = detectCalendarInvite(message);
+  const hasIcsAttachment = message.attachments.some(
+    (a) => a.filename.endsWith('.ics') || a.mimeType === 'text/calendar' || a.mimeType === 'application/ics'
+  );
 
   useEffect(() => {
     if (!invite.isInvite) return;
@@ -574,6 +578,30 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
       setRsvpStatus('none');
     }
   }, [eventId]);
+
+  const handleCreateCopy = useCallback(async () => {
+    const icsAttachment = message.attachments.find(
+      (a) => a.filename.endsWith('.ics') || a.mimeType === 'text/calendar' || a.mimeType === 'application/ics'
+    );
+    if (!icsAttachment) return;
+    setCopying(true);
+    setError(null);
+    try {
+      const base64 = await window.kenaz.getAttachmentBase64(message.id, icsAttachment.id);
+      const icsRaw = atob(base64);
+      const icsText = icsRaw.replace(/\r?\n[ \t]/g, '');
+      const importedId = await window.kenaz.calendarImportIcs(icsText);
+      if (importedId) {
+        setEventId(importedId);
+      } else {
+        setError('Could not create calendar event');
+      }
+    } catch (e: any) {
+      setError(e.message || 'Failed to create copy');
+    } finally {
+      setCopying(false);
+    }
+  }, [message.id, message.attachments]);
 
   if (!invite.isInvite) return null;
 
@@ -649,11 +677,22 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
         <span className="text-[10px] text-text-muted italic animate-pulse">Looking up calendar event...</span>
       )}
       {!eventId && invite.isInvite && !resolving && (
-        <span className="text-[10px] text-text-muted italic">
-          {message.subject.toLowerCase().startsWith('fwd:')
-            ? 'Forwarded invite — not in your calendar'
-            : 'Could not find event — open in Google Calendar to respond'}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-text-muted italic">
+            {message.subject.toLowerCase().startsWith('fwd:')
+              ? 'Forwarded invite — not in your calendar'
+              : 'Could not find event — open in Google Calendar to respond'}
+          </span>
+          {hasIcsAttachment && (
+            <button
+              onClick={handleCreateCopy}
+              disabled={copying}
+              className="px-2.5 py-1 rounded text-[11px] font-medium bg-accent-primary/15 text-accent-primary hover:bg-accent-primary/25 transition-colors disabled:opacity-60"
+            >
+              {copying ? 'Creating...' : 'Create copy in own calendar'}
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
