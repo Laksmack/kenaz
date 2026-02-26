@@ -166,6 +166,8 @@ export class CalendarService {
     const summary = icsText.match(/^SUMMARY[^:]*:(.+)$/m)?.[1]?.trim();
     const location = icsText.match(/^LOCATION[^:]*:(.+)$/m)?.[1]?.trim();
     const description = icsText.match(/^DESCRIPTION[^:]*:(.+)$/m)?.[1]?.trim()?.replace(/\\n/g, '\n');
+    const organizerLine = icsText.match(/^ORGANIZER[^:]*:(.+)$/m)?.[1]?.trim();
+    const organizerName = icsText.match(/^ORGANIZER[^:]*CN=([^;:]+)[^:]*:/m)?.[1]?.trim();
     const dtstartLine = icsText.match(/^DTSTART[^:]*:(.+)$/m);
     const dtendLine = icsText.match(/^DTEND[^:]*:(.+)$/m);
     const dtstart = dtstartLine?.[1]?.trim();
@@ -200,6 +202,33 @@ export class CalendarService {
     const end = dtend ? parseIcsDt(dtend) : start;
     if (!start || !end) return null;
 
+    const attendeeNotes: string[] = [];
+    const attendeeRegex = /^ATTENDEE[^:]*:mailto:([^\r\n]+)/gm;
+    let match: RegExpExecArray | null;
+    while ((match = attendeeRegex.exec(icsText)) !== null) {
+      const fullLine = match[0];
+      const email = match[1].trim();
+      const name = fullLine.match(/CN=([^;:]+)/)?.[1]?.trim();
+      attendeeNotes.push(name ? `${name} <${email}>` : email);
+    }
+
+    const organizerNote = organizerLine
+      ? (organizerName ? `${organizerName} <${organizerLine.replace(/^mailto:/i, '')}>` : organizerLine.replace(/^mailto:/i, ''))
+      : null;
+
+    let finalDescription = description || '';
+    const peopleSection: string[] = [];
+    if (organizerNote) peopleSection.push(`Organizer: ${organizerNote}`);
+    if (attendeeNotes.length > 0) {
+      peopleSection.push('Original attendees:');
+      for (const attendee of attendeeNotes) peopleSection.push(`- ${attendee}`);
+    }
+    if (peopleSection.length > 0) {
+      finalDescription = finalDescription
+        ? `${finalDescription}\n\n---\n${peopleSection.join('\n')}`
+        : peopleSection.join('\n');
+    }
+
     try {
       const res = await this.calendar.events.import({
         calendarId,
@@ -209,7 +238,7 @@ export class CalendarService {
           start,
           end,
           location: location || undefined,
-          description: description || undefined,
+          description: finalDescription || undefined,
         },
       });
       console.log(`[Calendar] Imported event from ICS: ${res.data.id}`);

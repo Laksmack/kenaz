@@ -507,6 +507,7 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
   const [resolving, setResolving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copying, setCopying] = useState(false);
+  const [copyCreated, setCopyCreated] = useState(false);
 
   const invite = detectCalendarInvite(message);
   const hasIcsAttachment = message.attachments.some(
@@ -545,11 +546,6 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
         const googleEventId = await window.kenaz.calendarFindEvent(uid);
         if (cancelled) return;
         if (googleEventId) { setEventId(googleEventId); return; }
-
-        // Step 3: Event not in Google Calendar yet — import from ICS
-        const importedId = await window.kenaz.calendarImportIcs(icsText);
-        if (cancelled) return;
-        if (importedId) setEventId(importedId);
       } catch (e) {
         console.error('[RsvpBar] Event resolution failed:', e);
       } finally {
@@ -586,13 +582,15 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
     if (!icsAttachment) return;
     setCopying(true);
     setError(null);
+    setCopyCreated(false);
     try {
       const base64 = await window.kenaz.getAttachmentBase64(message.id, icsAttachment.id);
       const icsRaw = atob(base64);
       const icsText = icsRaw.replace(/\r?\n[ \t]/g, '');
       const importedId = await window.kenaz.calendarImportIcs(icsText);
       if (importedId) {
-        setEventId(importedId);
+        // This is a personal copy, not an event you can RSVP to.
+        setCopyCreated(true);
       } else {
         setError('Could not create calendar event');
       }
@@ -627,7 +625,7 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
         <span className="font-medium text-text-secondary">Calendar Invite</span>
       </div>
 
-      {rsvpStatus === 'none' && (eventId || resolving) && (
+      {rsvpStatus === 'none' && eventId && (
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => handleRsvp('accepted')}
@@ -673,6 +671,9 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
 
       {error && <span className="text-[11px] text-red-400">{error}</span>}
 
+      {copyCreated && (
+        <span className="text-[10px] text-green-400 italic">Copy created in your calendar</span>
+      )}
       {!eventId && invite.isInvite && resolving && (
         <span className="text-[10px] text-text-muted italic animate-pulse">Looking up calendar event...</span>
       )}
