@@ -49,6 +49,14 @@ interface DagazAPI {
   // Needs-action events (calendar events awaiting RSVP)
   getNeedsActionEvents(): Promise<import('../shared/types').CalendarEvent[]>;
 
+  // Cross-app
+  crossAppFetch(url: string, options?: any): Promise<any>;
+
+  // Overlay / "Meet with…"
+  fetchOverlayEvents(email: string, start: string, end: string): Promise<{ success: boolean; events: any[] }>;
+  checkOverlayAccess(email: string): Promise<{ accessible: boolean }>;
+  searchContacts(query: string): Promise<Array<{ email: string; display_name: string | null; count: number }>>;
+
   // MCP
   getMcpStatus(): Promise<any>;
 

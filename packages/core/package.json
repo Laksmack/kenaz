@@ -10,10 +10,18 @@
   },
   "exports": {
     "./styles/*": "./styles/*",
+    "./components/UpdateBanner": "./components/UpdateBanner.tsx",
+    "./components/UndoToast": "./components/UndoToast.tsx",
+    "./components/ErrorBoundary": "./components/ErrorBoundary.tsx",
     "./components/*": "./components/*",
     "./hooks/*": "./hooks/*",
+    "./lib/crossApp": "./lib/crossApp.ts",
+    "./lib/utils": "./lib/utils.ts",
+    "./lib/auto-updater": {
+      "types": "./lib/auto-updater.ts",
+      "default": "./dist/lib/auto-updater.js"
+    },
     "./lib/*": "./lib/*",
-    "./lib/auto-updater": "./dist/lib/auto-updater.js",
     "./types": "./types/index.ts",
     "./mcp/installer": "./mcp/installer.ts",
     "./tailwind.preset": "./tailwind.preset.mjs",
