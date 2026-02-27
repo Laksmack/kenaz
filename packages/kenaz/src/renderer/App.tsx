@@ -1206,6 +1206,7 @@ export default function App() {
         <SettingsModal
           onClose={() => { setSettingsOpen(false); setSettingsTab(undefined); setPrefillRule(undefined); }}
           onViewsChanged={(v) => setViews(v)}
+          onConfigChanged={(cfg) => setAppConfig(cfg)}
           initialTab={settingsTab as any}
           prefillRule={prefillRule}
         />

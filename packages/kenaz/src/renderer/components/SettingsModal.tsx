@@ -5,13 +5,14 @@ import type { AppConfig, View, Rule, RuleCondition, RuleAction } from '@shared/t
 interface Props {
   onClose: () => void;
   onViewsChanged?: (views: View[]) => void;
+  onConfigChanged?: (config: AppConfig) => void;
   initialTab?: SettingsTab;
   prefillRule?: Partial<Rule>;
 }
 
 type SettingsTab = 'general' | 'views' | 'rules' | 'hubspot' | 'api' | 'signature' | 'auto-bcc' | 'cache' | 'calendar' | 'mcp';
 
-export function SettingsModal({ onClose, onViewsChanged, initialTab, prefillRule }: Props) {
+export function SettingsModal({ onClose, onViewsChanged, onConfigChanged, initialTab, prefillRule }: Props) {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab || 'general');
   const [saving, setSaving] = useState(false);
@@ -27,6 +28,7 @@ export function SettingsModal({ onClose, onViewsChanged, initialTab, prefillRule
     try {
       const updated = await window.kenaz.setConfig(updates);
       setConfig(updated);
+      onConfigChanged?.(updated);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
@@ -34,7 +36,7 @@ export function SettingsModal({ onClose, onViewsChanged, initialTab, prefillRule
     } finally {
       setSaving(false);
     }
-  }, []);
+  }, [onConfigChanged]);
 
   // Reset saved indicator when switching tabs
   useEffect(() => { setSaved(false); }, [activeTab]);
@@ -197,7 +199,11 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
         <SettingsField label="Inbox Sort Order" description="Newest first is the default. Oldest first is great for inbox-zero workflows — work through emails from oldest to newest.">
           <select
             value={inboxSort}
-            onChange={(e) => setInboxSort(e.target.value as 'newest' | 'oldest')}
+            onChange={(e) => {
+              const val = e.target.value as 'newest' | 'oldest';
+              setInboxSort(val);
+              onSave({ inboxSort: val });
+            }}
             className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary"
           >
             <option value="newest">Newest first</option>
@@ -232,7 +238,6 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
           displayName: displayName.trim(),
           defaultView,
           archiveOnReply,
-          inboxSort,
           composeMode,
           theme,
         })} saving={saving} saved={saved} />
