@@ -6,6 +6,12 @@ import crypto from 'crypto';
 import type { Task, TaskAttachment, TaskGroup, Tag, TaskStats, ChecklistItem, TaskComment } from '../shared/types';
 import { extractGroup } from '../shared/types';
 
+/** Return local-timezone date as YYYY-MM-DD (avoids UTC drift from toISOString). */
+function localToday(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export class TaskStore {
   private db: Database.Database;
 
@@ -222,7 +228,7 @@ export class TaskStore {
   // ── Task Queries ──────────────────────────────────────────
 
   getToday(): Task[] {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localToday();
     const rows = this.db.prepare(`
       SELECT * FROM tasks
       WHERE status = 'open'
@@ -245,7 +251,7 @@ export class TaskStore {
   }
 
   getUpcoming(): Task[] {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localToday();
     const rows = this.db.prepare(`
       SELECT * FROM tasks
       WHERE status = 'open'
@@ -357,7 +363,7 @@ export class TaskStore {
 
     let spawned: Task | null = null;
     if (existing?.recurrence) {
-      const baseDue = existing.due_date || new Date().toISOString().split('T')[0];
+      const baseDue = existing.due_date || localToday();
       const nextDue = this.computeNextDueDate(baseDue, existing.recurrence);
       spawned = this.createTask({
         title: existing.title,
@@ -397,7 +403,7 @@ export class TaskStore {
         d.setMonth(d.getMonth() + 1);
         break;
     }
-    return d.toISOString().split('T')[0];
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   }
 
   deleteTask(id: string): void {
@@ -420,7 +426,7 @@ export class TaskStore {
   getLogbook(days: number = 7): Task[] {
     const since = new Date();
     since.setDate(since.getDate() - days);
-    const sinceStr = since.toISOString().split('T')[0];
+    const sinceStr = `${since.getFullYear()}-${String(since.getMonth() + 1).padStart(2, '0')}-${String(since.getDate()).padStart(2, '0')}`;
 
     const rows = this.db.prepare(`
       SELECT * FROM tasks
@@ -431,7 +437,7 @@ export class TaskStore {
   }
 
   getStats(): TaskStats {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localToday();
 
     const overdue = (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks
@@ -456,7 +462,7 @@ export class TaskStore {
   }
 
   getOverdueCount(): number {
-    const today = new Date().toISOString().split('T')[0];
+    const today = localToday();
     return (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks
       WHERE due_date <= ? AND due_date IS NOT NULL AND status = 'open'
@@ -485,7 +491,7 @@ export class TaskStore {
 
   getGroup(name: string): Task[] {
     const prefix = `[${name}]`;
-    const today = new Date().toISOString().split('T')[0];
+    const today = localToday();
     const rows = this.db.prepare(`
       SELECT * FROM tasks
       WHERE title LIKE ? AND status = 'open'

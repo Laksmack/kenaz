@@ -191,7 +191,8 @@ export default function App() {
     const data: any = { title: titleText };
 
     if (currentView === 'today') {
-      data.due_date = new Date().toISOString().split('T')[0];
+      const d = new Date();
+      data.due_date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
 
     await window.raido.createTask(data);
