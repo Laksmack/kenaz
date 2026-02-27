@@ -515,6 +515,13 @@ export class CacheStore {
     });
   }
 
+  updateEventResponse(id: string, response: string): void {
+    this.db.prepare(`
+      UPDATE events SET self_response = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(response, id);
+  }
+
   updateRecurringSeriesResponse(recurringEventId: string, response: string): number {
     const result = this.db.prepare(`
       UPDATE events SET self_response = ?, updated_at = datetime('now')

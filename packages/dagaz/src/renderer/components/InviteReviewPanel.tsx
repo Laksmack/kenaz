@@ -54,6 +54,23 @@ export function InviteReviewPanel({ events, allEvents, isLoading, onRefresh, onR
 
   const [actionStates, setActionStates] = useState<Record<string, 'loading' | 'done' | 'error'>>({});
 
+  // Prune stale actionStates entries for events no longer in the list
+  const eventIds = useMemo(() => new Set(events.map(e => e.id)), [events]);
+  React.useEffect(() => {
+    setActionStates(prev => {
+      const pruned: Record<string, 'loading' | 'done' | 'error'> = {};
+      for (const [id, state] of Object.entries(prev)) {
+        if (eventIds.has(id)) pruned[id] = state;
+      }
+      return Object.keys(pruned).length === Object.keys(prev).length ? prev : pruned;
+    });
+  }, [eventIds]);
+
+  const visibleCount = useMemo(
+    () => events.filter(e => actionStates[e.id] !== 'done').length,
+    [events, actionStates],
+  );
+
   const handleAction = async (event: CalendarEvent, response: RsvpResponse) => {
     setActionStates(prev => ({ ...prev, [event.id]: 'loading' }));
     try {
@@ -71,9 +88,9 @@ export function InviteReviewPanel({ events, allEvents, isLoading, onRefresh, onR
       <div className="flex items-center justify-between p-4 border-b border-border-subtle">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-text-primary">Needs Response</h2>
-          {events.length > 0 && (
+          {visibleCount > 0 && (
             <span className="px-1.5 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary text-[10px] font-semibold">
-              {events.length}
+              {visibleCount}
             </span>
           )}
         </div>
@@ -94,7 +111,7 @@ export function InviteReviewPanel({ events, allEvents, isLoading, onRefresh, onR
 
       {/* Event list */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {events.length === 0 && (
+        {visibleCount === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-text-muted px-6">
             <svg className="w-8 h-8 mb-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />

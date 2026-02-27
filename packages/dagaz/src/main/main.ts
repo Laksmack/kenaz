@@ -429,9 +429,12 @@ function registerIpcHandlers() {
       }
     }
 
+    // Update local state immediately so the UI reflects the RSVP
+    cache.updateEventResponse(existing.id, response);
     if (existing.google_id) {
       cache.enqueueSync(existing.google_id, existing.calendar_id, 'rsvp', { response });
     }
+    notifyEventsChanged();
   });
 
   // Agenda / Today
