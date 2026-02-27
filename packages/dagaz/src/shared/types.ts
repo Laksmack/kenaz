@@ -223,6 +223,7 @@ export const IPC = {
   // Sync
   SYNC_STATUS: 'sync:status',
   SYNC_TRIGGER: 'sync:trigger',
+  SYNC_CLEAR_QUEUE: 'sync:clear-queue',
 
   // Parse
   PARSE_EVENT: 'parse:event',

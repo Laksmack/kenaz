@@ -596,9 +596,13 @@ export default function App() {
               <span className="text-[10px] text-text-muted bg-bg-tertiary px-1.5 py-0.5 rounded">Offline</span>
             )}
             {syncState.pendingCount > 0 && (
-              <span className="text-[10px] text-accent-warm bg-accent-warm/10 px-1.5 py-0.5 rounded">
-                {syncState.pendingCount} pending
-              </span>
+              <button
+                onClick={() => window.dagaz.clearSyncQueue()}
+                className="text-[10px] text-accent-warm bg-accent-warm/10 px-1.5 py-0.5 rounded hover:bg-accent-warm/20 transition-colors"
+                title="Click to clear pending sync queue"
+              >
+                {syncState.pendingCount} pending &times;
+              </button>
             )}
 
             <button

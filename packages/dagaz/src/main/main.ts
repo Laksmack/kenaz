@@ -468,6 +468,21 @@ function registerIpcHandlers() {
     return { status: sync.getStatus() };
   });
 
+  ipcMain.handle(IPC.SYNC_CLEAR_QUEUE, async () => {
+    const cleared = cache.clearSyncQueue();
+    // Notify renderer so the pending badge updates
+    try {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('sync:changed', {
+          status: sync.getStatus(),
+          lastSync: sync.getLastSync(),
+          pendingCount: 0,
+        });
+      }
+    } catch {}
+    return cleared;
+  });
+
   // Parse
   ipcMain.handle(IPC.PARSE_EVENT, async (_event, text: string) => {
     return parseNaturalLanguage(text);

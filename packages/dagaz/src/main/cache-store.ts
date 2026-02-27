@@ -457,6 +457,11 @@ export class CacheStore {
       .run(error, id);
   }
 
+  clearSyncQueue(): number {
+    const result = this.db.prepare('DELETE FROM sync_queue').run();
+    return result.changes;
+  }
+
   // ── Settings ──────────────────────────────────────────────
 
   getSetting(key: string): string | null {

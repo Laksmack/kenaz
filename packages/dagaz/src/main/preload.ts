@@ -16,6 +16,7 @@ const IPC = {
   FREEBUSY: 'freebusy',
   SYNC_STATUS: 'sync:status',
   SYNC_TRIGGER: 'sync:trigger',
+  SYNC_CLEAR_QUEUE: 'sync:clear-queue',
   PARSE_EVENT: 'parse:event',
   SETTINGS_GET: 'settings:get',
   SETTINGS_SET: 'settings:set',
@@ -60,6 +61,7 @@ const api = {
   // Sync
   getSyncStatus: () => ipcRenderer.invoke(IPC.SYNC_STATUS),
   triggerSync: (opts?: { full?: boolean }) => ipcRenderer.invoke(IPC.SYNC_TRIGGER, opts),
+  clearSyncQueue: () => ipcRenderer.invoke(IPC.SYNC_CLEAR_QUEUE),
 
   // Parse
   parseEvent: (text: string) => ipcRenderer.invoke(IPC.PARSE_EVENT, text),
