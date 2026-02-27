@@ -212,7 +212,9 @@ export default function App() {
 
   const handleRSVP = useCallback(async (id: string, response: 'accepted' | 'declined' | 'tentative') => {
     await window.dagaz.rsvpEvent(id, response);
-    refresh({ full: false });
+    // Don't trigger a sync here — the IPC handler already updated Google + local DB
+    // and fires events:changed which our hooks listen for. Triggering an incremental
+    // sync would race with the RSVP and potentially overwrite self_response with stale data.
     refreshNeedsAction();
     const updated = await window.dagaz.getEvent(id);
     setSelectedEvent(prev => prev?.id === id ? updated : prev);
@@ -228,7 +230,7 @@ export default function App() {
         } catch {}
       }
     }
-  }, [refresh, refreshNeedsAction, pendingInvites, dismissPendingInvite, refreshPendingInvites]);
+  }, [refreshNeedsAction, pendingInvites, dismissPendingInvite, refreshPendingInvites]);
 
   const handleInviteRsvp = useCallback(async (invite: { threadId: string; title: string; startTime: string | null }, response: 'accepted' | 'declined' | 'tentative') => {
     // Find matching calendar event to RSVP on

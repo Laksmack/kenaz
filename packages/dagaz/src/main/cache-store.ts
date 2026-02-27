@@ -218,7 +218,12 @@ export class CacheStore {
         all_day = excluded.all_day,
         time_zone = excluded.time_zone,
         status = excluded.status,
-        self_response = excluded.self_response,
+        self_response = CASE
+          WHEN excluded.self_response = 'needsAction'
+            AND self_response IN ('accepted', 'declined', 'tentative')
+          THEN self_response
+          ELSE excluded.self_response
+        END,
         organizer_email = excluded.organizer_email,
         organizer_name = excluded.organizer_name,
         is_organizer = excluded.is_organizer,

@@ -67,6 +67,7 @@ interface DagazAPI {
 
   // Push events
   onSyncChanged(callback: (state: any) => void): () => void;
+  onEventsChanged(callback: () => void): () => void;
   onConnectivityChanged(callback: (online: boolean) => void): () => void;
 }
 

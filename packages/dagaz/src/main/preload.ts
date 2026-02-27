@@ -113,6 +113,11 @@ const api = {
     ipcRenderer.on('sync:changed', handler);
     return () => { ipcRenderer.removeListener('sync:changed', handler); };
   },
+  onEventsChanged: (callback: () => void) => {
+    const handler = () => callback();
+    ipcRenderer.on('events:changed', handler);
+    return () => { ipcRenderer.removeListener('events:changed', handler); };
+  },
   onConnectivityChanged: (callback: (online: boolean) => void) => {
     const handler = (_event: any, online: boolean) => callback(online);
     ipcRenderer.on('connectivity:changed', handler);

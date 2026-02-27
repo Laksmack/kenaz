@@ -35,8 +35,9 @@ export function useNeedsAction(intervalMs?: number) {
 
   // Also refresh when events change (sync completed, RSVP submitted, etc.)
   useEffect(() => {
-    const unsub = window.dagaz.onSyncChanged(() => refresh());
-    return unsub;
+    const unsubSync = window.dagaz.onSyncChanged(() => refresh());
+    const unsubEvents = window.dagaz.onEventsChanged(() => refresh());
+    return () => { unsubSync(); unsubEvents(); };
   }, [refresh]);
 
   return {

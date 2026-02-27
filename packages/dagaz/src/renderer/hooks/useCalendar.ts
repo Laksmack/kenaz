@@ -100,15 +100,19 @@ export function useCalendar(view: ViewType, currentDate: Date, weekDays: 5 | 7) 
     refresh({ full: false });
   }, [refresh]);
 
-  // Listen for background sync completions — re-read cache
+  // Listen for background sync completions and event changes — re-read cache
   useEffect(() => {
     const unsubSync = window.dagaz.onSyncChanged(() => {
       // Background sync finished — re-read cache without triggering another sync
       fetchEvents();
     });
+    const unsubEvents = window.dagaz.onEventsChanged(() => {
+      fetchEvents();
+    });
 
     return () => {
       unsubSync();
+      unsubEvents();
     };
   }, [fetchEvents]);
 
