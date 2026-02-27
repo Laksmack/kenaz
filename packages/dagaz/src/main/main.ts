@@ -419,6 +419,9 @@ function registerIpcHandlers() {
         const { recurringEventId } = await google.rsvpEvent(existing.calendar_id, existing.google_id, response);
         const updated = await google.getEvent(existing.calendar_id, existing.google_id);
         cache.upsertEvent(updated);
+        // Safety net: force local self_response in case Google returns stale data
+        // (e.g., recurring instance not yet reflecting parent's RSVP)
+        cache.updateEventResponse(existing.id, response);
         if (recurringEventId) {
           cache.updateRecurringSeriesResponse(recurringEventId, response);
         }

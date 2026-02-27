@@ -312,12 +312,16 @@ export function startApiServer(
         const { recurringEventId } = await google.rsvpEvent(event.calendar_id, event.google_id, response);
         const updated = await google.getEvent(event.calendar_id, event.google_id);
         cache.upsertEvent(updated);
+        // Safety net: force local self_response in case Google returns stale data
+        cache.updateEventResponse(event.id, response);
         if (recurringEventId) {
           cache.updateRecurringSeriesResponse(recurringEventId, response);
         }
 
         archiveInviteInKenaz(event.summary || '').catch(() => {});
       } else if (event.google_id) {
+        // Update local state immediately so the UI reflects the RSVP
+        cache.updateEventResponse(event.id, response);
         cache.enqueueSync(event.google_id, event.calendar_id, 'rsvp', { response });
       }
 

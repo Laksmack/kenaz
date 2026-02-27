@@ -267,7 +267,17 @@ export class SyncEngine {
     let succeeded = 0;
     let failed = 0;
 
+    const MAX_SYNC_ATTEMPTS = 5;
+
     for (const item of queue) {
+      // Drop items that have failed too many times to prevent permanent accumulation
+      if (item.attempts >= MAX_SYNC_ATTEMPTS) {
+        console.warn(`[Dagaz Sync] Dropping queue item ${item.id} (${item.action}) after ${item.attempts} failed attempts: ${item.last_error}`);
+        this.cache.markQueueItemDone(item.id);
+        failed++;
+        continue;
+      }
+
       try {
         const payload = JSON.parse(item.payload);
 
@@ -290,6 +300,11 @@ export class SyncEngine {
           }
           case 'rsvp': {
             await this.google.rsvpEvent(item.calendar_id, item.event_id, payload.response);
+            // Update local state so the event is no longer in needsAction
+            const event = this.cache.getEventByGoogleId(item.event_id);
+            if (event) {
+              this.cache.updateEventResponse(event.id, payload.response);
+            }
             break;
           }
         }
