@@ -18,6 +18,7 @@ const IPC = {
   CALENDAR_RSVP: 'calendar:rsvp',
   CALENDAR_FIND_EVENT: 'calendar:find-event',
   CALENDAR_IMPORT_ICS: 'calendar:import-ics',
+  CALENDAR_CREATE_COPY_ICS: 'calendar:create-copy-ics',
   CALENDAR_LIST: 'calendar:list',
   HUBSPOT_LOOKUP: 'hubspot:lookup',
   HUBSPOT_LOG: 'hubspot:log',
@@ -108,6 +109,8 @@ const api = {
     ipcRenderer.invoke(IPC.CALENDAR_FIND_EVENT, iCalUID),
   calendarImportIcs: (icsText: string) =>
     ipcRenderer.invoke(IPC.CALENDAR_IMPORT_ICS, icsText),
+  calendarCreateCopyFromIcs: (icsText: string) =>
+    ipcRenderer.invoke(IPC.CALENDAR_CREATE_COPY_ICS, icsText),
   listCalendars: () => ipcRenderer.invoke(IPC.CALENDAR_LIST),
 
   // HubSpot

@@ -570,6 +570,10 @@ function registerIpcHandlers() {
     return active().calendar.importIcsEvent(icsText);
   });
 
+  ipcMain.handle(IPC.CALENDAR_CREATE_COPY_ICS, async (_event, icsText: string) => {
+    return active().calendar.createCopyFromIcs(icsText);
+  });
+
   ipcMain.handle(IPC.CALENDAR_LIST, async () => {
     return active().calendar.listCalendars();
   });

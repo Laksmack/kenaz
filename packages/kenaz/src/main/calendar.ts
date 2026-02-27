@@ -152,6 +152,94 @@ export class CalendarService {
   }
 
   /**
+   * Create a personal copy of an event from ICS — same time, dial-in, etc.,
+   * but as a new event with no attendees (so you can't RSVP to the original).
+   * Uses events.insert, not import.
+   */
+  async createCopyFromIcs(rawIcsText: string, calendarId: string = 'primary'): Promise<string | null> {
+    if (!this.calendar) throw new Error('Calendar not authenticated');
+
+    const icsText = rawIcsText.replace(/\r?\n[ \t]/g, '');
+    const summary = icsText.match(/^SUMMARY[^:]*:(.+)$/m)?.[1]?.trim();
+    const location = icsText.match(/^LOCATION[^:]*:(.+)$/m)?.[1]?.trim();
+    const description = icsText.match(/^DESCRIPTION[^:]*:(.+)$/m)?.[1]?.trim()?.replace(/\\n/g, '\n');
+    const organizerLine = icsText.match(/^ORGANIZER[^:]*:(.+)$/m)?.[1]?.trim();
+    const organizerName = icsText.match(/^ORGANIZER[^:]*CN=([^;:]+)[^:]*:/m)?.[1]?.trim();
+    const dtstart = icsText.match(/^DTSTART[^:]*:(.+)$/m)?.[1]?.trim();
+    const dtend = icsText.match(/^DTEND[^:]*:(.+)$/m)?.[1]?.trim();
+
+    const tzidMatch = icsText.match(/DTSTART[^;]*;TZID=([^:]+):/);
+    const tzid = tzidMatch?.[1]?.trim();
+    const TZID_TO_IANA: Record<string, string> = {
+      'Pacific Standard Time': 'America/Los_Angeles',
+      'Eastern Standard Time': 'America/New_York',
+      'Central Standard Time': 'America/Chicago',
+      'Mountain Standard Time': 'America/Denver',
+      'GMT Standard Time': 'Europe/London',
+      'W. Europe Standard Time': 'Europe/Berlin',
+      'Central European Standard Time': 'Europe/Paris',
+    };
+    const timeZone = tzid && TZID_TO_IANA[tzid] ? TZID_TO_IANA[tzid] : undefined;
+
+    if (!dtstart) return null;
+
+    const parseIcsDt = (dt: string): { date: string } | { dateTime: string; timeZone?: string } | null => {
+      if (dt.length === 8) {
+        return { date: `${dt.slice(0, 4)}-${dt.slice(4, 6)}-${dt.slice(6, 8)}` };
+      }
+      const m = dt.match(/(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z?/);
+      if (!m) return null;
+      const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}${dt.endsWith('Z') ? 'Z' : ''}`;
+      return timeZone ? { dateTime: iso, timeZone } : { dateTime: iso };
+    };
+
+    const start = parseIcsDt(dtstart);
+    const end = dtend ? parseIcsDt(dtend) : start;
+    if (!start || !end) return null;
+
+    const attendeeNotes: string[] = [];
+    const attendeeRegex = /^ATTENDEE[^:]*:mailto:([^\r\n]+)/gm;
+    let match: RegExpExecArray | null;
+    while ((match = attendeeRegex.exec(icsText)) !== null) {
+      const fullLine = match[0];
+      const email = match[1].trim();
+      const name = fullLine.match(/CN=([^;:]+)/)?.[1]?.trim();
+      attendeeNotes.push(name ? `${name} <${email}>` : email);
+    }
+    const organizerNote = organizerLine
+      ? (organizerName ? `${organizerName} <${organizerLine.replace(/^mailto:/i, '')}>` : organizerLine.replace(/^mailto:/i, ''))
+      : null;
+    let finalDescription = description || '';
+    const peopleSection: string[] = [];
+    if (organizerNote) peopleSection.push(`Organizer: ${organizerNote}`);
+    if (attendeeNotes.length > 0) {
+      peopleSection.push('Original attendees:');
+      for (const a of attendeeNotes) peopleSection.push(`- ${a}`);
+    }
+    if (peopleSection.length > 0) {
+      finalDescription = finalDescription ? `${finalDescription}\n\n---\n${peopleSection.join('\n')}` : peopleSection.join('\n');
+    }
+
+    try {
+      const res = await this.calendar.events.insert({
+        calendarId,
+        requestBody: {
+          summary: summary || 'Imported Event',
+          start,
+          end,
+          location: location || undefined,
+          description: finalDescription || undefined,
+        },
+      });
+      console.log(`[Calendar] Created copy from ICS: ${res.data.id}`);
+      return res.data.id || null;
+    } catch (e: any) {
+      console.error('[Calendar] Failed to create copy from ICS:', e.message);
+      return null;
+    }
+  }
+
+  /**
    * Import an event from ICS text into Google Calendar.
    * Uses the events.import endpoint which won't send notifications.
    * Returns the Google Calendar event ID if successful.

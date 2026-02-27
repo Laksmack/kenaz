@@ -517,6 +517,12 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
   useEffect(() => {
     if (!invite.isInvite) return;
 
+    const isForwarded = message.subject.toLowerCase().startsWith('fwd:');
+    if (isForwarded) {
+      setResolving(false);
+      return;
+    }
+
     const icsAttachment = message.attachments.find(
       (a) => a.filename.endsWith('.ics') || a.mimeType === 'text/calendar' || a.mimeType === 'application/ics'
     );
@@ -526,14 +532,12 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
 
     (async () => {
       try {
-        // Step 1: If we have an iCalUID from the email body, look it up
         if (invite.iCalUID) {
           const id = await window.kenaz.calendarFindEvent(invite.iCalUID);
           if (cancelled) return;
           if (id) { setEventId(id); return; }
         }
 
-        // Step 2: Try fetching the .ics attachment and looking up by UID
         if (!icsAttachment) return;
         const base64 = await window.kenaz.getAttachmentBase64(message.id, icsAttachment.id);
         if (cancelled) return;
@@ -553,7 +557,7 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
       }
     })();
     return () => { cancelled = true; };
-  }, [invite.isInvite, invite.iCalUID, message.id]);
+  }, [invite.isInvite, invite.iCalUID, message.id, message.subject]);
 
   const handleRsvp = useCallback(async (response: 'accepted' | 'tentative' | 'declined') => {
     if (!eventId) {
@@ -587,7 +591,7 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
       const base64 = await window.kenaz.getAttachmentBase64(message.id, icsAttachment.id);
       const icsRaw = atob(base64);
       const icsText = icsRaw.replace(/\r?\n[ \t]/g, '');
-      const importedId = await window.kenaz.calendarImportIcs(icsText);
+      const importedId = await window.kenaz.calendarCreateCopyFromIcs(icsText);
       if (importedId) {
         // This is a personal copy, not an event you can RSVP to.
         setCopyCreated(true);

@@ -22,6 +22,7 @@ declare global {
       calendarRsvp: (eventId: string, response: 'accepted' | 'tentative' | 'declined', calendarId?: string) => Promise<{ success: boolean; status: string }>;
       calendarFindEvent: (iCalUID: string) => Promise<string | null>;
       calendarImportIcs: (icsText: string) => Promise<string | null>;
+      calendarCreateCopyFromIcs: (icsText: string) => Promise<string | null>;
       listCalendars: () => Promise<Array<{ id: string; name: string; color: string }>>;
       hubspotLookup: (email: string) => Promise<any>;
       hubspotLog: (payload: any) => Promise<any>;

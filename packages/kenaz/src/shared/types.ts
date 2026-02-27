@@ -179,6 +179,7 @@ export const IPC = {
   CALENDAR_RSVP: 'calendar:rsvp',
   CALENDAR_FIND_EVENT: 'calendar:find-event',
   CALENDAR_IMPORT_ICS: 'calendar:import-ics',
+  CALENDAR_CREATE_COPY_ICS: 'calendar:create-copy-ics',
   CALENDAR_LIST: 'calendar:list',
 
   // HubSpot
