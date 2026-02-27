@@ -48,8 +48,9 @@ export function EventBlock({ event, selected, onClick, onRSVP, onDelete, onDragS
     const close = (e: MouseEvent) => { if (ctxRef.current && !ctxRef.current.contains(e.target as Node)) setCtxMenu(null); };
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setCtxMenu(null); };
     document.addEventListener('mousedown', close);
+    document.addEventListener('contextmenu', close);
     document.addEventListener('keydown', esc);
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('contextmenu', close); document.removeEventListener('keydown', esc); };
   }, [ctxMenu]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
@@ -60,7 +61,7 @@ export function EventBlock({ event, selected, onClick, onRSVP, onDelete, onDragS
   }, []);
 
   const handleMouseDown = useCallback((e: React.MouseEvent, mode: DragMode) => {
-    if (!canDrag) return;
+    if (!canDrag || e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
     mouseDownRef.current = { y: e.clientY, mode, moved: false };
