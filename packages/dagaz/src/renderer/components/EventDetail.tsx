@@ -157,7 +157,7 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
 
         {/* Conference details */}
         {(videoEntry || phoneEntry) && (
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 selectable">
             {videoEntry?.uri && (
               <div className="flex items-center gap-2">
                 <span className="text-[10px] text-text-muted w-10 flex-shrink-0">Link</span>
@@ -209,7 +209,7 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
         {ev.location && (
           <div>
             <h3 className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Location</h3>
-            <p className="text-xs text-text-primary">{ev.location}</p>
+            <p className="text-xs text-text-primary selectable">{ev.location}</p>
           </div>
         )}
 
@@ -224,7 +224,7 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
                 return '';
               })()}
             </h3>
-            <div className="space-y-1 mt-1.5">
+            <div className="space-y-1 mt-1.5 selectable">
               {/* Organizer first */}
               {organizer && (
                 <div className="flex items-center gap-2 py-0.5">

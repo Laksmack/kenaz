@@ -925,7 +925,7 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
           <div className="w-8 h-8 rounded-full bg-bg-tertiary flex items-center justify-center text-xs font-semibold text-text-secondary flex-shrink-0">
             {(message.from.name || message.from.email)[0]?.toUpperCase()}
           </div>
-          <div>
+          <div className="selectable">
             <div className="text-sm font-medium text-text-primary">
               {message.from.name || message.from.email}
             </div>
