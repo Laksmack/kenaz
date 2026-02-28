@@ -402,6 +402,83 @@ export class VaultStore {
     return row.c === 0;
   }
 
+  /**
+   * Reconcile the index with the filesystem.
+   * - Index any .md/.pdf files on disk that are missing from the DB
+   * - Remove any DB entries whose files no longer exist on disk
+   */
+  reconcile(): void {
+    if (!fs.existsSync(config.vaultPath)) return;
+
+    const start = Date.now();
+    let added = 0;
+    let removed = 0;
+
+    // Collect all indexed paths from DB (notes = .md, vault_files = .pdf)
+    const indexedNotes = new Set(
+      (this.db.prepare('SELECT path FROM notes').all() as { path: string }[]).map(r => r.path)
+    );
+    const indexedFiles = new Set(
+      (this.db.prepare('SELECT path FROM vault_files').all() as { path: string }[]).map(r => r.path)
+    );
+
+    // Walk disk and index anything missing
+    const seenNotes = new Set<string>();
+    const seenFiles = new Set<string>();
+    const walk = (dir: string) => {
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (entry.name.startsWith('.')) continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+        } else if (entry.name.endsWith('.md')) {
+          const rel = path.relative(config.vaultPath, full);
+          seenNotes.add(rel);
+          if (!indexedNotes.has(rel)) {
+            try {
+              this.indexNote(full);
+              added++;
+            } catch {}
+          }
+        } else if (entry.name.endsWith('.pdf')) {
+          const rel = path.relative(config.vaultPath, full);
+          seenFiles.add(rel);
+          if (!indexedFiles.has(rel)) {
+            try {
+              this.indexFile(full);
+              added++;
+            } catch {}
+          }
+        }
+      }
+    };
+    walk(config.vaultPath);
+
+    // Remove DB entries for files that no longer exist on disk
+    for (const p of indexedNotes) {
+      if (!seenNotes.has(p)) {
+        this.removeNote(path.join(config.vaultPath, p));
+        removed++;
+      }
+    }
+    for (const p of indexedFiles) {
+      if (!seenFiles.has(p)) {
+        this.removeFile(path.join(config.vaultPath, p));
+        removed++;
+      }
+    }
+
+    if (added > 0 || removed > 0) {
+      console.log(`[Laguz] Reconciled index in ${Date.now() - start}ms: +${added} added, -${removed} removed`);
+    }
+  }
+
   // ── Query Operations ─────────────────────────────────────────
 
   private getTagsForNote(noteId: string): string[] {

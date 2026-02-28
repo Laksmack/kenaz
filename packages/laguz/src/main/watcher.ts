@@ -8,6 +8,7 @@ export class VaultWatcher {
   private store: VaultStore;
   private cabinetService: CabinetService | null = null;
   private debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private reconcileTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor(store: VaultStore) {
     this.store = store;
@@ -20,6 +21,8 @@ export class VaultWatcher {
   async start(): Promise<void> {
     if (this.store.isEmpty()) {
       this.store.rebuildIndex();
+    } else {
+      this.store.reconcile();
     }
 
     this.watcher = watch(config.vaultPath, {
@@ -33,6 +36,8 @@ export class VaultWatcher {
       .on('add', (filePath) => this.debounce(filePath, () => this.handleAdd(filePath)))
       .on('change', (filePath) => this.debounce(filePath, () => this.handleAdd(filePath)))
       .on('unlink', (filePath) => this.debounce(filePath, () => this.handleRemove(filePath)));
+
+    this.reconcileTimer = setInterval(() => this.store.reconcile(), 5 * 60 * 1000);
 
     console.log(`[Laguz] Watching vault: ${config.vaultPath}`);
   }
@@ -76,6 +81,10 @@ export class VaultWatcher {
   }
 
   stop(): void {
+    if (this.reconcileTimer) {
+      clearInterval(this.reconcileTimer);
+      this.reconcileTimer = null;
+    }
     if (this.watcher) {
       this.watcher.close();
       this.watcher = null;
