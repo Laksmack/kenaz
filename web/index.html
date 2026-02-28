@@ -252,6 +252,13 @@
   .status-beta { color: #D4A574; border: 1px solid #D4A57433; background: #D4A57410; }
   .status-someday { color: #444; border: 1px solid #222; }
 
+  .app-version {
+    font-size: 11px;
+    color: #444;
+    font-variant-numeric: tabular-nums;
+    margin-left: 8px;
+  }
+
   .app-icon { transition: transform 0.3s ease; }
   .app-card:hover .app-icon { transform: scale(1.06); }
 
@@ -282,6 +289,53 @@
   .app-card.raido .app-name { color: #D4A574; }
   .app-card.dagaz .app-name { color: #7AB8D4; }
   .app-card.laguz .app-name { color: #5CB8A5; }
+
+  /* Changelog */
+  .changelog-section {
+    border-top: 1px solid #1a1a1a;
+    padding-top: 60px;
+    margin-bottom: 80px;
+  }
+
+  .changelog-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .changelog-item {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding: 10px 0;
+    border-bottom: 1px solid #111;
+    font-size: 14px;
+    font-weight: 300;
+  }
+
+  .changelog-date {
+    color: #444;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    flex-shrink: 0;
+    min-width: 80px;
+  }
+
+  .changelog-msg { color: #888; }
+
+  .changelog-hash {
+    color: #333;
+    font-size: 11px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    flex-shrink: 0;
+  }
+
+  .changelog-empty {
+    color: #333;
+    font-size: 13px;
+    font-weight: 300;
+  }
 
   /* About */
   .about-section {
@@ -364,6 +418,7 @@
   .page > *:nth-child(5) { animation-delay: 0.34s; }
   .page > *:nth-child(6) { animation-delay: 0.44s; }
   .page > *:nth-child(7) { animation-delay: 0.54s; }
+  .page > *:nth-child(8) { animation-delay: 0.64s; }
 
   @media (max-width: 720px) {
     h1 { font-size: 36px; }
@@ -413,7 +468,7 @@
           <div class="menu-item">About Futhark</div>
           <div class="menu-item separator"></div>
           <div class="menu-item update">
-            ↑ Update to v0.3.0
+            ↑ Update available
           </div>
           <div class="menu-item separator"></div>
           <div class="menu-item">
@@ -448,6 +503,7 @@
           <path d="M332.8 112.6L189.4 256L332.8 399.4" stroke="#FFF8F0" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
         </svg>
         <span class="app-status status-live">Live</span>
+        <span class="app-version" data-version="kenaz"></span>
       </div>
       <div class="app-name">kenaz</div>
       <div class="app-rune">ᚲ · Torch · Fire</div>
@@ -470,6 +526,7 @@
           <path d="M190 307.4L330 399.4" stroke="#FFF8F0" stroke-width="36" stroke-linecap="round" fill="none"/>
         </svg>
         <span class="app-status status-live">Live</span>
+        <span class="app-version" data-version="raido"></span>
       </div>
       <div class="app-name">raidō</div>
       <div class="app-rune">ᚱ · Journey · Ride</div>
@@ -492,6 +549,7 @@
           <line x1="384" y1="160" x2="384" y2="352" stroke="#F0F4FF" stroke-width="36" stroke-linecap="round"/>
         </svg>
         <span class="app-status status-live">Live</span>
+        <span class="app-version" data-version="dagaz"></span>
       </div>
       <div class="app-name">dagaz</div>
       <div class="app-rune">ᛞ · Day · Dawn</div>
@@ -513,12 +571,21 @@
           <path d="M190 160L320 256" stroke="#F0FFF8" stroke-width="36" stroke-linecap="round" fill="none"/>
         </svg>
         <span class="app-status status-live">Live</span>
+        <span class="app-version" data-version="laguz"></span>
       </div>
       <div class="app-name">laguz</div>
       <div class="app-rune">ᛚ · Lake · Flow</div>
       <div class="app-desc">A scratch pad and Obsidian vault browser in one. Write, annotate PDFs, and browse your notes - with Claude able to search, read, and write to the same vault.</div>
     </div>
 
+  </div>
+
+  <!-- Changelog -->
+  <div class="changelog-section">
+    <div class="section-label">Recent updates</div>
+    <ul class="changelog-list" id="changelog">
+      <li class="changelog-empty">Loading...</li>
+    </ul>
   </div>
 
   <!-- About -->
@@ -541,5 +608,33 @@
   </footer>
 
 </div>
+<script>
+fetch('/changelog.json')
+  .then(r => r.json())
+  .then(entries => {
+    const el = document.getElementById('changelog');
+    if (!entries.length) { el.innerHTML = '<li class="changelog-empty">No recent changes</li>'; return; }
+    el.innerHTML = entries.map(e =>
+      `<li class="changelog-item">
+        <span class="changelog-date">${e.date}</span>
+        <span class="changelog-msg">${e.message}</span>
+        <span class="changelog-hash">${e.hash}</span>
+      </li>`
+    ).join('');
+  })
+  .catch(() => {
+    document.getElementById('changelog').innerHTML = '<li class="changelog-empty">Could not load changelog</li>';
+  });
+
+fetch('/versions.json')
+  .then(r => r.json())
+  .then(versions => {
+    document.querySelectorAll('[data-version]').forEach(el => {
+      const v = versions[el.dataset.version];
+      if (v) el.textContent = 'v' + v;
+    });
+  })
+  .catch(() => {});
+</script>
 </body>
 </html>

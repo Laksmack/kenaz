@@ -314,12 +314,54 @@ else
   echo "  no app changes — skipping builds"
 fi
 
-# Sync web directory if it changed
-if [ "$WEB_CHANGED" = true ] && [ -d "$REPO_ROOT/web" ]; then
+# Generate changelog.json from recent commits
+generate_changelog() {
+  local out="$REPO_ROOT/web/changelog.json"
+  local entries=()
+  while IFS='|' read -r hash date msg; do
+    # Skip noisy commits (merges, bumps, build-runner tweaks)
+    echo "$msg" | grep -qiE '^(merge|bump .* to trigger|fix build-runner)' && continue
+    # Escape JSON-unsafe characters
+    msg=$(echo "$msg" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    entries+=("{\"hash\":\"$hash\",\"date\":\"$date\",\"message\":\"$msg\"}")
+  done < <(git log --format='%h|%ad|%s' --date=short -30 HEAD)
+  # Take first 10 after filtering
+  local json="["
+  local count=0
+  for e in "${entries[@]}"; do
+    [ $count -ge 10 ] && break
+    [ $count -gt 0 ] && json+=","
+    json+="$e"
+    count=$((count + 1))
+  done
+  json+="]"
+  echo "$json" > "$out"
+}
+
+generate_versions() {
+  local out="$REPO_ROOT/web/versions.json"
+  local json="{"
+  local first=true
+  for app in "${APPS[@]}"; do
+    local ver
+    ver=$(node -p "require('$REPO_ROOT/packages/$app/package.json').version" 2>/dev/null || echo "")
+    [ -z "$ver" ] && continue
+    [ "$first" = false ] && json+=","
+    json+="\"$app\":\"$ver\""
+    first=false
+  done
+  json+="}"
+  echo "$json" > "$out"
+}
+
+# Sync web directory and changelog
+if [ "$WEB_CHANGED" = true ] || [ "$HAS_NEW_COMMITS" = true ] || [ "$FORCE" = true ]; then
+  generate_changelog
+  generate_versions
   echo ""
   echo "  syncing website..."
   scp -q "$REPO_ROOT/web/"* "$REMOTE_HOST:$REMOTE_HTML/" 2>/dev/null || true
-  echo "  ✓ website synced"
+  echo "  ✓ website synced (with changelog)"
 fi
 
 # Wait for background uploads to finish
