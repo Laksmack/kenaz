@@ -15,7 +15,7 @@ import { useNeedsAction } from './hooks/useNeedsAction';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
 import { isSameDay, formatDayHeader, dateKey, setUse24HourClock } from './lib/utils';
-import type { ViewType, CalendarEvent, AppConfig, CreateEventInput, OverlayPerson, OverlayEvent } from '../shared/types';
+import type { ViewType, CalendarEvent, AppConfig, CreateEventInput, UpdateEventInput, OverlayPerson, OverlayEvent } from '../shared/types';
 import { OVERLAY_COLORS } from '../shared/types';
 import { PeopleOverlay } from './components/PeopleOverlay';
 
@@ -36,6 +36,7 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; summary: string } | null>(null);
+  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
 
   const showToast = useCallback((msg: string, durationMs = 3000) => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -260,10 +261,56 @@ export default function App() {
   }, []);
 
   const openQuickCreate = useCallback((start?: Date, end?: Date) => {
+    setEditingEvent(null);
     setQuickCreateStart(start);
     setQuickCreateEnd(end);
     setQuickCreateOpen(true);
   }, []);
+
+  const handleEditEvent = useCallback((event: CalendarEvent) => {
+    setEditingEvent(event);
+    setQuickCreateOpen(true);
+  }, []);
+
+  const handleUpdateFromEdit = useCallback(async (id: string, updates: UpdateEventInput) => {
+    // Find the event for context
+    const event = rawEvents.find(e => e.id === id) || selectedEvent;
+
+    // Recurring event: ask whether to edit this instance or skip
+    if (event?.recurring_event_id) {
+      const choice = window.confirm(
+        `"${event.summary}" is a recurring event.\n\nOK = Change only this event\nCancel = Don't change`
+      );
+      if (!choice) return;
+    }
+
+    // Permission check for events you don't organize
+    const hasOtherAttendees = (event?.attendees?.length ?? 0) > 1;
+    const canEditDirectly = event?.is_organizer || !hasOtherAttendees;
+
+    if (!canEditDirectly) {
+      const ok = window.confirm(
+        `You are not the organizer of "${event?.summary}".\n\nUpdate the event? This will notify the organizer.`
+      );
+      if (!ok) return;
+    }
+
+    await window.dagaz.updateEvent(id, updates);
+
+    // Show toast
+    const name = updates.summary || event?.summary || 'Event';
+    if (hasOtherAttendees) {
+      showToast(`"${name}" updated — attendees notified`);
+    } else {
+      showToast(`"${name}" updated`);
+    }
+
+    refresh({ full: false });
+    if (selectedEvent?.id === id) {
+      const updated = await window.dagaz.getEvent(id);
+      if (updated) setSelectedEvent(updated);
+    }
+  }, [rawEvents, selectedEvent, refresh, showToast]);
 
   const handleAuth = useCallback(async () => {
     const result = await window.dagaz.startAuth();
@@ -391,7 +438,7 @@ export default function App() {
     onNavigatePrev: navigatePrev,
     onGoToToday: goToToday,
     onQuickCreate: () => openQuickCreate(),
-    onEditEvent: () => { /* TODO: open edit mode */ },
+    onEditEvent: () => { if (selectedEvent) handleEditEvent(selectedEvent); },
     onDeleteEvent: () => { if (selectedEvent) handleDeleteEvent(selectedEvent.id); },
     onOpenDetail: () => { /* Detail auto-opens on select */ },
     onClosePanel: () => {
@@ -705,7 +752,7 @@ export default function App() {
               onClose={() => { setSelectedEvent(null); if (needsActionEvents.length > 0) setShowInvitesPanel(true); }}
               onDelete={handleDeleteEvent}
               onRSVP={handleRSVP}
-              onEdit={() => { /* TODO */ }}
+              onEdit={handleEditEvent}
             />
           ) : (showInvitesPanel || needsActionEvents.length > 0) && (
             <InviteReviewPanel
@@ -724,8 +771,10 @@ export default function App() {
       {/* Quick Create Modal */}
       <QuickCreate
         open={quickCreateOpen}
-        onClose={() => setQuickCreateOpen(false)}
+        onClose={() => { setQuickCreateOpen(false); setEditingEvent(null); }}
         onCreate={handleCreateEvent}
+        onUpdate={handleUpdateFromEdit}
+        editingEvent={editingEvent}
         calendars={calendars}
         defaultCalendarId={appConfig?.defaultCalendarId || null}
         defaultStart={quickCreateStart}

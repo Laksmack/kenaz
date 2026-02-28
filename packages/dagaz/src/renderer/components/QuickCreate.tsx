@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { Calendar, CreateEventInput, OverlayPerson } from '../../shared/types';
+import type { Calendar, CalendarEvent, CreateEventInput, UpdateEventInput, OverlayPerson } from '../../shared/types';
 
 interface Props {
   open: boolean;
   onClose: () => void;
   onCreate: (data: CreateEventInput) => void;
+  onUpdate?: (id: string, updates: UpdateEventInput) => void;
+  editingEvent?: CalendarEvent | null;
   calendars: Calendar[];
   defaultCalendarId: string | null;
   defaultStart?: Date;
@@ -70,7 +72,8 @@ function buildTimeOptions(): Array<{ value: string; label: string }> {
 
 const TIME_OPTIONS = buildTimeOptions();
 
-export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalendarId, defaultStart, defaultEnd, defaultAttendees }: Props) {
+export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, calendars, defaultCalendarId, defaultStart, defaultEnd, defaultAttendees }: Props) {
+  const isEditing = !!editingEvent;
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -88,26 +91,64 @@ export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalenda
 
   useEffect(() => {
     if (!open) return;
-    const start = defaultStart
-      ? snap15(defaultStart)
-      : (() => { const d = new Date(); d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0); return d; })();
-    const end = defaultEnd ? snap15(defaultEnd) : new Date(start.getTime() + 60 * 60 * 1000);
 
-    setTitle('');
-    setDate(toDateStr(start));
-    setEndDate(toDateStr(start));
-    setStartTime(toTimeStr(start));
-    setEndTime(toTimeStr(end));
-    setAllDay(false);
-    setLocation('');
-    setDescription('');
-    setAddConferencing(false);
-    setAttendeeInput('');
-    setAttendees(defaultAttendees?.filter(p => p.visible).map(p => p.email) || []);
-    setCalendarId(defaultCalendarId || '');
+    if (editingEvent) {
+      // Edit mode: pre-populate from existing event
+      const ev = editingEvent;
+      setTitle(ev.summary || '');
+      setAllDay(!!ev.all_day);
+
+      if (ev.all_day) {
+        setDate(ev.start_date || toDateStr(new Date(ev.start_time)));
+        // Google stores all-day end as exclusive, so subtract 1 day for display
+        const endStr = ev.end_date || toDateStr(new Date(ev.end_time));
+        const displayEnd = addDays(endStr, -1);
+        setEndDate(displayEnd < (ev.start_date || '') ? (ev.start_date || endStr) : displayEnd);
+        setStartTime('09:00');
+        setEndTime('10:00');
+      } else {
+        const s = new Date(ev.start_time);
+        const e = new Date(ev.end_time);
+        setDate(toDateStr(s));
+        setEndDate(toDateStr(s));
+        setStartTime(toTimeStr(s));
+        setEndTime(toTimeStr(e));
+      }
+
+      setLocation(ev.location || '');
+      // Strip HTML tags from description for plain-text editing
+      setDescription(ev.description ? ev.description.replace(/<[^>]*>/g, '') : '');
+      setAddConferencing(!!ev.conference_data || !!ev.hangout_link);
+      setAttendeeInput('');
+      setAttendees(
+        (ev.attendees || [])
+          .filter(a => !a.is_self)
+          .map(a => a.email)
+      );
+      setCalendarId(ev.calendar_id || defaultCalendarId || '');
+    } else {
+      // Create mode: use defaults
+      const start = defaultStart
+        ? snap15(defaultStart)
+        : (() => { const d = new Date(); d.setMinutes(Math.ceil(d.getMinutes() / 15) * 15, 0, 0); return d; })();
+      const end = defaultEnd ? snap15(defaultEnd) : new Date(start.getTime() + 60 * 60 * 1000);
+
+      setTitle('');
+      setDate(toDateStr(start));
+      setEndDate(toDateStr(start));
+      setStartTime(toTimeStr(start));
+      setEndTime(toTimeStr(end));
+      setAllDay(false);
+      setLocation('');
+      setDescription('');
+      setAddConferencing(false);
+      setAttendeeInput('');
+      setAttendees(defaultAttendees?.filter(p => p.visible).map(p => p.email) || []);
+      setCalendarId(defaultCalendarId || '');
+    }
 
     setTimeout(() => titleRef.current?.focus(), 50);
-  }, [open, defaultStart, defaultEnd, defaultAttendees, defaultCalendarId]);
+  }, [open, editingEvent, defaultStart, defaultEnd, defaultAttendees, defaultCalendarId]);
 
   useEffect(() => {
     if (!calendarId && calendars.length > 0) {
@@ -130,21 +171,36 @@ export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalenda
     if (!title.trim()) return;
     const { startD, endD } = buildDates();
 
-    const data: CreateEventInput = {
-      summary: title.trim(),
-      start: allDay ? date : startD.toISOString(),
-      end: allDay ? addDays(endDate, 1) : endD.toISOString(),
-      all_day: allDay || undefined,
-      attendees: attendees.length > 0 ? attendees : undefined,
-      location: location || undefined,
-      description: description || undefined,
-      calendar_id: calendarId || undefined,
-      add_conferencing: addConferencing,
-    };
-
-    onCreate(data);
-    onClose();
-  }, [title, buildDates, allDay, date, endDate, attendees, location, description, calendarId, addConferencing, onCreate, onClose]);
+    if (isEditing && editingEvent && onUpdate) {
+      // Edit mode: send only the updated fields
+      const updates: UpdateEventInput = {
+        summary: title.trim(),
+        start: allDay ? date : startD.toISOString(),
+        end: allDay ? addDays(endDate, 1) : endD.toISOString(),
+        all_day: allDay,
+        attendees: attendees.length > 0 ? attendees : [],
+        location: location || '',
+        description: description || '',
+      };
+      onUpdate(editingEvent.id, updates);
+      onClose();
+    } else {
+      // Create mode
+      const data: CreateEventInput = {
+        summary: title.trim(),
+        start: allDay ? date : startD.toISOString(),
+        end: allDay ? addDays(endDate, 1) : endD.toISOString(),
+        all_day: allDay || undefined,
+        attendees: attendees.length > 0 ? attendees : undefined,
+        location: location || undefined,
+        description: description || undefined,
+        calendar_id: calendarId || undefined,
+        add_conferencing: addConferencing,
+      };
+      onCreate(data);
+      onClose();
+    }
+  }, [title, buildDates, allDay, date, endDate, attendees, location, description, calendarId, addConferencing, isEditing, editingEvent, onUpdate, onCreate, onClose]);
 
   const addAttendee = useCallback((raw: string) => {
     const email = raw.trim().toLowerCase();
@@ -183,7 +239,7 @@ export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalenda
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 pt-3 pb-1">
-          <span className="text-[10px] uppercase tracking-wider text-text-muted">New Event</span>
+          <span className="text-[10px] uppercase tracking-wider text-text-muted">{isEditing ? 'Edit Event' : 'New Event'}</span>
           <select
             value={calendarId}
             onChange={e => setCalendarId(e.target.value)}
@@ -363,7 +419,7 @@ export function QuickCreate({ open, onClose, onCreate, calendars, defaultCalenda
             disabled={!title.trim()}
             className="px-5 py-1.5 rounded-md text-xs font-medium text-white brand-gradient hover:opacity-90 transition-opacity disabled:opacity-50"
           >
-            Create
+            {isEditing ? 'Save' : 'Create'}
           </button>
         </div>
       </div>
