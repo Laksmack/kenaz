@@ -532,7 +532,7 @@ export default function App() {
 
     // Mark as read + remove managed labels + archive for all targets
     for (const t of targets) {
-      if (t.unread) markRead(t.id);
+      if (t.isUnread) markRead(t.id);
       for (const label of managedLabels) {
         labelThread(t.id, null, label);
       }
@@ -573,7 +573,7 @@ export default function App() {
         setSelectedThread(next);
       }
       for (const t of targets) {
-        if (t.unread) markRead(t.id);
+        if (t.isUnread) markRead(t.id);
         for (const managed of getManagedLabels()) {
           if (managed !== label) {
             labelThread(t.id, null, managed);
@@ -894,7 +894,7 @@ export default function App() {
   const handleContextArchive = useCallback(async (threadId: string) => {
     // Mark as read + remove all managed labels, same as keyboard Done
     const thread = threads.find((t) => t.id === threadId);
-    if (thread?.unread) markRead(threadId);
+    if (thread?.isUnread) markRead(threadId);
     for (const label of getManagedLabels()) {
       labelThread(threadId, null, label);
     }
@@ -911,7 +911,7 @@ export default function App() {
   const handleContextLabel = useCallback(async (threadId: string, label: string) => {
     // Mark as read
     const thread = threads.find((t) => t.id === threadId);
-    if (thread?.unread) markRead(threadId);
+    if (thread?.isUnread) markRead(threadId);
     // Remove all OTHER managed labels first (e.g. moving from Pending to Todo
     // should remove PENDING before adding TODO)
     for (const managed of getManagedLabels()) {

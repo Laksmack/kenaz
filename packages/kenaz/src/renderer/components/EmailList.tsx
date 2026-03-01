@@ -342,7 +342,7 @@ export function EmailList({ threads, selectedId, selectedIds, loading, loadingMo
         icon: 'ᛚ',
         onClick: async () => {
           try {
-            await createNoteFromEmail(fetcher, ctx);
+            await createNoteFromEmail(window.kenaz.crossAppFetch, ctx);
             window.kenaz.notify('Laguz', `Note created from: ${ctx.subject}`);
           } catch { window.kenaz.notify('Laguz', 'Failed — is Laguz running?'); }
         },
@@ -352,7 +352,7 @@ export function EmailList({ threads, selectedId, selectedIds, loading, loadingMo
         icon: 'ᛞ',
         onClick: async () => {
           try {
-            await createEventFromEmail(fetcher, ctx);
+            await createEventFromEmail(window.kenaz.crossAppFetch, ctx);
             window.kenaz.notify('Dagaz', `Event created: ${ctx.subject}`);
           } catch { window.kenaz.notify('Dagaz', 'Failed — is Dagaz running?'); }
         },
@@ -610,6 +610,7 @@ function EmailListItem({
   userEmail,
   userDisplayName,
   currentView,
+  snoozeUntil,
 }: {
   thread: EmailThread;
   selected: boolean;
