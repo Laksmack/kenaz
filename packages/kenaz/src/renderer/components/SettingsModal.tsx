@@ -170,7 +170,7 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
     <div>
       <h3 className="text-sm font-semibold text-text-primary mb-4">General</h3>
       <div className="space-y-4">
-        <SettingsField label="Display Name" description="Your name as shown in the email list (e.g. for sent items)">
+        <SettingsField label="Display Name" description="Your name in the From header of sent emails. Auto-detected from Gmail if left blank.">
           <input
             type="text"
             value={displayName}

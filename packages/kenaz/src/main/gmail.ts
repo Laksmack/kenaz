@@ -123,8 +123,10 @@ export class GmailService {
       const profile = await this.gmail.users.getProfile({ userId: 'me' });
       this.userEmail = profile.data.emailAddress || '';
       console.log('[Gmail] Authenticated as:', this.userEmail);
-      // Sync display name to Gmail sendAs on startup
-      this.syncDisplayName().catch(() => {});
+      // Bidirectional display-name sync on startup
+      this.syncDisplayName().catch((e) => {
+        console.warn('[Gmail] Display name sync failed on startup:', e.message);
+      });
       return true;
     } catch (e: any) {
       console.error('[Gmail] Auth check failed:', e.message);
@@ -133,27 +135,40 @@ export class GmailService {
   }
 
   /**
-   * Sync the Kenaz display name to Gmail's "Send mail as" settings.
-   * Gmail ignores the From header in raw messages and uses its own sendAs config.
+   * Bidirectional display-name sync with Gmail's "Send mail as" settings.
+   *
+   * - If a local displayName is set (in Kenaz config), push it to Gmail sendAs
+   *   so the From header on sent mail uses it.
+   * - If no local displayName is set, pull whatever Gmail already has
+   *   (e.g. from Google Workspace admin) and store it locally so the raw MIME
+   *   From header also includes it.
    */
   async syncDisplayName(displayName?: string): Promise<void> {
     if (!this.gmail || !this.userEmail) return;
-    const name = displayName ?? this.config.get().displayName;
-    if (!name) return;
+    const localName = displayName ?? this.config.get().displayName;
 
     try {
       const res = await this.gmail.users.settings.sendAs.get({
         userId: 'me',
         sendAsEmail: this.userEmail,
       });
-      if (res.data.displayName === name) return; // already in sync
+      const remoteName = res.data.displayName || '';
 
-      await this.gmail.users.settings.sendAs.patch({
-        userId: 'me',
-        sendAsEmail: this.userEmail,
-        requestBody: { displayName: name },
-      });
-      console.log(`[Gmail] Synced display name to "${name}"`);
+      if (localName) {
+        // Local name set → push to Gmail if different
+        if (remoteName !== localName) {
+          await this.gmail.users.settings.sendAs.patch({
+            userId: 'me',
+            sendAsEmail: this.userEmail,
+            requestBody: { displayName: localName },
+          });
+          console.log(`[Gmail] Pushed display name to sendAs: "${localName}"`);
+        }
+      } else if (remoteName) {
+        // No local name but Gmail has one → pull it and store locally
+        this.config.update({ displayName: remoteName });
+        console.log(`[Gmail] Pulled display name from sendAs: "${remoteName}"`);
+      }
     } catch (e: any) {
       console.warn('[Gmail] Failed to sync display name:', e.message);
     }
