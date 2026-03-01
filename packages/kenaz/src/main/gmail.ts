@@ -95,6 +95,16 @@ export class GmailService {
       const tokenPath = this.getTokenPath();
       if (fs.existsSync(tokenPath)) {
         const token = JSON.parse(fs.readFileSync(tokenPath, 'utf-8'));
+
+        // Check if token has all required scopes — if not, delete and force re-auth
+        const tokenScopes = (token.scope || '').split(' ');
+        const missingScopes = SCOPES.filter((s) => !tokenScopes.includes(s));
+        if (missingScopes.length > 0) {
+          console.log('[Gmail] Token missing scopes, forcing re-auth:', missingScopes);
+          fs.unlinkSync(tokenPath);
+          return;
+        }
+
         this.oauth2Client.setCredentials(token);
         this.gmail = google.gmail({ version: 'v1', auth: this.oauth2Client });
         this.cacheLabelIds();
