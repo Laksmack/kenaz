@@ -342,17 +342,26 @@ export class GoogleCalendarService {
     calendarId: string,
     eventId: string,
     response: 'accepted' | 'declined' | 'tentative',
+    scope?: 'single' | 'all',
   ): Promise<{ recurringEventId?: string }> {
     if (!this.calendar) throw new Error('Not authenticated');
 
     const event = await this.calendar.events.get({ calendarId, eventId });
-
-    // For recurring instances, RSVP on the parent event so it applies to the whole series
     const parentId = event.data.recurringEventId;
-    const targetId = parentId || eventId;
-    const targetEvent = parentId
-      ? await this.calendar.events.get({ calendarId, eventId: targetId })
-      : event;
+
+    // Determine target: single instance or parent series
+    let targetId: string;
+    let targetEvent: typeof event;
+
+    if (scope === 'single' || !parentId) {
+      // RSVP on this instance only (or non-recurring event)
+      targetId = eventId;
+      targetEvent = event;
+    } else {
+      // scope === 'all' or undefined: RSVP on the parent so it applies to the whole series
+      targetId = parentId;
+      targetEvent = await this.calendar.events.get({ calendarId, eventId: targetId });
+    }
 
     const attendees = targetEvent.data.attendees || [];
 

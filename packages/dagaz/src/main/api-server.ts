@@ -51,6 +51,7 @@ export function startApiServer(
 
   const rsvpSchema = z.object({
     response: z.enum(['accepted', 'declined', 'tentative']),
+    scope: z.enum(['single', 'all']).optional(),
   });
 
   const parseEventSchema = z.object({
@@ -304,17 +305,17 @@ export function startApiServer(
 
   app.post('/api/events/:id/rsvp', async (req, res) => {
     try {
-      const { response } = rsvpSchema.parse(req.body);
+      const { response, scope } = rsvpSchema.parse(req.body);
       const event = resolveEvent(req.params.id);
       if (!event) return res.status(404).json({ error: 'Event not found' });
 
       if (connectivity.isOnline && google.isAuthorized() && event.google_id) {
-        const { recurringEventId } = await google.rsvpEvent(event.calendar_id, event.google_id, response);
+        const { recurringEventId } = await google.rsvpEvent(event.calendar_id, event.google_id, response, scope);
         const updated = await google.getEvent(event.calendar_id, event.google_id);
         cache.upsertEvent(updated);
         // Safety net: force local self_response in case Google returns stale data
         cache.updateEventResponse(event.id, response);
-        if (recurringEventId) {
+        if (recurringEventId && scope !== 'single') {
           cache.updateRecurringSeriesResponse(recurringEventId, response);
         }
 
@@ -322,10 +323,10 @@ export function startApiServer(
       } else if (event.google_id) {
         // Update local state immediately so the UI reflects the RSVP
         cache.updateEventResponse(event.id, response);
-        cache.enqueueSync(event.google_id, event.calendar_id, 'rsvp', { response });
+        cache.enqueueSync(event.google_id, event.calendar_id, 'rsvp', { response, scope });
       }
 
-      res.json({ success: true, response });
+      res.json({ success: true, response, scope });
     } catch (e: any) {
       if (e instanceof z.ZodError) {
         return res.status(400).json({ error: 'Validation error', details: e.errors });

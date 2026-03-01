@@ -858,11 +858,15 @@ server.tool(
   {
     event_id: z.string().describe('Event ID (local UUID or Google Calendar ID)'),
     response: z.enum(['accepted', 'declined', 'tentative']),
+    scope: z.enum(['single', 'all']).optional()
+      .describe('For recurring events: "single" = this event only, "all" = entire series (default)'),
   },
-  async ({ event_id, response }) => {
+  async ({ event_id, response, scope }) => {
+    const body: Record<string, string> = { response };
+    if (scope) body.scope = scope;
     const data = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}/rsvp`, {
       method: 'POST',
-      body: JSON.stringify({ response }),
+      body: JSON.stringify(body),
     });
     return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
   }

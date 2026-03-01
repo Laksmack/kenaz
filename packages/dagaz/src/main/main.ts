@@ -410,19 +410,18 @@ function registerIpcHandlers() {
     notifyEventsChanged();
   });
 
-  ipcMain.handle(IPC.EVENT_RSVP, async (_event, id: string, response: 'accepted' | 'declined' | 'tentative') => {
+  ipcMain.handle(IPC.EVENT_RSVP, async (_event, id: string, response: 'accepted' | 'declined' | 'tentative', scope?: 'single' | 'all') => {
     const existing = cache.getEvent(id);
     if (!existing) return;
 
     if (connectivity.isOnline && google.isAuthorized() && existing.google_id) {
       try {
-        const { recurringEventId } = await google.rsvpEvent(existing.calendar_id, existing.google_id, response);
+        const { recurringEventId } = await google.rsvpEvent(existing.calendar_id, existing.google_id, response, scope);
         const updated = await google.getEvent(existing.calendar_id, existing.google_id);
         cache.upsertEvent(updated);
         // Safety net: force local self_response in case Google returns stale data
-        // (e.g., recurring instance not yet reflecting parent's RSVP)
         cache.updateEventResponse(existing.id, response);
-        if (recurringEventId) {
+        if (recurringEventId && scope !== 'single') {
           cache.updateRecurringSeriesResponse(recurringEventId, response);
         }
         notifyEventsChanged();
@@ -435,7 +434,7 @@ function registerIpcHandlers() {
     // Update local state immediately so the UI reflects the RSVP
     cache.updateEventResponse(existing.id, response);
     if (existing.google_id) {
-      cache.enqueueSync(existing.google_id, existing.calendar_id, 'rsvp', { response });
+      cache.enqueueSync(existing.google_id, existing.calendar_id, 'rsvp', { response, scope });
     }
     notifyEventsChanged();
   });

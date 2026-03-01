@@ -13,7 +13,7 @@ interface DagazAPI {
   createEvent(data: any): Promise<any>;
   updateEvent(id: string, updates: any): Promise<any>;
   deleteEvent(id: string, scope?: 'single' | 'all'): Promise<void>;
-  rsvpEvent(id: string, response: string): Promise<void>;
+  rsvpEvent(id: string, response: string, scope?: 'single' | 'all'): Promise<void>;
 
   // Agenda / Today
   getAgenda(date?: string, days?: number): Promise<any[]>;

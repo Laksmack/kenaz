@@ -72,6 +72,81 @@ function buildTimeOptions(): Array<{ value: string; label: string }> {
 
 const TIME_OPTIONS = buildTimeOptions();
 
+/** Parse freeform time input into HH:MM 24-hour format. Returns null if unparseable. */
+function parseTimeInput(raw: string): string | null {
+  const input = raw.trim().toLowerCase();
+  if (!input) return null;
+
+  if (input === 'noon' || input === '12p' || input === '12pm') return '12:00';
+  if (input === 'midnight' || input === '12a' || input === '12am') return '00:00';
+
+  const match = input.match(/^(\d{1,2})[:.]?(\d{2})?\s*(a\.?m\.?|p\.?m\.?|a|p)?$/i);
+  if (!match) return null;
+
+  let hours = parseInt(match[1], 10);
+  const minutes = match[2] ? parseInt(match[2], 10) : 0;
+  const period = match[3]?.replace(/\./g, '').toLowerCase();
+
+  if (minutes < 0 || minutes > 59) return null;
+
+  if (period === 'pm' || period === 'p') {
+    if (hours < 12) hours += 12;
+  } else if (period === 'am' || period === 'a') {
+    if (hours === 12) hours = 0;
+  }
+
+  if (hours < 0 || hours > 23) return null;
+
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+}
+
+function formatTimeLabel(value: string): string {
+  const [h, m] = value.split(':').map(Number);
+  const suffix = h >= 12 ? 'PM' : 'AM';
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${m.toString().padStart(2, '0')} ${suffix}`;
+}
+
+function TimeInput({ value, onChange, id }: { value: string; onChange: (v: string) => void; id: string }) {
+  const [text, setText] = useState(() => formatTimeLabel(value));
+  const [focused, setFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!focused) setText(formatTimeLabel(value));
+  }, [value, focused]);
+
+  const commit = () => {
+    const parsed = parseTimeInput(text);
+    if (parsed) {
+      onChange(parsed);
+      setText(formatTimeLabel(parsed));
+    } else {
+      setText(formatTimeLabel(value));
+    }
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="text"
+        list={`${id}-opts`}
+        value={text}
+        onChange={e => setText(e.target.value)}
+        onFocus={() => { setFocused(true); setTimeout(() => inputRef.current?.select(), 0); }}
+        onBlur={() => { setFocused(false); commit(); }}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(); inputRef.current?.blur(); } }}
+        className="bg-bg-primary border border-border-subtle rounded px-1.5 py-0.5 text-xs text-text-primary outline-none focus:border-accent-primary/40 w-[90px]"
+        autoComplete="off"
+      />
+      <datalist id={`${id}-opts`}>
+        {TIME_OPTIONS.map(t => <option key={t.value} value={t.label} />)}
+      </datalist>
+    </>
+  );
+}
+
 export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, calendars, defaultCalendarId, defaultStart, defaultEnd, defaultAttendees }: Props) {
   const isEditing = !!editingEvent;
   const [title, setTitle] = useState('');
@@ -297,21 +372,9 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs text-text-primary font-medium">{friendlyDate(startD)}</span>
                 <span className="text-text-muted text-[10px]">·</span>
-                <select
-                  value={startTime}
-                  onChange={e => setStartTime(e.target.value)}
-                  className="bg-bg-primary border border-border-subtle rounded px-1.5 py-0.5 text-xs text-text-primary outline-none focus:border-accent-primary/40 cursor-pointer"
-                >
-                  {TIME_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
+                <TimeInput value={startTime} onChange={setStartTime} id="qc-start" />
                 <span className="text-text-muted text-xs">→</span>
-                <select
-                  value={endTime}
-                  onChange={e => setEndTime(e.target.value)}
-                  className="bg-bg-primary border border-border-subtle rounded px-1.5 py-0.5 text-xs text-text-primary outline-none focus:border-accent-primary/40 cursor-pointer"
-                >
-                  {TIME_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
+                <TimeInput value={endTime} onChange={setEndTime} id="qc-end" />
                 <span className="text-[10px] text-text-muted">{dur}</span>
               </div>
             )}

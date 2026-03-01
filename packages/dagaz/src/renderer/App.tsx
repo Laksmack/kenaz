@@ -36,6 +36,7 @@ export default function App() {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; summary: string } | null>(null);
+  const [rsvpConfirm, setRsvpConfirm] = useState<{ id: string; summary: string; response: 'accepted' | 'declined' | 'tentative' } | null>(null);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
 
   const showToast = useCallback((msg: string, durationMs = 3000) => {
@@ -211,8 +212,16 @@ export default function App() {
     refresh({ full: false });
   }, [refresh, rawEvents, selectedEvent, showToast]);
 
-  const handleRSVP = useCallback(async (id: string, response: 'accepted' | 'declined' | 'tentative') => {
-    await window.dagaz.rsvpEvent(id, response);
+  const handleRSVP = useCallback(async (id: string, response: 'accepted' | 'declined' | 'tentative', scope?: 'single' | 'all') => {
+    const event = rawEvents.find(e => e.id === id) || selectedEvent;
+
+    // For recurring events without a scope: show the scope dialog
+    if (event?.recurring_event_id && !scope) {
+      setRsvpConfirm({ id, summary: event.summary, response });
+      return;
+    }
+
+    await window.dagaz.rsvpEvent(id, response, scope);
     // Don't trigger a sync here — the IPC handler already updated Google + local DB
     // and fires events:changed which our hooks listen for. Triggering an incremental
     // sync would race with the RSVP and potentially overwrite self_response with stale data.
@@ -231,7 +240,7 @@ export default function App() {
         } catch {}
       }
     }
-  }, [refreshNeedsAction, pendingInvites, dismissPendingInvite, refreshPendingInvites]);
+  }, [rawEvents, selectedEvent, refreshNeedsAction, pendingInvites, dismissPendingInvite, refreshPendingInvites]);
 
   const handleInviteRsvp = useCallback(async (invite: { threadId: string; title: string; startTime: string | null }, response: 'accepted' | 'declined' | 'tentative') => {
     // Find matching calendar event to RSVP on
@@ -856,6 +865,46 @@ export default function App() {
               </button>
               <button
                 onClick={() => setDeleteConfirm(null)}
+                className="w-full text-center px-3 py-1.5 text-xs text-text-muted hover:text-text-primary transition-colors mt-1"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* RSVP scope confirmation for recurring events */}
+      {rsvpConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setRsvpConfirm(null)}>
+          <div className="absolute inset-0 bg-black/40" />
+          <div
+            className="relative bg-bg-secondary border border-border-subtle rounded-xl shadow-2xl w-[340px] animate-slide-up"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-5 pt-4 pb-2">
+              <h3 className="text-sm font-semibold text-text-primary">
+                {rsvpConfirm.response === 'accepted' ? 'Accept' : rsvpConfirm.response === 'tentative' ? 'Maybe' : 'Decline'} recurring event
+              </h3>
+              <p className="text-xs text-text-secondary mt-1.5 leading-relaxed">
+                "{rsvpConfirm.summary}" is part of a series.
+              </p>
+            </div>
+            <div className="px-5 pb-4 pt-3 flex flex-col gap-2">
+              <button
+                onClick={() => { const { id, response } = rsvpConfirm; setRsvpConfirm(null); handleRSVP(id, response, 'single'); }}
+                className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors"
+              >
+                This event only
+              </button>
+              <button
+                onClick={() => { const { id, response } = rsvpConfirm; setRsvpConfirm(null); handleRSVP(id, response, 'all'); }}
+                className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors"
+              >
+                All events in series
+              </button>
+              <button
+                onClick={() => setRsvpConfirm(null)}
                 className="w-full text-center px-3 py-1.5 text-xs text-text-muted hover:text-text-primary transition-colors mt-1"
               >
                 Cancel

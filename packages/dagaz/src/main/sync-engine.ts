@@ -299,7 +299,7 @@ export class SyncEngine {
             break;
           }
           case 'rsvp': {
-            await this.google.rsvpEvent(item.calendar_id, item.event_id, payload.response);
+            await this.google.rsvpEvent(item.calendar_id, item.event_id, payload.response, payload.scope);
             // Update local state so the event is no longer in needsAction
             const event = this.cache.getEventByGoogleId(item.event_id);
             if (event) {
