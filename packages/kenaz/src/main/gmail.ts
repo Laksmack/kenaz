@@ -22,6 +22,7 @@ const SCOPES = [
   'https://www.googleapis.com/auth/gmail.modify',
   'https://www.googleapis.com/auth/gmail.compose',
   'https://www.googleapis.com/auth/gmail.labels',
+  'https://www.googleapis.com/auth/gmail.settings.basic',
   'https://www.googleapis.com/auth/calendar.readonly',
   'https://www.googleapis.com/auth/calendar.events',
 ];
@@ -112,10 +113,39 @@ export class GmailService {
       const profile = await this.gmail.users.getProfile({ userId: 'me' });
       this.userEmail = profile.data.emailAddress || '';
       console.log('[Gmail] Authenticated as:', this.userEmail);
+      // Sync display name to Gmail sendAs on startup
+      this.syncDisplayName().catch(() => {});
       return true;
     } catch (e: any) {
       console.error('[Gmail] Auth check failed:', e.message);
       return false;
+    }
+  }
+
+  /**
+   * Sync the Kenaz display name to Gmail's "Send mail as" settings.
+   * Gmail ignores the From header in raw messages and uses its own sendAs config.
+   */
+  async syncDisplayName(displayName?: string): Promise<void> {
+    if (!this.gmail || !this.userEmail) return;
+    const name = displayName ?? this.config.get().displayName;
+    if (!name) return;
+
+    try {
+      const res = await this.gmail.users.settings.sendAs.get({
+        userId: 'me',
+        sendAsEmail: this.userEmail,
+      });
+      if (res.data.displayName === name) return; // already in sync
+
+      await this.gmail.users.settings.sendAs.patch({
+        userId: 'me',
+        sendAsEmail: this.userEmail,
+        requestBody: { displayName: name },
+      });
+      console.log(`[Gmail] Synced display name to "${name}"`);
+    } catch (e: any) {
+      console.warn('[Gmail] Failed to sync display name:', e.message);
     }
   }
 

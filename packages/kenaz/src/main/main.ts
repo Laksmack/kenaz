@@ -646,7 +646,12 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.APP_SET_CONFIG, async (_event, updates: any) => {
     const svc = accountManager.getActiveServices();
     if (!svc) return globalConfig.update(updates);
-    return svc.config.update(updates);
+    const result = svc.config.update(updates);
+    // Sync display name to Gmail sendAs when it changes
+    if (updates.displayName !== undefined) {
+      svc.gmail.syncDisplayName(updates.displayName).catch(() => {});
+    }
+    return result;
   });
 
   ipcMain.handle(IPC.APP_USER_EMAIL, async () => {
