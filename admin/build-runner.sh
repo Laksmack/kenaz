@@ -314,6 +314,47 @@ else
   echo "  no app changes — skipping builds"
 fi
 
+# Detect which packages a commit touches based on changed files and message
+detect_packages() {
+  local hash="$1" msg="$2"
+  local tags=()
+  local files
+  files=$(git diff-tree --no-commit-id --name-only -r "$hash" 2>/dev/null)
+
+  # Detect from changed file paths
+  echo "$files" | grep -q '^packages/kenaz/' && tags+=("kenaz")
+  echo "$files" | grep -q '^packages/raido/' && tags+=("raido")
+  echo "$files" | grep -q '^packages/dagaz/' && tags+=("dagaz")
+  echo "$files" | grep -q '^packages/laguz/' && tags+=("laguz")
+  echo "$files" | grep -q '^packages/core/'  && tags+=("core")
+
+  # If nothing detected from files, try the commit message (case-insensitive)
+  if [ ${#tags[@]} -eq 0 ]; then
+    local lower
+    lower=$(echo "$msg" | tr '[:upper:]' '[:lower:]')
+    echo "$lower" | grep -qw 'kenaz'  && tags+=("kenaz")
+    echo "$lower" | grep -qw 'raidō\|raido' && tags+=("raido")
+    echo "$lower" | grep -qw 'dagaz'  && tags+=("dagaz")
+    echo "$lower" | grep -qw 'laguz'  && tags+=("laguz")
+    echo "$lower" | grep -qw 'core\|mcp\|futhark-mcp' && tags+=("core")
+  fi
+
+  # Output as JSON array
+  if [ ${#tags[@]} -eq 0 ]; then
+    echo "[]"
+  else
+    local json="["
+    local first=true
+    for t in "${tags[@]}"; do
+      [ "$first" = false ] && json+=","
+      json+="\"$t\""
+      first=false
+    done
+    json+="]"
+    echo "$json"
+  fi
+}
+
 # Generate changelog.json from recent commits
 generate_changelog() {
   local out="$REPO_ROOT/web/changelog.json"
@@ -323,7 +364,9 @@ generate_changelog() {
     echo "$msg" | grep -qiE '^(merge|bump .* to trigger|fix build-runner)' && continue
     # Escape JSON-unsafe characters
     msg=$(echo "$msg" | sed 's/\\/\\\\/g; s/"/\\"/g')
-    entries+=("{\"hash\":\"$hash\",\"date\":\"$date\",\"message\":\"$msg\"}")
+    local tags
+    tags=$(detect_packages "$hash" "$msg")
+    entries+=("{\"hash\":\"$hash\",\"date\":\"$date\",\"message\":\"$msg\",\"tags\":$tags}")
   done < <(git log --format='%h|%ad|%s' --date=short -30 HEAD)
   # Take first 10 after filtering
   local json="["

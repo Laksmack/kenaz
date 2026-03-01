@@ -322,7 +322,27 @@
     min-width: 80px;
   }
 
-  .changelog-msg { color: #888; }
+  .changelog-msg { color: #888; flex: 1; min-width: 0; }
+
+  .changelog-tags {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .changelog-tag {
+    font-size: 10px;
+    font-weight: 500;
+    padding: 1px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.02em;
+  }
+
+  .changelog-tag.tag-kenaz { background: #E8571F18; color: #E8571F; }
+  .changelog-tag.tag-raido { background: #D4A57420; color: #D4A574; }
+  .changelog-tag.tag-dagaz { background: #7AB8D418; color: #7AB8D4; }
+  .changelog-tag.tag-laguz { background: #5CB8A518; color: #5CB8A5; }
+  .changelog-tag.tag-core  { background: #66666618; color: #666; }
 
   .changelog-hash {
     color: #333;
@@ -614,13 +634,17 @@ fetch('/changelog.json')
   .then(entries => {
     const el = document.getElementById('changelog');
     if (!entries.length) { el.innerHTML = '<li class="changelog-empty">No recent changes</li>'; return; }
-    el.innerHTML = entries.map(e =>
-      `<li class="changelog-item">
+    el.innerHTML = entries.map(e => {
+      const tags = (e.tags || []).map(t =>
+        `<span class="changelog-tag tag-${t}">${t}</span>`
+      ).join('');
+      return `<li class="changelog-item">
         <span class="changelog-date">${e.date}</span>
         <span class="changelog-msg">${e.message}</span>
+        ${tags ? `<span class="changelog-tags">${tags}</span>` : ''}
         <span class="changelog-hash">${e.hash}</span>
-      </li>`
-    ).join('');
+      </li>`;
+    }).join('');
   })
   .catch(() => {
     document.getElementById('changelog').innerHTML = '<li class="changelog-empty">Could not load changelog</li>';
