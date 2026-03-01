@@ -354,6 +354,42 @@ server.tool(
   }
 );
 
+server.tool(
+  'kenaz_forward_email',
+  'Forward an email message to new recipients. Automatically includes the original message body and all attachments server-side — no need to download and re-attach. Optionally prepend your own message.',
+  {
+    message_id: z.string().describe('The Gmail message ID to forward'),
+    to: z.string().describe('Comma-separated recipient emails'),
+    cc: z.string().optional().describe('Comma-separated CC emails'),
+    bcc: z.string().optional().describe('Comma-separated BCC emails'),
+    body: z.string().optional().describe('Optional message to prepend above the forwarded content (HTML)'),
+  },
+  async (params) => {
+    const data = await api('kenaz', '/api/forward', {
+      method: 'POST',
+      body: JSON.stringify({
+        messageId: params.message_id,
+        to: params.to,
+        cc: params.cc,
+        bcc: params.bcc,
+        body: params.body,
+      }),
+    });
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          forwarded: true,
+          message_id: data.id,
+          thread_id: data.threadId,
+          to: params.to,
+        }),
+      }],
+    };
+  }
+);
+
 // ── Drafts ──
 
 server.tool(

@@ -754,6 +754,31 @@ export class GmailService {
       ? `From: ${mimeEncodeHeader(appConfig.displayName)} <${this.userEmail}>`
       : `From: ${this.userEmail}`;
 
+    // Fetch In-Reply-To / References headers for proper threading
+    let inReplyTo: string | null = null;
+    let references: string | null = null;
+    if (payload.reply_to_message_id) {
+      try {
+        const origMsg = await this.gmail!.users.messages.get({
+          userId: 'me',
+          id: payload.reply_to_message_id,
+          format: 'metadata',
+          metadataHeaders: ['Message-ID', 'References'],
+        });
+        const origHeaders = origMsg.data.payload?.headers || [];
+        const getOrigHeader = (name: string) =>
+          origHeaders.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
+        const origMessageId = getOrigHeader('Message-ID');
+        const origReferences = getOrigHeader('References');
+        if (origMessageId) {
+          inReplyTo = origMessageId;
+          references = origReferences ? `${origReferences} ${origMessageId}` : origMessageId;
+        }
+      } catch (e) {
+        console.warn('[SEND] Failed to fetch original message headers for In-Reply-To:', e);
+      }
+    }
+
     // Build RFC 2822 message
     let rawMessage: string;
 
@@ -767,6 +792,8 @@ export class GmailService {
         payload.cc ? `Cc: ${payload.cc}` : null,
         bcc ? `Bcc: ${bcc}` : null,
         `Subject: ${mimeEncodeHeader(payload.subject)}`,
+        inReplyTo ? `In-Reply-To: ${inReplyTo}` : null,
+        references ? `References: ${references}` : null,
         'MIME-Version: 1.0',
         `Content-Type: multipart/mixed; boundary="${boundary}"`,
       ].filter(Boolean);
@@ -807,6 +834,8 @@ export class GmailService {
         payload.cc ? `Cc: ${payload.cc}` : null,
         bcc ? `Bcc: ${bcc}` : null,
         `Subject: ${mimeEncodeHeader(payload.subject)}`,
+        inReplyTo ? `In-Reply-To: ${inReplyTo}` : null,
+        references ? `References: ${references}` : null,
         'Content-Type: text/html; charset=utf-8',
         'MIME-Version: 1.0',
       ].filter(Boolean);
@@ -1013,6 +1042,31 @@ export class GmailService {
       ? `From: ${mimeEncodeHeader(appConfig.displayName)} <${this.userEmail}>`
       : `From: ${this.userEmail}`;
 
+    // Fetch In-Reply-To / References headers for proper threading
+    let inReplyTo: string | null = null;
+    let references: string | null = null;
+    if (payload.reply_to_message_id) {
+      try {
+        const origMsg = await this.gmail!.users.messages.get({
+          userId: 'me',
+          id: payload.reply_to_message_id,
+          format: 'metadata',
+          metadataHeaders: ['Message-ID', 'References'],
+        });
+        const origHeaders = origMsg.data.payload?.headers || [];
+        const getOrigHeader = (name: string) =>
+          origHeaders.find((h) => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
+        const origMessageId = getOrigHeader('Message-ID');
+        const origReferences = getOrigHeader('References');
+        if (origMessageId) {
+          inReplyTo = origMessageId;
+          references = origReferences ? `${origReferences} ${origMessageId}` : origMessageId;
+        }
+      } catch (e) {
+        console.warn('[DRAFT] Failed to fetch original message headers for In-Reply-To:', e);
+      }
+    }
+
     // Detect if body content looks like HTML
     const bodyContent = payload.body_markdown || '';
     const isHtml = /<[a-z][\s\S]*>/i.test(bodyContent);
@@ -1029,6 +1083,8 @@ export class GmailService {
         payload.cc ? `Cc: ${payload.cc}` : null,
         payload.bcc ? `Bcc: ${payload.bcc}` : null,
         payload.subject ? `Subject: ${mimeEncodeHeader(payload.subject)}` : 'Subject: ',
+        inReplyTo ? `In-Reply-To: ${inReplyTo}` : null,
+        references ? `References: ${references}` : null,
         'MIME-Version: 1.0',
         `Content-Type: multipart/mixed; boundary="${boundary}"`,
       ].filter(Boolean);
@@ -1057,19 +1113,18 @@ export class GmailService {
       rawMessage = [...topHeaders, '', ...mimeBody].join('\r\n');
     } else {
       // Simple message without attachments
-      rawMessage = [
+      const draftHeaders = [
         fromHeader,
-        payload.to ? `To: ${payload.to}` : '',
-        payload.cc ? `Cc: ${payload.cc}` : '',
-        payload.bcc ? `Bcc: ${payload.bcc}` : '',
+        payload.to ? `To: ${payload.to}` : null,
+        payload.cc ? `Cc: ${payload.cc}` : null,
+        payload.bcc ? `Bcc: ${payload.bcc}` : null,
         payload.subject ? `Subject: ${mimeEncodeHeader(payload.subject)}` : 'Subject: ',
+        inReplyTo ? `In-Reply-To: ${inReplyTo}` : null,
+        references ? `References: ${references}` : null,
         isHtml ? 'Content-Type: text/html; charset=utf-8' : 'Content-Type: text/plain; charset=utf-8',
         'MIME-Version: 1.0',
-        '',
-        bodyContent,
-      ]
-        .filter((line, i) => i >= 5 || line)
-        .join('\r\n');
+      ].filter(Boolean);
+      rawMessage = [...draftHeaders, '', bodyContent].join('\r\n');
     }
 
     const messageBuffer = Buffer.from(rawMessage);
