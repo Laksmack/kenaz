@@ -9,7 +9,10 @@ export function useTasks(view: ViewType | string, query?: string) {
   const [stats, setStats] = useState<TaskStats>({ overdue: 0, today: 0, inbox: 0, total_open: 0 });
   const [groups, setGroups] = useState<TaskGroup[]>([]);
 
-  const fetchTasks = useCallback(async () => {
+  // Fetch tasks and stats together to ensure sidebar counts match the task list.
+  // The stats for the current view are overridden with the actual task array length
+  // so they can never be out of sync (race condition between two separate IPC calls).
+  const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
       let result: Task[];
@@ -36,6 +39,20 @@ export function useTasks(view: ViewType | string, query?: string) {
           result = [];
       }
       setTasks(result);
+
+      const [s, g] = await Promise.all([
+        window.raido.getStats(),
+        window.raido.getGroups(),
+      ]);
+
+      // Override the current view's stat with the actual task count so
+      // the sidebar badge always matches what the user sees in the list
+      const correctedStats = { ...s };
+      if (view === 'today') correctedStats.today = result.length;
+      else if (view === 'inbox') correctedStats.inbox = result.length;
+
+      setStats(correctedStats);
+      setGroups(g);
     } catch (e) {
       console.error('Failed to fetch tasks:', e);
     } finally {
@@ -43,41 +60,25 @@ export function useTasks(view: ViewType | string, query?: string) {
     }
   }, [view, query]);
 
-  const fetchMeta = useCallback(async () => {
-    try {
-      const [s, g] = await Promise.all([
-        window.raido.getStats(),
-        window.raido.getGroups(),
-      ]);
-      setStats(s);
-      setGroups(g);
-    } catch (e) {
-      console.error('Failed to fetch stats/groups:', e);
-    }
-  }, []);
-
   useEffect(() => {
-    fetchTasks();
-    fetchMeta();
-  }, [fetchTasks, fetchMeta]);
+    fetchAll();
+  }, [fetchAll]);
 
   useEffect(() => {
     const cleanup = window.raido.onTasksChanged(() => {
-      fetchTasks();
-      fetchMeta();
+      fetchAll();
     });
     return cleanup;
-  }, [fetchTasks, fetchMeta]);
+  }, [fetchAll]);
 
   useEffect(() => {
-    const interval = setInterval(fetchMeta, 30000);
+    const interval = setInterval(fetchAll, 30000);
     return () => clearInterval(interval);
-  }, [fetchMeta]);
+  }, [fetchAll]);
 
   const refresh = useCallback(() => {
-    fetchTasks();
-    fetchMeta();
-  }, [fetchTasks, fetchMeta]);
+    fetchAll();
+  }, [fetchAll]);
 
   return { tasks, loading, stats, groups, refresh };
 }
