@@ -226,8 +226,11 @@ export class GoogleCalendarService {
         }
       } while (pageToken);
 
-      console.log(`[Dagaz] Fetched ${allItems.length} events from ${calendarId}`);
-      const events = allItems.map(item => this.parseGoogleEvent(item, calendarId));
+      // Filter out special Google event types that aren't real calendar events
+      const SKIP_EVENT_TYPES = new Set(['workingLocation', 'focusTime', 'outOfOffice']);
+      const filtered = allItems.filter(item => !item.eventType || !SKIP_EVENT_TYPES.has(item.eventType));
+      console.log(`[Dagaz] Fetched ${allItems.length} events from ${calendarId} (${allItems.length - filtered.length} working-location/focus/ooo skipped)`);
+      const events = filtered.map(item => this.parseGoogleEvent(item, calendarId));
       return { events, nextSyncToken: syncToken };
     } catch (e: any) {
       if (e.code === 410 && opts.syncToken) {
