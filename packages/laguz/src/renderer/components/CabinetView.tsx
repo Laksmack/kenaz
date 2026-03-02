@@ -30,6 +30,8 @@ export function CabinetView({ activeFilePath, onOpenFile }: CabinetViewProps) {
   const [dropActive, setDropActive] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolder, setShowNewFolder] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; doc: CabinetDocument } | null>(null);
+  const [moveTarget, setMoveTarget] = useState<{ doc: CabinetDocument; allFolders: string[] } | null>(null);
   const newFolderRef = useRef<HTMLInputElement>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -144,6 +146,46 @@ export function CabinetView({ activeFilePath, onOpenFile }: CabinetViewProps) {
   const handleScan = useCallback(async () => {
     await window.laguz.openScanner(currentFolder || undefined);
   }, [currentFolder]);
+
+  // Recursively collect all folders for move picker
+  const collectAllFolders = useCallback(async (parent: string, prefix: string): Promise<string[]> => {
+    const subs = await window.laguz.getCabinetFolders(parent || undefined);
+    const results: string[] = [];
+    for (const sub of subs) {
+      const full = prefix ? `${prefix}/${sub}` : sub;
+      results.push(full);
+      const children = await collectAllFolders(full, full);
+      results.push(...children);
+    }
+    return results;
+  }, []);
+
+  const handleContextMenu = useCallback(async (e: React.MouseEvent, doc: CabinetDocument) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({ x: e.clientX, y: e.clientY, doc });
+  }, []);
+
+  const handleStartMove = useCallback(async (doc: CabinetDocument) => {
+    setContextMenu(null);
+    const allFolders = await collectAllFolders('', '');
+    setMoveTarget({ doc, allFolders });
+  }, [collectAllFolders]);
+
+  const handleMove = useCallback(async (doc: CabinetDocument, targetFolder: string) => {
+    await window.laguz.moveCabinetDocument(doc.path, targetFolder);
+    setMoveTarget(null);
+    loadDocuments(currentFolder);
+    loadFolders(currentFolder);
+  }, [currentFolder, loadDocuments, loadFolders]);
+
+  // Close context menu on click outside
+  useEffect(() => {
+    if (!contextMenu) return;
+    const handler = () => setContextMenu(null);
+    window.addEventListener('click', handler);
+    return () => window.removeEventListener('click', handler);
+  }, [contextMenu]);
 
   const isMac = window.laguz.platform === 'darwin';
   const displayDocs = searchResults ?? documents;
@@ -297,6 +339,7 @@ export function CabinetView({ activeFilePath, onOpenFile }: CabinetViewProps) {
           <button
             key={doc.id}
             onClick={() => onOpenFile(doc.path)}
+            onContextMenu={(e) => handleContextMenu(e, doc)}
             className={cn(
               'w-full px-4 py-2.5 flex items-start gap-2.5 hover:bg-bg-hover transition-colors text-left',
               activeFilePath === doc.path && 'bg-bg-hover'
@@ -349,6 +392,65 @@ export function CabinetView({ activeFilePath, onOpenFile }: CabinetViewProps) {
           </div>
         )}
       </div>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="fixed z-50 bg-bg-secondary border border-border-subtle rounded-lg shadow-xl py-1 min-w-[140px]"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            onClick={() => handleStartMove(contextMenu.doc)}
+            className="w-full px-3 py-1.5 text-xs text-text-primary hover:bg-bg-hover text-left flex items-center gap-2"
+          >
+            <svg className="w-3.5 h-3.5 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+            </svg>
+            Move to...
+          </button>
+        </div>
+      )}
+
+      {/* Move dialog */}
+      {moveTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setMoveTarget(null)}>
+          <div className="bg-bg-secondary border border-border-subtle rounded-xl p-4 w-72 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-sm font-semibold text-text-primary mb-1">Move document</h3>
+            <p className="text-[11px] text-text-muted mb-3 truncate">{moveTarget.doc.filename}</p>
+            <div className="max-h-[200px] overflow-y-auto scrollbar-hide space-y-0.5">
+              {/* Root option - show when doc is not already at root */}
+              {moveTarget.doc.folder !== '/' && moveTarget.doc.folder !== '' && (
+                <button
+                  onClick={() => handleMove(moveTarget.doc, '')}
+                  className="w-full px-2.5 py-1.5 text-xs text-text-primary hover:bg-bg-hover rounded text-left flex items-center gap-2"
+                >
+                  <span className="opacity-60">🗃</span> Cabinet (root)
+                </button>
+              )}
+              {moveTarget.allFolders
+                .filter(f => {
+                  const docFolder = moveTarget.doc.folder === '/' ? '' : moveTarget.doc.folder;
+                  return f !== docFolder;
+                })
+                .map(folder => (
+                  <button
+                    key={folder}
+                    onClick={() => handleMove(moveTarget.doc, folder)}
+                    className="w-full px-2.5 py-1.5 text-xs text-text-primary hover:bg-bg-hover rounded text-left flex items-center gap-2"
+                  >
+                    <span className="opacity-60">📁</span> {folder}
+                  </button>
+                ))}
+              {moveTarget.allFolders.length === 0 && (moveTarget.doc.folder === '/' || moveTarget.doc.folder === '') && (
+                <p className="text-[11px] text-text-muted px-2.5 py-2">No folders yet. Create one first.</p>
+              )}
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button onClick={() => setMoveTarget(null)} className="px-3 py-1 text-xs text-text-muted hover:text-text-primary">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

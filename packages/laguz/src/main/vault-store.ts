@@ -52,6 +52,9 @@ export interface CabinetDocumentRow {
   ocr_status: string;
   page_count: number | null;
   tags: string[];
+  notes: string | null;
+  doc_date: string | null;
+  category: string | null;
 }
 
 const DATE_PREFIX_RE = /^(\d{4}-\d{2}-\d{2})\s*[-–—]\s*/;
@@ -165,6 +168,12 @@ export class VaultStore {
       CREATE INDEX IF NOT EXISTS idx_cabinet_tags_tag ON cabinet_tags(tag);
       CREATE INDEX IF NOT EXISTS idx_cabinet_tags_doc ON cabinet_tags(doc_id);
     `);
+
+    // Migration: add metadata columns to cabinet_documents
+    try { this.db.exec('ALTER TABLE cabinet_documents ADD COLUMN notes TEXT'); } catch {}
+    try { this.db.exec('ALTER TABLE cabinet_documents ADD COLUMN doc_date TEXT'); } catch {}
+    try { this.db.exec('ALTER TABLE cabinet_documents ADD COLUMN category TEXT'); } catch {}
+    this.db.exec('CREATE INDEX IF NOT EXISTS idx_cabinet_docs_category ON cabinet_documents(category)');
 
     this.ensureFts();
     this.ensureCabinetFts();
@@ -832,7 +841,7 @@ export class VaultStore {
   }
 
   getCabinetDocuments(folder?: string, ext?: string): CabinetDocumentRow[] {
-    let sql = 'SELECT id, path, filename, ext, folder, size, modified, created, ocr_status, page_count FROM cabinet_documents WHERE 1=1';
+    let sql = 'SELECT id, path, filename, ext, folder, size, modified, created, ocr_status, page_count, notes, doc_date, category FROM cabinet_documents WHERE 1=1';
     const params: any[] = [];
 
     if (folder) {
@@ -862,7 +871,7 @@ export class VaultStore {
 
     const ftsQuery = query.split(/\s+/).map(w => `"${w}"`).join(' ');
     let sql = `
-      SELECT d.id, d.path, d.filename, d.ext, d.folder, d.size, d.modified, d.created, d.ocr_status, d.page_count
+      SELECT d.id, d.path, d.filename, d.ext, d.folder, d.size, d.modified, d.created, d.ocr_status, d.page_count, d.notes, d.doc_date, d.category
       FROM cabinet_documents d
       JOIN cabinet_fts f ON f.rowid = d.rowid
       WHERE cabinet_fts MATCH ?
@@ -923,9 +932,9 @@ export class VaultStore {
       if (old) {
         this.removeCabinetDocument(absFrom);
         this.db.prepare(`
-          INSERT INTO cabinet_documents (id, path, filename, ext, folder, size, modified, created, ocr_status, extracted_text, page_count)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `).run(newId, newRelative, filename, old.ext, newFolder, old.size, old.modified, old.created, old.ocr_status, old.extracted_text, old.page_count);
+          INSERT INTO cabinet_documents (id, path, filename, ext, folder, size, modified, created, ocr_status, extracted_text, page_count, notes, doc_date, category)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(newId, newRelative, filename, old.ext, newFolder, old.size, old.modified, old.created, old.ocr_status, old.extracted_text, old.page_count, old.notes, old.doc_date, old.category);
 
         if (old.ocr_status === 'done' && old.extracted_text) {
           const rowid = (this.db.prepare('SELECT rowid FROM cabinet_documents WHERE id = ?').get(newId) as any)?.rowid;
@@ -952,6 +961,23 @@ export class VaultStore {
     })();
   }
 
+  updateCabinetMetadata(docPath: string, fields: { notes?: string | null; doc_date?: string | null; category?: string | null }): void {
+    const relativePath = docPath.startsWith('_cabinet/') ? docPath : `_cabinet/${docPath}`;
+    const id = pathToId(relativePath);
+
+    const sets: string[] = [];
+    const params: any[] = [];
+
+    if ('notes' in fields) { sets.push('notes = ?'); params.push(fields.notes ?? null); }
+    if ('doc_date' in fields) { sets.push('doc_date = ?'); params.push(fields.doc_date ?? null); }
+    if ('category' in fields) { sets.push('category = ?'); params.push(fields.category ?? null); }
+
+    if (sets.length === 0) return;
+    params.push(id);
+
+    this.db.prepare(`UPDATE cabinet_documents SET ${sets.join(', ')} WHERE id = ?`).run(...params);
+  }
+
   private getCabinetTags(docId: string): string[] {
     const rows = this.db.prepare('SELECT tag FROM cabinet_tags WHERE doc_id = ?').all(docId) as { tag: string }[];
     return rows.map(r => r.tag);
@@ -959,7 +985,7 @@ export class VaultStore {
 
   getCabinetPending(): CabinetDocumentRow[] {
     const rows = this.db.prepare(
-      "SELECT id, path, filename, ext, folder, size, modified, created, ocr_status, page_count FROM cabinet_documents WHERE ocr_status = 'pending' ORDER BY modified DESC"
+      "SELECT id, path, filename, ext, folder, size, modified, created, ocr_status, page_count, notes, doc_date, category FROM cabinet_documents WHERE ocr_status = 'pending' ORDER BY modified DESC"
     ).all() as CabinetDocumentRow[];
     return rows;
   }

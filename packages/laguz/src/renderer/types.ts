@@ -116,6 +116,9 @@ export interface CabinetDocument {
   page_count: number | null;
   tags: string[];
   extracted_text?: string | null;
+  notes: string | null;
+  doc_date: string | null;
+  category: string | null;
 }
 
 export interface CabinetOcrStatus {
@@ -204,6 +207,7 @@ declare global {
       searchCabinet: (q: string, filters?: { folder?: string; ext?: string }) => Promise<CabinetDocument[]>;
       getCabinetDocument: (docPath: string) => Promise<CabinetDocument | null>;
       tagCabinetDocument: (docPath: string, tags: string[]) => Promise<{ success: boolean }>;
+      updateCabinetMetadata: (docPath: string, fields: { notes?: string | null; doc_date?: string | null; category?: string | null }) => Promise<{ success: boolean }>;
       createCabinetFolder: (folderPath: string) => Promise<{ success: boolean }>;
       moveCabinetDocument: (from: string, to: string) => Promise<{ newPath: string }>;
       getCabinetOcrStatus: () => Promise<CabinetOcrStatus>;

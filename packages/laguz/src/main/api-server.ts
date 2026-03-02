@@ -509,6 +509,19 @@ export function startApiServer(store: VaultStore, signatureStore: SignatureStore
     }
   });
 
+  // ── Cabinet: Metadata ──────────────────────────────────────
+
+  app.post('/api/cabinet/metadata', (req, res) => {
+    try {
+      const { path: docPath, ...fields } = req.body;
+      if (!docPath) return res.status(400).json({ error: 'path is required' });
+      store.updateCabinetMetadata(docPath, fields);
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Cabinet: Create Folder ────────────────────────────────
 
   app.post('/api/cabinet/mkdir', (req, res) => {

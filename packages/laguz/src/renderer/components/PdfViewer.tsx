@@ -172,7 +172,7 @@ export function PdfViewer({
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       const transform: [number, number, number, number, number, number] = [dpr, 0, 0, dpr, 0, 0];
-      await page.render({ canvasContext: ctx, viewport, transform }).promise;
+      await page.render({ canvas, viewport, transform }).promise;
 
       if (textLayerDiv) {
         textLayerDiv.innerHTML = '';

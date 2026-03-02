@@ -438,6 +438,11 @@ function registerIpcHandlers() {
     return { success: true };
   });
 
+  ipcMain.handle('laguz:updateCabinetMetadata', async (_event, docPath: string, fields: any) => {
+    store.updateCabinetMetadata(docPath, fields);
+    return { success: true };
+  });
+
   ipcMain.handle('laguz:createCabinetFolder', async (_event, folderPath: string) => {
     store.createCabinetFolder(folderPath);
     return { success: true };

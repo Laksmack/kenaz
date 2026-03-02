@@ -61,6 +61,7 @@ const api = {
   searchCabinet: (q: string, filters?: { folder?: string; ext?: string }) => ipcRenderer.invoke('laguz:searchCabinet', q, filters),
   getCabinetDocument: (docPath: string) => ipcRenderer.invoke('laguz:getCabinetDocument', docPath),
   tagCabinetDocument: (docPath: string, tags: string[]) => ipcRenderer.invoke('laguz:tagCabinetDocument', docPath, tags),
+  updateCabinetMetadata: (docPath: string, fields: any) => ipcRenderer.invoke('laguz:updateCabinetMetadata', docPath, fields),
   createCabinetFolder: (folderPath: string) => ipcRenderer.invoke('laguz:createCabinetFolder', folderPath),
   moveCabinetDocument: (from: string, to: string) => ipcRenderer.invoke('laguz:moveCabinetDocument', from, to),
   getCabinetOcrStatus: () => ipcRenderer.invoke('laguz:getCabinetOcrStatus'),
