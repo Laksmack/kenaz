@@ -695,6 +695,17 @@ export class CacheStore {
     return row.cnt;
   }
 
+  /**
+   * Get the set of thread IDs that have pending local mutations.
+   * These threads should not be overwritten by sync until the actions are flushed.
+   */
+  getThreadsWithPendingActions(): Set<string> {
+    const rows = this.db.prepare(
+      "SELECT DISTINCT thread_id FROM pending_actions WHERE status = 'pending'"
+    ).all() as any[];
+    return new Set(rows.map(r => r.thread_id));
+  }
+
   // ── Outbox ─────────────────────────────────────────────
 
   enqueueOutbox(payload: SendEmailPayload): number {

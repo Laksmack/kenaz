@@ -214,11 +214,18 @@ export class SyncEngine {
         const threadIds = Array.from(affectedThreadIds);
         console.log(`[SyncEngine] Refreshing ${threadIds.length} affected threads`);
 
+        // Skip threads with pending local mutations — their local state is authoritative
+        const pendingThreads = this.cache.getThreadsWithPendingActions();
+
         // Fetch in batches of 20
         for (let i = 0; i < threadIds.length; i += 20) {
           const batch = threadIds.slice(i, i + 20);
           const threads = await Promise.all(
             batch.map(async (id) => {
+              if (pendingThreads.has(id)) {
+                console.log(`[SyncEngine] Skipping thread ${id.slice(0, 8)} — has pending local action`);
+                return null;
+              }
               try {
                 // Check if we had full bodies cached — if so, fetch full; otherwise metadata
                 const hadFull = this.cache.hasFullThread(id);
@@ -243,6 +250,14 @@ export class SyncEngine {
           for (const thread of validThreads) {
             if (thread) {
               this.cache.upsertFullThread(thread);
+
+              // ── Enforce history-based label removals ──
+              // Gmail API may return stale labels due to propagation lag.
+              // Trust the history record: if it says INBOX was removed, ensure
+              // the cached copy reflects that — prevents zombie reappearances.
+              if (inboxRemovedThreadIds.has(thread.id) && !inboxAddedThreadIds.has(thread.id)) {
+                this.cache.updateThreadLabels(thread.id, [], ['INBOX']);
+              }
 
               // Set nudge type on confirmed nudge candidates
               if (nudgeCandidateIds.has(thread.id)) {
