@@ -295,7 +295,16 @@ export class SyncEngine {
             break;
           }
           case 'delete': {
-            await this.google.deleteEvent(item.calendar_id, item.event_id);
+            try {
+              await this.google.deleteEvent(item.calendar_id, item.event_id);
+            } catch (delErr: any) {
+              // 404/410 means already deleted on Google — treat as success
+              if (delErr.code === 404 || delErr.code === 410 || delErr.status === 410) {
+                console.log(`[Dagaz Sync] Event ${item.event_id} already deleted on Google, cleaning up locally`);
+              } else {
+                throw delErr;
+              }
+            }
             break;
           }
           case 'rsvp': {
@@ -328,7 +337,15 @@ export class SyncEngine {
           this.cache.markEventSynced(event.id, result.google_id, result.etag || null);
           succeeded++;
         } else if (event.pending_action === 'delete' && event.google_id) {
-          await this.google.deleteEvent(event.calendar_id, event.google_id);
+          try {
+            await this.google.deleteEvent(event.calendar_id, event.google_id);
+          } catch (delErr: any) {
+            // 404/410 means already deleted on Google — still clean up locally
+            if (delErr.code !== 404 && delErr.code !== 410 && delErr.status !== 410) {
+              throw delErr;
+            }
+            console.log(`[Dagaz Sync] Event ${event.google_id} already deleted on Google, cleaning up locally`);
+          }
           this.cache.deleteEvent(event.id);
           succeeded++;
         }
