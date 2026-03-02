@@ -350,6 +350,48 @@ export class CacheStore {
   }
 
   /**
+   * Reconcile cached labels against an authoritative set of thread IDs.
+   * Any cached thread that has the label but is NOT in the provided set
+   * gets the label stripped. This prevents stale threads from reappearing
+   * when the app goes offline.
+   */
+  reconcileLabel(label: string, authorativeThreadIds: Set<string>): number {
+    const rows = this.db.prepare(
+      `SELECT id, labels FROM threads WHERE labels LIKE ?`
+    ).all(`%"${label}"%`) as any[];
+
+    let pruned = 0;
+    const update = this.db.prepare('UPDATE threads SET labels = ?, is_unread = ? WHERE id = ?');
+    const updateMsg = this.db.prepare('UPDATE messages SET labels = ?, is_unread = ? WHERE thread_id = ?');
+
+    const transaction = this.db.transaction(() => {
+      for (const row of rows) {
+        if (authorativeThreadIds.has(row.id)) continue;
+
+        let labels: string[] = JSON.parse(row.labels || '[]');
+        if (!labels.includes(label)) continue;
+
+        labels = labels.filter(l => l !== label);
+        update.run(JSON.stringify(labels), labels.includes('UNREAD') ? 1 : 0, row.id);
+        // Also update message labels for consistency
+        const msgRows = this.db.prepare('SELECT id, labels FROM messages WHERE thread_id = ?').all(row.id) as any[];
+        for (const msg of msgRows) {
+          let mLabels: string[] = JSON.parse(msg.labels || '[]');
+          mLabels = mLabels.filter(l => l !== label);
+          updateMsg.run(JSON.stringify(mLabels), mLabels.includes('UNREAD') ? 1 : 0, msg.id);
+        }
+        pruned++;
+      }
+    });
+    transaction();
+
+    if (pruned > 0) {
+      console.log(`[CacheStore] Reconciled label "${label}": pruned ${pruned} stale thread(s)`);
+    }
+    return pruned;
+  }
+
+  /**
    * Remove a thread from the cache entirely.
    */
   deleteThread(threadId: string): void {

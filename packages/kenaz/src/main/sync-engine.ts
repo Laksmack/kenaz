@@ -323,9 +323,17 @@ export class SyncEngine {
       const historyId = profile.historyId;
 
       // Fetch recent threads from inbox and other key views
-      const queries = ['in:inbox', 'label:PENDING', 'label:TODO', 'label:SNOOZED', 'is:starred', 'in:sent'];
+      // Map query → the Gmail label to reconcile against (null = no reconciliation)
+      const queries: Array<{ query: string; reconcileLabel?: string }> = [
+        { query: 'in:inbox', reconcileLabel: 'INBOX' },
+        { query: 'label:PENDING', reconcileLabel: 'PENDING' },
+        { query: 'label:TODO', reconcileLabel: 'TODO' },
+        { query: 'label:SNOOZED' },
+        { query: 'is:starred' },
+        { query: 'in:sent' },
+      ];
 
-      for (const query of queries) {
+      for (const { query, reconcileLabel } of queries) {
         try {
           const result = await this.gmail.fetchThreads(query, 100);
           if (result.threads.length > 0) {
@@ -336,6 +344,12 @@ export class SyncEngine {
                 this.cache.upsertMessages(thread.messages);
               }
             }
+          }
+
+          // Reconcile: strip label from any cached thread NOT in this response
+          if (reconcileLabel) {
+            const liveIds = new Set(result.threads.map(t => t.id));
+            this.cache.reconcileLabel(reconcileLabel, liveIds);
           }
         } catch (e) {
           console.error(`[SyncEngine] Failed to sync query "${query}":`, e);
