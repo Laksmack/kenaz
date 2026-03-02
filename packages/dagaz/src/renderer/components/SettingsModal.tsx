@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { AppConfig } from '../../shared/types';
 import { setUse24HourClock } from '../lib/utils';
+import { useFocusTrap } from '../hooks/useFocusTrap';
 
 interface Props {
   onClose: () => void;
@@ -9,6 +10,7 @@ interface Props {
 export function SettingsModal({ onClose }: Props) {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [mcpStatus, setMcpStatus] = useState<any>(null);
+  const focusTrapRef = useFocusTrap(true);
 
   useEffect(() => {
     window.dagaz.getConfig().then(setConfig);
@@ -16,7 +18,8 @@ export function SettingsModal({ onClose }: Props) {
   }, []);
 
   const updateConfig = async (updates: Partial<AppConfig>) => {
-    const updated = await window.dagaz.setConfig(updates);
+    await window.dagaz.setConfig(updates);
+    const updated = await window.dagaz.getConfig();
     setConfig(updated);
     if (updates.use24HourClock !== undefined) {
       setUse24HourClock(updates.use24HourClock);
@@ -29,8 +32,12 @@ export function SettingsModal({ onClose }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
       <div
+        ref={focusTrapRef}
         className="relative bg-bg-secondary border border-border-subtle rounded-xl shadow-2xl w-[500px] max-h-[70vh] overflow-y-auto animate-slide-up"
         onClick={e => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-border-subtle sticky top-0 bg-bg-secondary z-10">

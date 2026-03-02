@@ -13,40 +13,44 @@ import { useCalendar, useSync } from './hooks/useCalendar';
 import { usePendingInvites } from './hooks/usePendingInvites';
 import { useNeedsAction } from './hooks/useNeedsAction';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
+import { useToast } from './hooks/useToast';
+import { useQuickCreate } from './hooks/useQuickCreate';
+import { useOverlay } from './hooks/useOverlay';
+import { useModals } from './hooks/useModals';
+import { useConfirmDialogs } from './hooks/useConfirmDialogs';
+import { useConnectivity } from './hooks/useConnectivity';
 import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
-import { isSameDay, formatDayHeader, dateKey, setUse24HourClock } from './lib/utils';
-import type { ViewType, CalendarEvent, AppConfig, CreateEventInput, UpdateEventInput, OverlayPerson, OverlayEvent } from '../shared/types';
-import { OVERLAY_COLORS } from '../shared/types';
+import { ErrorBoundary } from '@futhark/core/components/ErrorBoundary';
+import { formatDayHeader, dateKey, setUse24HourClock } from './lib/utils';
+import type { ViewType, CalendarEvent, AppConfig, CreateEventInput, UpdateEventInput } from '../shared/types';
 import { PeopleOverlay } from './components/PeopleOverlay';
+import { SearchDialog } from './components/SearchDialog';
+import { GoToDateDialog } from './components/GoToDateDialog';
+import { RSVPMenu } from './components/RSVPMenu';
 
 export default function App() {
   const [isAuthed, setIsAuthed] = useState<boolean | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('week');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
-  const [quickCreateStart, setQuickCreateStart] = useState<Date | undefined>();
-  const [quickCreateEnd, setQuickCreateEnd] = useState<Date | undefined>();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
-  const [overlayPeople, setOverlayPeople] = useState<OverlayPerson[]>([]);
-  const [overlayEvents, setOverlayEvents] = useState<OverlayEvent[]>([]);
-  const [showInvitesPanel, setShowInvitesPanel] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; summary: string } | null>(null);
-  const [rsvpConfirm, setRsvpConfirm] = useState<{ id: string; summary: string; response: 'accepted' | 'declined' | 'tentative' } | null>(null);
-  const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
 
-  const showToast = useCallback((msg: string, durationMs = 3000) => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    setToast(msg);
-    toastTimerRef.current = setTimeout(() => setToast(null), durationMs);
-  }, []);
+  const { toast, showToast } = useToast();
+  const { quickCreateOpen, quickCreateStart, quickCreateEnd, editingEvent, openQuickCreate, openEditEvent, closeQuickCreate } = useQuickCreate();
+  const { deleteConfirm, showDeleteConfirm, dismissDeleteConfirm, rsvpConfirm, showRsvpConfirm, dismissRsvpConfirm } = useConfirmDialogs();
+  const {
+    settingsOpen, setSettingsOpen, showHelp, setShowHelp,
+    showInvitesPanel, setShowInvitesPanel,
+    searchOpen, setSearchOpen, goToDateOpen, setGoToDateOpen,
+    rsvpMenuEvent, setRsvpMenuEvent,
+    toggleSettings, toggleHelp, closeTopmost,
+  } = useModals();
 
   const weekDays = appConfig?.weekViewDays || 5;
-  const { events: rawEvents, calendars, loading, refresh, fetchCalendars } = useCalendar(currentView, currentDate, weekDays as 5 | 7);
+  const { isOnline } = useConnectivity();
+  const { overlayPeople, overlayEvents, initOverlayPeople, addOverlayPerson, removeOverlayPerson, toggleOverlayPerson } = useOverlay(currentDate, currentView, weekDays);
+
+  const { events: rawEvents, calendars, loading, refresh, fetchCalendars } = useCalendar(currentView, currentDate, weekDays as 5 | 7, isOnline);
   const syncState = useSync();
   const {
     invites: pendingInvites,
@@ -60,28 +64,25 @@ export default function App() {
     refresh: refreshNeedsAction,
   } = useNeedsAction();
 
-  // Filter out declined events when setting is enabled
   const events = useMemo(() => {
     if (!appConfig?.hideDeclinedEvents) return rawEvents;
     return rawEvents.filter(e => e.self_response !== 'declined');
   }, [rawEvents, appConfig?.hideDeclinedEvents]);
 
-  // Check auth on mount
+  // ── Init ────────────────────────────────────────────────
+
   useEffect(() => {
     window.dagaz.getAuthStatus().then(setIsAuthed).catch(() => setIsAuthed(false));
     window.dagaz.getConfig().then(c => {
       setAppConfig(c);
       setUse24HourClock(c.use24HourClock);
-      if (c.overlayPeople?.length) setOverlayPeople(c.overlayPeople);
+      if (c.overlayPeople?.length) initOverlayPeople(c.overlayPeople);
     });
-  }, []);
+  }, [initOverlayPeople]);
 
-  // Apply theme
   useEffect(() => {
     const themePref = appConfig?.theme || 'dark';
-    const apply = (resolved: 'dark' | 'light') => {
-      document.documentElement.dataset.theme = resolved;
-    };
+    const apply = (resolved: 'dark' | 'light') => { document.documentElement.dataset.theme = resolved; };
     if (themePref === 'system') {
       const mq = window.matchMedia('(prefers-color-scheme: dark)');
       apply(mq.matches ? 'dark' : 'light');
@@ -93,7 +94,7 @@ export default function App() {
     }
   }, [appConfig?.theme]);
 
-  // Today's events for sidebar — fetched independently so they persist across view changes
+  // Today's events for sidebar
   const [todayEvents, setTodayEvents] = useState<CalendarEvent[]>([]);
   const fetchTodayEvents = useCallback(async () => {
     try {
@@ -101,18 +102,15 @@ export default function App() {
       const start = new Date(today.getFullYear(), today.getMonth(), today.getDate()).toISOString();
       const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString();
       const evts = await window.dagaz.getEvents(start, end);
-      const filtered = (evts || []).filter((e: CalendarEvent) => !e.all_day);
-      setTodayEvents(filtered);
+      setTodayEvents((evts || []).filter((e: CalendarEvent) => !e.all_day));
     } catch { /* silent */ }
   }, []);
 
-  // Fetch today's events on mount, on sync, and when the visible events change
   useEffect(() => { fetchTodayEvents(); }, [fetchTodayEvents]);
   useEffect(() => {
     const unsub = window.dagaz.onSyncChanged(() => fetchTodayEvents());
     return unsub;
   }, [fetchTodayEvents]);
-  // Also refresh when events change (covers drag/create/delete)
   useEffect(() => { fetchTodayEvents(); }, [rawEvents, fetchTodayEvents]);
 
   // ── Navigation ────────────────────────────────────────────
@@ -145,10 +143,12 @@ export default function App() {
     setSelectedEvent(null);
   }, [currentView]);
 
-  const goToToday = useCallback(() => {
-    setCurrentDate(new Date());
-    setSelectedEvent(null);
-  }, []);
+  const goToToday = useCallback(() => { setCurrentDate(new Date()); setSelectedEvent(null); }, []);
+
+  const handleDateSelect = useCallback((date: Date) => {
+    setCurrentDate(date);
+    if (currentView === 'month') setCurrentView('day');
+  }, [currentView]);
 
   // ── Event Actions ─────────────────────────────────────────
 
@@ -158,39 +158,17 @@ export default function App() {
   }, [refresh]);
 
   const handleUpdateEvent = useCallback(async (event: CalendarEvent, newStart: Date, newEnd: Date) => {
-    // Recurring event: ask whether to edit this instance or the series
     if (event.recurring_event_id) {
-      const choice = window.confirm(
-        `"${event.summary}" is a recurring event.\n\nOK = Change only this event\nCancel = Don't change`
-      );
-      if (!choice) return;
-      // Editing a single instance: use the instance ID (event.id), which Google handles correctly
+      if (!window.confirm(`"${event.summary}" is a recurring event.\n\nOK = Change only this event\nCancel = Don't change`)) return;
     }
-
-    // Permission check for events you don't organize
     const hasOtherAttendees = (event.attendees?.length ?? 0) > 1;
-    const canEditDirectly = event.is_organizer || !hasOtherAttendees;
-
-    if (!canEditDirectly) {
-      const ok = window.confirm(
-        `You are not the organizer of "${event.summary}".\n\nPropose a new time? This will update the event and notify the organizer.`
-      );
-      if (!ok) return;
+    if (!(event.is_organizer || !hasOtherAttendees)) {
+      if (!window.confirm(`You are not the organizer of "${event.summary}".\n\nPropose a new time? This will update the event and notify the organizer.`)) return;
     }
-
-    const updates = {
-      start: newStart.toISOString(),
-      end: newEnd.toISOString(),
-    };
-    await window.dagaz.updateEvent(event.id, updates);
-
-    // Show toast
-    if (hasOtherAttendees) {
-      showToast(`"${event.summary}" updated — invitations sent to ${(event.attendees?.length ?? 1) - 1} attendee${(event.attendees?.length ?? 2) > 2 ? 's' : ''}`);
-    } else {
-      showToast(`"${event.summary}" moved`);
-    }
-
+    await window.dagaz.updateEvent(event.id, { start: newStart.toISOString(), end: newEnd.toISOString() });
+    showToast(hasOtherAttendees
+      ? `"${event.summary}" updated — invitations sent to ${(event.attendees?.length ?? 1) - 1} attendee${(event.attendees?.length ?? 2) > 2 ? 's' : ''}`
+      : `"${event.summary}" moved`);
     refresh({ full: false });
     if (selectedEvent?.id === event.id) {
       const updated = await window.dagaz.getEvent(event.id);
@@ -200,63 +178,55 @@ export default function App() {
 
   const handleDeleteEvent = useCallback(async (id: string, scope?: 'single' | 'all') => {
     const event = rawEvents.find(e => e.id === id) || selectedEvent;
-    if (event?.recurring_event_id && !scope) {
-      setDeleteConfirm({ id, summary: event.summary });
-      return;
-    }
+    if (event?.recurring_event_id && !scope) { showDeleteConfirm(id, event.summary); return; }
     await window.dagaz.deleteEvent(id, scope);
     setSelectedEvent(prev => prev?.id === id ? null : prev);
-    setDeleteConfirm(null);
-    const label = scope === 'all' ? 'series' : 'event';
-    showToast(event ? `"${event.summary}" ${label} deleted` : 'Event deleted');
+    dismissDeleteConfirm();
+    showToast(event ? `"${event.summary}" ${scope === 'all' ? 'series' : 'event'} deleted` : 'Event deleted');
     refresh({ full: false });
-  }, [refresh, rawEvents, selectedEvent, showToast]);
+  }, [refresh, rawEvents, selectedEvent, showToast, showDeleteConfirm, dismissDeleteConfirm]);
 
   const handleRSVP = useCallback(async (id: string, response: 'accepted' | 'declined' | 'tentative', scope?: 'single' | 'all') => {
     const event = rawEvents.find(e => e.id === id) || selectedEvent;
-
-    // For recurring events without a scope: show the scope dialog
-    if (event?.recurring_event_id && !scope) {
-      setRsvpConfirm({ id, summary: event.summary, response });
-      return;
-    }
-
+    if (event?.recurring_event_id && !scope) { showRsvpConfirm(id, event.summary, response); return; }
     await window.dagaz.rsvpEvent(id, response, scope);
-    // Don't trigger a sync here — the IPC handler already updated Google + local DB
-    // and fires events:changed which our hooks listen for. Triggering an incremental
-    // sync would race with the RSVP and potentially overwrite self_response with stale data.
     refreshNeedsAction();
     const updated = await window.dagaz.getEvent(id);
     setSelectedEvent(prev => prev?.id === id ? updated : prev);
-
-    // Archive the matching invite email in Kenaz
     if (updated?.summary) {
       const match = pendingInvites.find(inv => inv.title === updated.summary);
       if (match) {
-        try {
-          await window.dagaz.rsvpInvite(match.threadId, 'done');
-          dismissPendingInvite(match.threadId);
-          refreshPendingInvites();
-        } catch {}
+        try { await window.dagaz.rsvpInvite(match.threadId, 'done'); dismissPendingInvite(match.threadId); refreshPendingInvites(); } catch {}
       }
     }
-  }, [rawEvents, selectedEvent, refreshNeedsAction, pendingInvites, dismissPendingInvite, refreshPendingInvites]);
+  }, [rawEvents, selectedEvent, refreshNeedsAction, pendingInvites, dismissPendingInvite, refreshPendingInvites, showRsvpConfirm]);
 
   const handleInviteRsvp = useCallback(async (invite: { threadId: string; title: string; startTime: string | null }, response: 'accepted' | 'declined' | 'tentative') => {
-    // Find matching calendar event to RSVP on
-    const match = events.find(e =>
-      e.summary === invite.title ||
-      (invite.startTime && e.start_time === invite.startTime),
-    );
-    if (match) {
-      await window.dagaz.rsvpEvent(match.id, response);
-      refresh({ full: false });
-    }
-    // Archive in Kenaz
+    const match = events.find(e => e.summary === invite.title || (invite.startTime && e.start_time === invite.startTime));
+    if (match) { await window.dagaz.rsvpEvent(match.id, response); refresh({ full: false }); }
     await window.dagaz.rsvpInvite(invite.threadId, 'done');
     refreshPendingInvites();
     refreshNeedsAction();
   }, [events, refresh, refreshPendingInvites, refreshNeedsAction]);
+
+  const handleUpdateFromEdit = useCallback(async (id: string, updates: UpdateEventInput) => {
+    const event = rawEvents.find(e => e.id === id) || selectedEvent;
+    if (event?.recurring_event_id) {
+      if (!window.confirm(`"${event.summary}" is a recurring event.\n\nOK = Change only this event\nCancel = Don't change`)) return;
+    }
+    const hasOtherAttendees = (event?.attendees?.length ?? 0) > 1;
+    if (!(event?.is_organizer || !hasOtherAttendees)) {
+      if (!window.confirm(`You are not the organizer of "${event?.summary}".\n\nUpdate the event? This will notify the organizer.`)) return;
+    }
+    await window.dagaz.updateEvent(id, updates);
+    const name = updates.summary || event?.summary || 'Event';
+    showToast(hasOtherAttendees ? `"${name}" updated — attendees notified` : `"${name}" updated`);
+    refresh({ full: false });
+    if (selectedEvent?.id === id) {
+      const updated = await window.dagaz.getEvent(id);
+      if (updated) setSelectedEvent(updated);
+    }
+  }, [rawEvents, selectedEvent, refresh, showToast]);
 
   const handleCalendarToggle = useCallback(async (id: string, visible: boolean) => {
     await window.dagaz.updateCalendar(id, { visible });
@@ -267,177 +237,19 @@ export default function App() {
   const selectEvent = useCallback((event: CalendarEvent | null) => {
     setSelectedEvent(event);
     if (event) setShowInvitesPanel(false);
-  }, []);
-
-  const openQuickCreate = useCallback((start?: Date, end?: Date) => {
-    setEditingEvent(null);
-    setQuickCreateStart(start);
-    setQuickCreateEnd(end);
-    setQuickCreateOpen(true);
-  }, []);
-
-  const handleEditEvent = useCallback((event: CalendarEvent) => {
-    setEditingEvent(event);
-    setQuickCreateOpen(true);
-  }, []);
-
-  const handleUpdateFromEdit = useCallback(async (id: string, updates: UpdateEventInput) => {
-    // Find the event for context
-    const event = rawEvents.find(e => e.id === id) || selectedEvent;
-
-    // Recurring event: ask whether to edit this instance or skip
-    if (event?.recurring_event_id) {
-      const choice = window.confirm(
-        `"${event.summary}" is a recurring event.\n\nOK = Change only this event\nCancel = Don't change`
-      );
-      if (!choice) return;
-    }
-
-    // Permission check for events you don't organize
-    const hasOtherAttendees = (event?.attendees?.length ?? 0) > 1;
-    const canEditDirectly = event?.is_organizer || !hasOtherAttendees;
-
-    if (!canEditDirectly) {
-      const ok = window.confirm(
-        `You are not the organizer of "${event?.summary}".\n\nUpdate the event? This will notify the organizer.`
-      );
-      if (!ok) return;
-    }
-
-    await window.dagaz.updateEvent(id, updates);
-
-    // Show toast
-    const name = updates.summary || event?.summary || 'Event';
-    if (hasOtherAttendees) {
-      showToast(`"${name}" updated — attendees notified`);
-    } else {
-      showToast(`"${name}" updated`);
-    }
-
-    refresh({ full: false });
-    if (selectedEvent?.id === id) {
-      const updated = await window.dagaz.getEvent(id);
-      if (updated) setSelectedEvent(updated);
-    }
-  }, [rawEvents, selectedEvent, refresh, showToast]);
-
-  const handleAuth = useCallback(async () => {
-    const result = await window.dagaz.startAuth();
-    if (result.success) {
-      setIsAuthed(true);
-    } else {
-      throw new Error(result.error || 'Authentication failed');
-    }
-  }, []);
-
-  // ── Overlay People ───────────────────────────────────────
-  const saveOverlayPeople = useCallback((people: OverlayPerson[]) => {
-    setOverlayPeople(people);
-    window.dagaz.setConfig({ overlayPeople: people });
-  }, []);
-
-  const addOverlayPerson = useCallback((email: string, name?: string) => {
-    setOverlayPeople(prev => {
-      const usedColors = new Set(prev.map(p => p.color));
-      const nextColor = OVERLAY_COLORS.find(c => !usedColors.has(c)) || OVERLAY_COLORS[prev.length % OVERLAY_COLORS.length];
-      const updated = [...prev, { email, name, color: nextColor, visible: true }];
-      window.dagaz.setConfig({ overlayPeople: updated });
-      return updated;
-    });
-  }, []);
-
-  const removeOverlayPerson = useCallback((email: string) => {
-    setOverlayPeople(prev => {
-      const updated = prev.filter(p => p.email !== email);
-      window.dagaz.setConfig({ overlayPeople: updated });
-      return updated;
-    });
-    setOverlayEvents(prev => prev.filter(e => e.personEmail !== email));
-  }, []);
-
-  const toggleOverlayPerson = useCallback((email: string, visible: boolean) => {
-    setOverlayPeople(prev => {
-      const updated = prev.map(p => p.email === email ? { ...p, visible } : p);
-      window.dagaz.setConfig({ overlayPeople: updated });
-      return updated;
-    });
-  }, []);
-
-  // Fetch overlay events when view/date changes or people change
-  useEffect(() => {
-    const visiblePeople = overlayPeople.filter(p => p.visible);
-    if (visiblePeople.length === 0) {
-      setOverlayEvents([]);
-      return;
-    }
-
-    // Calculate visible date range based on current view
-    let start: Date, end: Date;
-    if (currentView === 'day') {
-      start = new Date(currentDate);
-      start.setHours(0, 0, 0, 0);
-      end = new Date(start);
-      end.setDate(end.getDate() + 1);
-    } else if (currentView === 'week') {
-      const d = new Date(currentDate);
-      const dayOfWeek = d.getDay();
-      start = new Date(d);
-      start.setDate(d.getDate() - ((dayOfWeek + 6) % 7));
-      start.setHours(0, 0, 0, 0);
-      end = new Date(start);
-      end.setDate(start.getDate() + (weekDays));
-    } else if (currentView === 'month') {
-      start = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
-      end = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
-    } else {
-      start = new Date(currentDate);
-      start.setHours(0, 0, 0, 0);
-      end = new Date(start);
-      end.setDate(end.getDate() + 7);
-    }
-
-    let cancelled = false;
-    (async () => {
-      const allEvents: OverlayEvent[] = [];
-      await Promise.all(visiblePeople.map(async (person) => {
-        try {
-          const result = await window.dagaz.fetchOverlayEvents(
-            person.email, start.toISOString(), end.toISOString()
-          );
-          if (cancelled) return;
-          if (result.success) {
-            for (const ev of result.events) {
-              allEvents.push({
-                ...ev,
-                personEmail: person.email,
-                personColor: person.color,
-              });
-            }
-          }
-        } catch {
-          // silently skip on error
-        }
-      }));
-      if (!cancelled) setOverlayEvents(allEvents);
-    })();
-
-    return () => { cancelled = true; };
-  }, [overlayPeople, currentDate, currentView, weekDays]);
-
-  const handleDateSelect = useCallback((date: Date) => {
-    setCurrentDate(date);
-    if (currentView === 'month') {
-      setCurrentView('day');
-    }
-  }, [currentView]);
+  }, [setShowInvitesPanel]);
 
   const handleJoinMeeting = useCallback(() => {
     if (!selectedEvent) return;
-    const link = selectedEvent.conference_data?.entryPoints?.find(
-      ep => ep.entryPointType === 'video'
-    )?.uri || selectedEvent.hangout_link;
+    const link = selectedEvent.conference_data?.entryPoints?.find(ep => ep.entryPointType === 'video')?.uri || selectedEvent.hangout_link;
     if (link) window.dagaz.openExternal(link);
   }, [selectedEvent]);
+
+  const handleAuth = useCallback(async () => {
+    const result = await window.dagaz.startAuth();
+    if (result.success) setIsAuthed(true);
+    else throw new Error(result.error || 'Authentication failed');
+  }, []);
 
   // ── Keyboard Shortcuts ────────────────────────────────────
 
@@ -447,21 +259,22 @@ export default function App() {
     onNavigatePrev: navigatePrev,
     onGoToToday: goToToday,
     onQuickCreate: () => openQuickCreate(),
-    onEditEvent: () => { if (selectedEvent) handleEditEvent(selectedEvent); },
+    onEditEvent: () => { if (selectedEvent) openEditEvent(selectedEvent); },
     onDeleteEvent: () => { if (selectedEvent) handleDeleteEvent(selectedEvent.id); },
-    onOpenDetail: () => { /* Detail auto-opens on select */ },
+    onOpenDetail: () => {},
     onClosePanel: () => {
-      if (showHelp) { setShowHelp(false); return; }
-      if (settingsOpen) { setSettingsOpen(false); return; }
-      if (quickCreateOpen) { setQuickCreateOpen(false); return; }
-      setSelectedEvent(null);
+      if (!closeTopmost(quickCreateOpen, closeQuickCreate)) setSelectedEvent(null);
     },
-    onSearch: () => { /* TODO */ },
-    onGoToDate: () => { /* TODO */ },
-    onDuplicate: () => { /* TODO */ },
-    onRSVP: () => { /* TODO: show RSVP menu */ },
+    onSearch: () => setSearchOpen(true),
+    onGoToDate: () => setGoToDateOpen(true),
+    onDuplicate: () => {
+      if (selectedEvent) {
+        openEditEvent({ ...selectedEvent, id: '', google_id: null, recurring_event_id: null, recurrence_rule: null });
+      }
+    },
+    onRSVP: () => { if (selectedEvent) setRsvpMenuEvent(selectedEvent); },
     onJoinMeeting: handleJoinMeeting,
-    onShowHelp: () => setShowHelp(prev => !prev),
+    onShowHelp: toggleHelp,
     onToggleWeekDays: () => {
       if (appConfig) {
         const newDays = appConfig.weekViewDays === 5 ? 7 : 5;
@@ -469,12 +282,12 @@ export default function App() {
         setAppConfig(prev => prev ? { ...prev, weekViewDays: newDays } : prev);
       }
     },
-    onSettings: () => setSettingsOpen(prev => !prev),
+    onSettings: toggleSettings,
     selectedEvent,
     currentView,
   });
 
-  // ── Loading / Auth Check ──────────────────────────────────
+  // ── Loading / Auth ──────────────────────────────────────
 
   if (isAuthed === null) {
     return (
@@ -483,10 +296,7 @@ export default function App() {
       </div>
     );
   }
-
-  if (!isAuthed) {
-    return <AuthScreen onAuth={handleAuth} />;
-  }
+  if (!isAuthed) return <AuthScreen onAuth={handleAuth} />;
 
   // ── Header Label ──────────────────────────────────────────
 
@@ -496,69 +306,24 @@ export default function App() {
         return currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
       case 'week': {
         const d = new Date(currentDate);
-        const dayOfWeek = d.getDay();
         const monday = new Date(d);
-        monday.setDate(d.getDate() - ((dayOfWeek + 6) % 7));
+        monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
         const endDay = new Date(monday);
         endDay.setDate(monday.getDate() + (weekDays - 1));
-        if (monday.getMonth() === endDay.getMonth()) {
-          return `${monday.toLocaleDateString('en-US', { month: 'long' })} ${monday.getDate()}–${endDay.getDate()}, ${monday.getFullYear()}`;
-        }
-        return `${monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${endDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        return monday.getMonth() === endDay.getMonth()
+          ? `${monday.toLocaleDateString('en-US', { month: 'long' })} ${monday.getDate()}–${endDay.getDate()}, ${monday.getFullYear()}`
+          : `${monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${endDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
       }
-      case 'month':
-        return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-      case 'agenda':
-        return 'Agenda';
-      default:
-        return '';
+      case 'month': return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      case 'agenda': return 'Agenda';
+      default: return '';
     }
   })();
 
-  // ── Agenda View ───────────────────────────────────────────
-
-  const renderAgendaView = () => {
-    const grouped = new Map<string, CalendarEvent[]>();
-    for (const event of events) {
-      const start = new Date(event.all_day ? (event.start_date || event.start_time) : event.start_time);
-      const key = dateKey(start);
-      if (!grouped.has(key)) grouped.set(key, []);
-      grouped.get(key)!.push(event);
-    }
-
-    const sortedDays = Array.from(grouped.entries()).sort(([a], [b]) => a.localeCompare(b));
-
-    return (
-      <div className="h-full overflow-y-auto scrollbar-thin p-4 space-y-4">
-        {sortedDays.length === 0 && !loading && (
-          <p className="text-sm text-text-muted text-center mt-8">No events in this period</p>
-        )}
-        {sortedDays.map(([dayKey, dayEvents]) => (
-          <div key={dayKey}>
-            <h3 className="text-xs font-medium text-text-muted mb-2 uppercase tracking-wider">
-              {formatDayHeader(new Date(dayKey + 'T00:00:00'))}
-            </h3>
-            <div className="space-y-1">
-              {dayEvents.map(event => (
-                <EventBlock
-                  key={event.id}
-                  event={event}
-                  selected={selectedEvent?.id === event.id}
-                  onClick={setSelectedEvent}
-                />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  // ── Main Render ───────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────
 
   return (
     <div className="h-screen flex bg-bg-primary">
-      {/* Sidebar */}
       <div className="w-56 min-w-[200px] border-r border-border-subtle flex-shrink-0 titlebar-drag">
         <div className="titlebar-no-drag h-full">
           <Sidebar
@@ -585,48 +350,33 @@ export default function App() {
         </div>
       </div>
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Title bar */}
         <div className="titlebar-drag h-12 flex items-center px-4 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
-          {/* Navigation */}
           <div className="titlebar-no-drag flex items-center gap-1">
             <UpdateBanner api={window.dagaz} />
             <button onClick={navigatePrev} className="p-1.5 rounded hover:bg-bg-hover text-text-secondary">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-              </svg>
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
             </button>
-            <button
-              onClick={goToToday}
-              className="px-2.5 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
-            >
-              Today
-            </button>
+            <button onClick={goToToday} className="px-2.5 py-1 rounded text-xs text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors">Today</button>
             <button onClick={navigateNext} className="p-1.5 rounded hover:bg-bg-hover text-text-secondary">
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-              </svg>
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
             </button>
           </div>
-
-          {/* Date label */}
           <div className="ml-3 text-sm font-medium text-text-primary">{headerLabel}</div>
-
           <div className="flex-1" />
 
-          {/* View tabs */}
-          <div className="titlebar-no-drag flex items-center gap-1 mr-3">
+          <div className="titlebar-no-drag flex items-center gap-1 mr-3" role="tablist" aria-label="Calendar views">
             {needsActionEvents.length > 0 && (
               <button
                 onClick={() => { setShowInvitesPanel(true); setSelectedEvent(null); }}
                 className={`view-tab flex items-center gap-1.5 ${showInvitesPanel && !selectedEvent ? 'active' : ''}`}
                 title="Events needing your response"
+                role="tab"
+                aria-selected={showInvitesPanel && !selectedEvent}
               >
                 Pending
-                <span className="px-1.5 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary text-[10px] font-semibold leading-none">
-                  {needsActionEvents.length}
-                </span>
+                <span className="px-1.5 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary text-[10px] font-semibold leading-none">{needsActionEvents.length}</span>
               </button>
             )}
             {([
@@ -640,13 +390,14 @@ export default function App() {
                 onClick={() => { setCurrentView(v.key); setSelectedEvent(null); setShowInvitesPanel(false); }}
                 className={`view-tab ${currentView === v.key && !showInvitesPanel ? 'active' : ''}`}
                 title={`${v.label} (${v.shortcut})`}
+                role="tab"
+                aria-selected={currentView === v.key && !showInvitesPanel}
               >
                 {v.label}
               </button>
             ))}
           </div>
 
-          {/* Toolbar buttons */}
           <div className="titlebar-no-drag flex items-center gap-1.5">
             {syncState.status === 'offline' && (
               <span className="text-[10px] text-text-muted bg-bg-tertiary px-1.5 py-0.5 rounded">Offline</span>
@@ -660,7 +411,6 @@ export default function App() {
                 {syncState.pendingCount} pending &times;
               </button>
             )}
-
             <button
               onClick={() => refresh({ full: true })}
               disabled={loading || syncState.status === 'syncing'}
@@ -671,12 +421,7 @@ export default function App() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
-
-            <button
-              onClick={() => setSettingsOpen(true)}
-              className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
-              title="Settings (Cmd+,)"
-            >
+            <button onClick={() => setSettingsOpen(true)} className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors" title="Settings (Cmd+,)">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -684,20 +429,10 @@ export default function App() {
             </button>
           </div>
 
-          {/* Dagaz rune — far right, click to create event */}
           <div className="titlebar-no-drag ml-3 flex items-center">
-            <button
-              onClick={() => openQuickCreate()}
-              className="p-0.5 rounded-md hover:opacity-80 transition-opacity"
-              title="New Event (C)"
-            >
+            <button onClick={() => openQuickCreate()} className="p-0.5 rounded-md hover:opacity-80 transition-opacity" title="New Event (C)">
               <svg className="w-5 h-5" viewBox="0 0 512 512" fill="none">
-                <defs>
-                  <linearGradient id="dagaz-title" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
-                    <stop offset="0" stopColor="#2D5F8A"/>
-                    <stop offset="1" stopColor="#7AB8D4"/>
-                  </linearGradient>
-                </defs>
+                <defs><linearGradient id="dagaz-title" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse"><stop offset="0" stopColor="#2D5F8A"/><stop offset="1" stopColor="#7AB8D4"/></linearGradient></defs>
                 <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#dagaz-title)"/>
                 <path d="M128 160L256 256L128 352M384 160L256 256L384 352" stroke="#FFF8F0" strokeWidth="31.36" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
                 <line x1="128" y1="160" x2="128" y2="352" stroke="#FFF8F0" strokeWidth="31.36" strokeLinecap="round"/>
@@ -709,222 +444,165 @@ export default function App() {
 
         {/* Content area */}
         <div className="flex-1 flex overflow-hidden">
-          {/* Calendar view */}
+          <ErrorBoundary>
           <div className="flex-1 min-w-0">
             {currentView === 'week' && (
-              <WeekView
-                currentDate={currentDate}
-                events={events}
-                overlayEvents={overlayEvents}
-                pendingInvites={pendingInvites}
-                selectedEvent={selectedEvent}
-                onSelectEvent={selectEvent}
-                onCreateEvent={(start, end) => openQuickCreate(start, end)}
-                onUpdateEvent={handleUpdateEvent}
-                onRSVP={handleRSVP}
-                onDeleteEvent={handleDeleteEvent}
-                weekDays={weekDays as 5 | 7}
-                defaultEventDurationMinutes={appConfig?.defaultEventDurationMinutes}
-              />
+              <WeekView currentDate={currentDate} events={events} overlayEvents={overlayEvents} pendingInvites={pendingInvites}
+                selectedEvent={selectedEvent} onSelectEvent={selectEvent} onCreateEvent={(start, end) => openQuickCreate(start, end)}
+                onUpdateEvent={handleUpdateEvent} onRSVP={handleRSVP} onDeleteEvent={handleDeleteEvent}
+                weekDays={weekDays as 5 | 7} defaultEventDurationMinutes={appConfig?.defaultEventDurationMinutes} />
             )}
             {currentView === 'day' && (
-              <DayView
-                currentDate={currentDate}
-                events={events}
-                overlayEvents={overlayEvents}
-                pendingInvites={pendingInvites}
-                selectedEvent={selectedEvent}
-                onSelectEvent={selectEvent}
-                onCreateEvent={(start, end) => openQuickCreate(start, end)}
-                onUpdateEvent={handleUpdateEvent}
-                onRSVP={handleRSVP}
-                onDeleteEvent={handleDeleteEvent}
-                defaultEventDurationMinutes={appConfig?.defaultEventDurationMinutes}
-              />
+              <DayView currentDate={currentDate} events={events} overlayEvents={overlayEvents} pendingInvites={pendingInvites}
+                selectedEvent={selectedEvent} onSelectEvent={selectEvent} onCreateEvent={(start, end) => openQuickCreate(start, end)}
+                onUpdateEvent={handleUpdateEvent} onRSVP={handleRSVP} onDeleteEvent={handleDeleteEvent}
+                defaultEventDurationMinutes={appConfig?.defaultEventDurationMinutes} />
             )}
             {currentView === 'month' && (
-              <MonthView
-                currentDate={currentDate}
-                events={events}
-                selectedEvent={selectedEvent}
-                onSelectEvent={selectEvent}
-                onDateSelect={handleDateSelect}
-              />
+              <MonthView currentDate={currentDate} events={events} selectedEvent={selectedEvent} onSelectEvent={selectEvent} onDateSelect={handleDateSelect} />
             )}
-            {currentView === 'agenda' && renderAgendaView()}
+            {currentView === 'agenda' && <AgendaView events={events} loading={loading} selectedEvent={selectedEvent} onSelectEvent={setSelectedEvent} />}
           </div>
+          </ErrorBoundary>
 
-          {/* Right panel: event detail or needs-action review */}
+          <ErrorBoundary>
           {selectedEvent ? (
-            <EventDetail
-              event={selectedEvent}
-              onClose={() => { setSelectedEvent(null); if (needsActionEvents.length > 0) setShowInvitesPanel(true); }}
-              onDelete={handleDeleteEvent}
-              onRSVP={handleRSVP}
-              onEdit={handleEditEvent}
-            />
+            <EventDetail event={selectedEvent} onClose={() => { setSelectedEvent(null); if (needsActionEvents.length > 0) setShowInvitesPanel(true); }}
+              onDelete={handleDeleteEvent} onRSVP={handleRSVP} onEdit={openEditEvent} />
           ) : (showInvitesPanel || needsActionEvents.length > 0) && (
-            <InviteReviewPanel
-              events={needsActionEvents}
-              allEvents={events}
-              isLoading={needsActionLoading}
-              onRefresh={refreshNeedsAction}
-              onRsvp={handleRSVP}
-              onSelectEvent={selectEvent}
-              onDateSelect={handleDateSelect}
-            />
+            <InviteReviewPanel events={needsActionEvents} allEvents={events} isLoading={needsActionLoading}
+              onRefresh={refreshNeedsAction} onRsvp={handleRSVP} onSelectEvent={selectEvent} onDateSelect={handleDateSelect} />
           )}
+          </ErrorBoundary>
         </div>
       </div>
 
-      {/* Quick Create Modal */}
-      <QuickCreate
-        open={quickCreateOpen}
-        onClose={() => { setQuickCreateOpen(false); setEditingEvent(null); }}
-        onCreate={handleCreateEvent}
-        onUpdate={handleUpdateFromEdit}
-        editingEvent={editingEvent}
-        calendars={calendars}
-        defaultCalendarId={appConfig?.defaultCalendarId || null}
-        defaultStart={quickCreateStart}
-        defaultEnd={quickCreateEnd}
-        defaultAttendees={overlayPeople}
-      />
+      <QuickCreate open={quickCreateOpen} onClose={closeQuickCreate} onCreate={handleCreateEvent} onUpdate={handleUpdateFromEdit}
+        editingEvent={editingEvent} calendars={calendars} defaultCalendarId={appConfig?.defaultCalendarId || null}
+        defaultStart={quickCreateStart} defaultEnd={quickCreateEnd} defaultAttendees={overlayPeople} />
 
-      {/* Settings Modal */}
-      {settingsOpen && (
-        <SettingsModal onClose={() => setSettingsOpen(false)} />
-      )}
+      {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} onSelectEvent={selectEvent} onNavigateToDate={(date) => setCurrentDate(date)} />
+      <GoToDateDialog open={goToDateOpen} onClose={() => setGoToDateOpen(false)} onGoToDate={(date) => { setCurrentDate(date); setSelectedEvent(null); }} />
+      {rsvpMenuEvent && <RSVPMenu event={rsvpMenuEvent} onRSVP={handleRSVP} onClose={() => setRsvpMenuEvent(null)} />}
 
-      {/* Keyboard Shortcut Help */}
-      {showHelp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setShowHelp(false)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="relative bg-bg-secondary border border-border-subtle rounded-xl shadow-2xl p-6 w-[420px] animate-slide-up" onClick={e => e.stopPropagation()}>
-            <h2 className="text-sm font-semibold text-text-primary mb-4">Keyboard Shortcuts</h2>
-            <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
-              {[
-                ['T', 'Jump to today'],
-                ['D', 'Day view'],
-                ['W', '5-day work week'],
-                ['Shift+W', 'Full 7-day week'],
-                ['M', 'Month view'],
-                ['A', 'Agenda view'],
-                ['C', 'Quick create event'],
-                ['E', 'Edit selected event'],
-                ['Delete', 'Delete selected event'],
-                ['Enter', 'Open event detail'],
-                ['Esc', 'Close panel / deselect'],
-                ['N', 'Next period'],
-                ['P', 'Previous period'],
-                ['G', 'Go to date'],
-                ['/', 'Search events'],
-                ['Cmd+D', 'Duplicate event'],
-                ['R', 'RSVP menu'],
-                ['J', 'Join meeting'],
-                ['?', 'This help'],
-              ].map(([key, desc]) => (
-                <React.Fragment key={key}>
-                  <div className="flex items-center gap-2">
-                    <span className="shortcut-key">{key}</span>
-                    <span className="text-text-secondary">{desc}</span>
-                  </div>
-                </React.Fragment>
-              ))}
-            </div>
+      {showHelp && <HelpOverlay onClose={() => setShowHelp(false)} />}
+      {deleteConfirm && <DeleteConfirmDialog confirm={deleteConfirm} onDelete={handleDeleteEvent} onCancel={dismissDeleteConfirm} />}
+      {rsvpConfirm && <RsvpConfirmDialog confirm={rsvpConfirm} onRSVP={handleRSVP} onCancel={dismissRsvpConfirm} />}
+      {toast && <Toast message={toast} />}
+    </div>
+  );
+}
+
+// ── Extracted inline components ─────────────────────────
+
+function AgendaView({ events, loading, selectedEvent, onSelectEvent }: {
+  events: CalendarEvent[]; loading: boolean; selectedEvent: CalendarEvent | null; onSelectEvent: (e: CalendarEvent) => void;
+}) {
+  const grouped = new Map<string, CalendarEvent[]>();
+  for (const event of events) {
+    const start = new Date(event.all_day ? (event.start_date || event.start_time) : event.start_time);
+    const key = dateKey(start);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(event);
+  }
+  const sortedDays = Array.from(grouped.entries()).sort(([a], [b]) => a.localeCompare(b));
+
+  return (
+    <div className="h-full overflow-y-auto scrollbar-thin p-4 space-y-4">
+      {sortedDays.length === 0 && !loading && <p className="text-sm text-text-muted text-center mt-8">No events in this period</p>}
+      {sortedDays.map(([dayKey, dayEvents]) => (
+        <div key={dayKey}>
+          <h3 className="text-xs font-medium text-text-muted mb-2 uppercase tracking-wider">{formatDayHeader(new Date(dayKey + 'T00:00:00'))}</h3>
+          <div className="space-y-1">
+            {dayEvents.map(event => (
+              <EventBlock key={event.id} event={event} selected={selectedEvent?.id === event.id} onClick={onSelectEvent} />
+            ))}
           </div>
         </div>
-      )}
+      ))}
+    </div>
+  );
+}
 
-      {/* Delete confirmation for recurring events */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setDeleteConfirm(null)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div
-            className="relative bg-bg-secondary border border-border-subtle rounded-xl shadow-2xl w-[340px] animate-slide-up"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="px-5 pt-4 pb-2">
-              <h3 className="text-sm font-semibold text-text-primary">Delete recurring event</h3>
-              <p className="text-xs text-text-secondary mt-1.5 leading-relaxed">
-                "{deleteConfirm.summary}" is part of a series.
-              </p>
+function HelpOverlay({ onClose }: { onClose: () => void }) {
+  const shortcuts = [
+    ['T', 'Jump to today'], ['D', 'Day view'], ['W', '5-day work week'], ['Shift+W', 'Full 7-day week'],
+    ['M', 'Month view'], ['A', 'Agenda view'], ['C', 'Quick create event'], ['E', 'Edit selected event'],
+    ['Delete', 'Delete selected event'], ['Enter', 'Open event detail'], ['Esc', 'Close panel / deselect'],
+    ['N', 'Next period'], ['P', 'Previous period'], ['G', 'Go to date'], ['/', 'Search events'],
+    ['Cmd+D', 'Duplicate event'], ['R', 'RSVP menu'], ['J', 'Join meeting'], ['?', 'This help'],
+  ];
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative bg-bg-secondary border border-border-subtle rounded-xl shadow-2xl p-6 w-[420px] animate-slide-up" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="help-title">
+        <h2 id="help-title" className="text-sm font-semibold text-text-primary mb-4">Keyboard Shortcuts</h2>
+        <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-xs">
+          {shortcuts.map(([key, desc]) => (
+            <div key={key} className="flex items-center gap-2">
+              <span className="shortcut-key">{key}</span>
+              <span className="text-text-secondary">{desc}</span>
             </div>
-            <div className="px-5 pb-4 pt-3 flex flex-col gap-2">
-              <button
-                onClick={() => handleDeleteEvent(deleteConfirm.id, 'single')}
-                className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors"
-              >
-                This event only
-              </button>
-              <button
-                onClick={() => handleDeleteEvent(deleteConfirm.id, 'all')}
-                className="w-full text-left px-3 py-2 rounded-lg text-xs text-red-400 bg-bg-tertiary border border-border-subtle hover:border-red-400/40 transition-colors"
-              >
-                All events in series
-              </button>
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="w-full text-center px-3 py-1.5 text-xs text-text-muted hover:text-text-primary transition-colors mt-1"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+          ))}
         </div>
-      )}
+      </div>
+    </div>
+  );
+}
 
-      {/* RSVP scope confirmation for recurring events */}
-      {rsvpConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setRsvpConfirm(null)}>
-          <div className="absolute inset-0 bg-black/40" />
-          <div
-            className="relative bg-bg-secondary border border-border-subtle rounded-xl shadow-2xl w-[340px] animate-slide-up"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="px-5 pt-4 pb-2">
-              <h3 className="text-sm font-semibold text-text-primary">
-                {rsvpConfirm.response === 'accepted' ? 'Accept' : rsvpConfirm.response === 'tentative' ? 'Maybe' : 'Decline'} recurring event
-              </h3>
-              <p className="text-xs text-text-secondary mt-1.5 leading-relaxed">
-                "{rsvpConfirm.summary}" is part of a series.
-              </p>
-            </div>
-            <div className="px-5 pb-4 pt-3 flex flex-col gap-2">
-              <button
-                onClick={() => { const { id, response } = rsvpConfirm; setRsvpConfirm(null); handleRSVP(id, response, 'single'); }}
-                className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors"
-              >
-                This event only
-              </button>
-              <button
-                onClick={() => { const { id, response } = rsvpConfirm; setRsvpConfirm(null); handleRSVP(id, response, 'all'); }}
-                className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors"
-              >
-                All events in series
-              </button>
-              <button
-                onClick={() => setRsvpConfirm(null)}
-                className="w-full text-center px-3 py-1.5 text-xs text-text-muted hover:text-text-primary transition-colors mt-1"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+function DeleteConfirmDialog({ confirm, onDelete, onCancel }: {
+  confirm: { id: string; summary: string }; onDelete: (id: string, scope: 'single' | 'all') => void; onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onCancel}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative bg-bg-secondary border border-border-subtle rounded-xl shadow-2xl w-[340px] animate-slide-up" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="delete-confirm-title">
+        <div className="px-5 pt-4 pb-2">
+          <h3 id="delete-confirm-title" className="text-sm font-semibold text-text-primary">Delete recurring event</h3>
+          <p className="text-xs text-text-secondary mt-1.5 leading-relaxed">"{confirm.summary}" is part of a series.</p>
         </div>
-      )}
+        <div className="px-5 pb-4 pt-3 flex flex-col gap-2">
+          <button onClick={() => onDelete(confirm.id, 'single')} className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors">This event only</button>
+          <button onClick={() => onDelete(confirm.id, 'all')} className="w-full text-left px-3 py-2 rounded-lg text-xs text-red-400 bg-bg-tertiary border border-border-subtle hover:border-red-400/40 transition-colors">All events in series</button>
+          <button onClick={onCancel} className="w-full text-center px-3 py-1.5 text-xs text-text-muted hover:text-text-primary transition-colors mt-1">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-      {/* Toast notification */}
-      {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
-          <div className="bg-bg-tertiary border border-border-subtle text-text-primary text-xs px-4 py-2.5 rounded-lg shadow-xl flex items-center gap-2">
-            <svg className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            {toast}
-          </div>
+function RsvpConfirmDialog({ confirm, onRSVP, onCancel }: {
+  confirm: { id: string; summary: string; response: 'accepted' | 'declined' | 'tentative' }; onRSVP: (id: string, r: 'accepted' | 'declined' | 'tentative', scope: 'single' | 'all') => void; onCancel: () => void;
+}) {
+  const label = confirm.response === 'accepted' ? 'Accept' : confirm.response === 'tentative' ? 'Maybe' : 'Decline';
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onCancel}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative bg-bg-secondary border border-border-subtle rounded-xl shadow-2xl w-[340px] animate-slide-up" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="rsvp-confirm-title">
+        <div className="px-5 pt-4 pb-2">
+          <h3 id="rsvp-confirm-title" className="text-sm font-semibold text-text-primary">{label} recurring event</h3>
+          <p className="text-xs text-text-secondary mt-1.5 leading-relaxed">"{confirm.summary}" is part of a series.</p>
         </div>
-      )}
+        <div className="px-5 pb-4 pt-3 flex flex-col gap-2">
+          <button onClick={() => { onCancel(); onRSVP(confirm.id, confirm.response, 'single'); }} className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors">This event only</button>
+          <button onClick={() => { onCancel(); onRSVP(confirm.id, confirm.response, 'all'); }} className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors">All events in series</button>
+          <button onClick={onCancel} className="w-full text-center px-3 py-1.5 text-xs text-text-muted hover:text-text-primary transition-colors mt-1">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Toast({ message }: { message: string }) {
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-slide-up">
+      <div className="bg-bg-tertiary border border-border-subtle text-text-primary text-xs px-4 py-2.5 rounded-lg shadow-xl flex items-center gap-2">
+        <svg className="w-3.5 h-3.5 text-accent-primary flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+        </svg>
+        {message}
+      </div>
     </div>
   );
 }

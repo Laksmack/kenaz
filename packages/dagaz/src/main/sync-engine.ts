@@ -1,8 +1,14 @@
-import { BrowserWindow } from 'electron';
+import { BrowserWindow, powerMonitor } from 'electron';
 import { GoogleCalendarService } from './google-calendar';
 import { CacheStore } from './cache-store';
 import { ConnectivityMonitor } from './connectivity';
+import { IPC } from '../shared/types';
 import type { SyncStatus, CalendarEvent, Attendee } from '../shared/types';
+
+// Polling intervals in milliseconds
+const INCREMENTAL_INTERVAL_AC = 60_000;       // 60s on AC power
+const INCREMENTAL_INTERVAL_BATTERY = 120_000;  // 120s on battery
+const FULL_SYNC_INTERVAL = 8 * 60 * 60 * 1000; // 8 hours
 
 export class SyncEngine {
   private google: GoogleCalendarService;
@@ -11,10 +17,11 @@ export class SyncEngine {
   private mainWindow: BrowserWindow | null = null;
 
   private _status: SyncStatus = 'synced';
-  private syncInterval: ReturnType<typeof setInterval> | null = null;
+  private syncInterval: ReturnType<typeof setTimeout> | null = null;
   private fullSyncInterval: ReturnType<typeof setInterval> | null = null;
   private isRunning: boolean = false;
   private lastSync: string | null = null;
+  private onBattery: boolean = false;
 
   constructor(google: GoogleCalendarService, cache: CacheStore, connectivity: ConnectivityMonitor) {
     this.google = google;
@@ -32,18 +39,30 @@ export class SyncEngine {
     if (this.isRunning) return;
     this.isRunning = true;
 
+    // Track battery state
+    this.onBattery = powerMonitor.isOnBatteryPower();
+    powerMonitor.on('on-ac', () => {
+      if (this.onBattery) {
+        this.onBattery = false;
+        console.log('[Dagaz Sync] Switched to AC power — using faster polling');
+        this.restartIncrementalPolling();
+      }
+    });
+    powerMonitor.on('on-battery', () => {
+      if (!this.onBattery) {
+        this.onBattery = true;
+        console.log('[Dagaz Sync] Switched to battery — using slower polling');
+        this.restartIncrementalPolling();
+      }
+    });
+
     // Initial full sync
     this.fullSync().catch(e => console.error('[Dagaz Sync] Initial sync failed:', e));
 
-    // Incremental sync every 60 seconds
-    this.syncInterval = setInterval(() => {
-      if (this.connectivity.isOnline) {
-        this.incrementalSync().catch(e => console.error('[Dagaz Sync] Incremental sync failed:', e));
-      }
-    }, 60000);
+    // Adaptive incremental sync (60s AC / 120s battery)
+    this.scheduleIncrementalSync();
 
     // Full sync every 8 hours to reconcile stale/deleted events
-    const FULL_SYNC_INTERVAL = 8 * 60 * 60 * 1000;
     this.fullSyncInterval = setInterval(() => {
       if (this.connectivity.isOnline) {
         console.log('[Dagaz Sync] Periodic full sync (8h)');
@@ -58,10 +77,31 @@ export class SyncEngine {
     });
   }
 
+  private get incrementalInterval(): number {
+    return this.onBattery ? INCREMENTAL_INTERVAL_BATTERY : INCREMENTAL_INTERVAL_AC;
+  }
+
+  private scheduleIncrementalSync(): void {
+    this.syncInterval = setTimeout(() => {
+      if (this.connectivity.isOnline) {
+        this.incrementalSync().catch(e => console.error('[Dagaz Sync] Incremental sync failed:', e));
+      }
+      if (this.isRunning) this.scheduleIncrementalSync();
+    }, this.incrementalInterval);
+  }
+
+  private restartIncrementalPolling(): void {
+    if (this.syncInterval) {
+      clearTimeout(this.syncInterval);
+      this.syncInterval = null;
+    }
+    if (this.isRunning) this.scheduleIncrementalSync();
+  }
+
   stop(): void {
     this.isRunning = false;
     if (this.syncInterval) {
-      clearInterval(this.syncInterval);
+      clearTimeout(this.syncInterval);
       this.syncInterval = null;
     }
     if (this.fullSyncInterval) {
@@ -363,7 +403,7 @@ export class SyncEngine {
   private notifyRenderer(): void {
     try {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send('sync:changed', {
+        this.mainWindow.webContents.send(IPC.SYNC_CHANGED, {
           status: this._status,
           lastSync: this.lastSync,
           pendingCount: this.getPendingCount(),

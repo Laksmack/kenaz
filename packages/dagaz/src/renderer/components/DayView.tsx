@@ -1,8 +1,13 @@
-import React, { useMemo, useRef, useEffect, useCallback, useState } from 'react';
+import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import type { CalendarEvent, OverlayEvent, PendingInvite } from '../../shared/types';
 import { EventBlock } from './EventBlock';
 import { isSameDay, formatTime, dateKey, getUse24HourClock } from '../lib/utils';
 import { useEventDrag, type DragMode } from '../hooks/useEventDrag';
+import { useNowIndicator } from '../hooks/useNowIndicator';
+import {
+  HOUR_HEIGHT, HOURS, getMinutesFromTime, timeOverlaps,
+  computeLayouts, overlayToEvent, type LayoutItem,
+} from '../lib/event-layout';
 
 interface Props {
   currentDate: Date;
@@ -16,83 +21,6 @@ interface Props {
   onRSVP?: (eventId: string, response: 'accepted' | 'declined' | 'tentative') => void;
   onDeleteEvent?: (eventId: string) => void;
   defaultEventDurationMinutes?: number;
-}
-
-const HOUR_HEIGHT = 60;
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
-
-type LayoutItem = { id: string; start_time: string; end_time: string; isOverlay: boolean };
-type EventLayout = { column: number; totalColumns: number };
-
-function getMins(start_time: string, end_time: string) {
-  const s = new Date(start_time);
-  const e = new Date(end_time);
-  const start = s.getHours() * 60 + s.getMinutes();
-  let end = e.getHours() * 60 + e.getMinutes();
-  if (end <= start && e.getTime() > s.getTime()) end = 24 * 60;
-  return { start, end: Math.max(end, start + 15) };
-}
-
-function computeLayouts(items: LayoutItem[]): Map<string, EventLayout> {
-  const layouts = new Map<string, EventLayout>();
-  if (items.length === 0) return layouts;
-
-  const sorted = [...items].sort((a, b) => {
-    const am = getMins(a.start_time, a.end_time);
-    const bm = getMins(b.start_time, b.end_time);
-    return am.start !== bm.start ? am.start - bm.start : (bm.end - bm.start) - (am.end - am.start);
-  });
-
-  // Transitive overlap groups
-  const groups: LayoutItem[][] = [];
-  let grp: LayoutItem[] = [], grpEnd = 0;
-  for (const it of sorted) {
-    const m = getMins(it.start_time, it.end_time);
-    if (grp.length === 0 || m.start < grpEnd) { grp.push(it); grpEnd = Math.max(grpEnd, m.end); }
-    else { groups.push(grp); grp = [it]; grpEnd = m.end; }
-  }
-  if (grp.length > 0) groups.push(grp);
-
-  for (const g of groups) {
-    if (g.length === 1) { layouts.set(g[0].id, { column: 0, totalColumns: 1 }); continue; }
-
-    const colEnds: number[] = [];
-    for (const it of g) {
-      const m = getMins(it.start_time, it.end_time);
-      let placed = false;
-      for (let c = 0; c < colEnds.length; c++) {
-        if (m.start >= colEnds[c]) { colEnds[c] = m.end; layouts.set(it.id, { column: c, totalColumns: 0 }); placed = true; break; }
-      }
-      if (!placed) { layouts.set(it.id, { column: colEnds.length, totalColumns: 0 }); colEnds.push(m.end); }
-    }
-    const tc = colEnds.length;
-    for (const it of g) { const l = layouts.get(it.id); if (l) l.totalColumns = tc; }
-  }
-  return layouts;
-}
-
-function overlayToEvent(oe: OverlayEvent): CalendarEvent {
-  return {
-    id: `overlay-${oe.personEmail}::${oe.id}`,
-    google_id: null, calendar_id: oe.personEmail,
-    summary: oe.summary, description: '', location: '',
-    start_time: oe.start_time, end_time: oe.end_time,
-    start_date: oe.start_date ?? null, end_date: oe.end_date ?? null,
-    all_day: oe.all_day, time_zone: null,
-    status: oe.status as 'confirmed' | 'tentative' | 'cancelled',
-    self_response: null, organizer_email: oe.personEmail, organizer_name: null,
-    is_organizer: false, recurrence_rule: null, recurring_event_id: null,
-    html_link: null, hangout_link: null, conference_data: null,
-    transparency: 'opaque', visibility: 'default', color_id: null,
-    reminders: null, etag: null, local_only: true,
-    pending_action: null, pending_payload: null,
-    created_at: '', updated_at: '',
-    calendar_color: oe.personColor,
-  };
-}
-
-function timeOverlaps(s1: string, e1: string, s2: string, e2: string): boolean {
-  return new Date(s1).getTime() < new Date(e2).getTime() && new Date(s2).getTime() < new Date(e1).getTime();
 }
 
 export function DayView({ currentDate, events, overlayEvents = [], pendingInvites = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP, onDeleteEvent, defaultEventDurationMinutes = 60 }: Props) {
@@ -192,19 +120,7 @@ export function DayView({ currentDate, events, overlayEvents = [], pendingInvite
     };
   }, [allLayouts]);
 
-  // Live-updating "now" indicator — recalculates every 60 seconds
-  const [nowPosition, setNowPosition] = useState<number | null>(null);
-
-  useEffect(() => {
-    const update = () => {
-      if (!isToday) { setNowPosition(null); return; }
-      const now = new Date();
-      setNowPosition((now.getHours() * 60 + now.getMinutes()) / 60 * HOUR_HEIGHT);
-    };
-    update();
-    const timer = setInterval(update, 60_000);
-    return () => clearInterval(timer);
-  }, [isToday]);
+  const nowPosition = useNowIndicator(isToday);
 
   const getInviteStyle = useCallback((startTime: string, endTime: string): React.CSSProperties => {
     const start = new Date(startTime);
@@ -259,7 +175,7 @@ export function DayView({ currentDate, events, overlayEvents = [], pendingInvite
           <div className="w-16 flex-shrink-0 relative">
             {HOURS.map(hour => (
               <div key={hour} className="absolute right-3 text-[11px] text-text-muted" style={{ top: `${hour * HOUR_HEIGHT - 7}px` }}>
-                {hour === 0 ? '12 AM' : hour < 12 ? `${hour} AM` : hour === 12 ? '12 PM' : `${hour - 12} PM`}
+                {hour === 0 ? '' : getUse24HourClock() ? `${String(hour).padStart(2, '0')}:00` : `${hour % 12 || 12}${hour < 12 ? 'a' : 'p'}`}
               </div>
             ))}
           </div>

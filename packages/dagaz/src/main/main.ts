@@ -16,6 +16,7 @@ import {
 } from './dock-icon';
 import { IPC } from '../shared/types';
 import type { CreateEventInput, UpdateEventInput } from '../shared/types';
+import { parseNaturalLanguage } from '../shared/parse-natural-language';
 
 let mainWindow: BrowserWindow | null = null;
 let google: GoogleCalendarService;
@@ -261,42 +262,6 @@ function reinitDockIconSettings() {
   }
 }
 
-// ── NLP Parse Helper ─────────────────────────────────────────
-
-function parseNaturalLanguage(text: string): {
-  summary: string; start: string; end: string;
-  location?: string; attendees?: string[];
-} | null {
-  const results = chrono.parse(text, new Date(), { forwardDate: true });
-  if (results.length === 0) return null;
-
-  const parsed = results[0];
-  const start = parsed.start.date();
-  const end = parsed.end ? parsed.end.date() : new Date(start.getTime() + 60 * 60 * 1000);
-
-  let location: string | undefined;
-  const atMatch = text.match(/\bat\s+([A-Z][^,]*?)(?:\s+(?:on|from|at|for)\s|$)/i);
-  if (atMatch) {
-    const potentialLocation = atMatch[1].trim();
-    if (!chrono.parse(potentialLocation).length) {
-      location = potentialLocation;
-    }
-  }
-
-  const emailRegex = /[\w.-]+@[\w.-]+\.\w+/g;
-  const attendees = text.match(emailRegex) || undefined;
-
-  let summary = text;
-  if (parsed.text) summary = summary.replace(parsed.text, '').trim();
-  if (attendees) attendees.forEach(e => { summary = summary.replace(e, '').trim(); });
-  if (location) summary = summary.replace(new RegExp(`\\bat\\s+${location.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i'), '').trim();
-  summary = summary.replace(/\s*(with|for)\s*$/i, '').trim();
-  summary = summary.replace(/^\s*(with|for)\s*/i, '').trim();
-  if (!summary) summary = 'New Event';
-
-  return { summary, start: start.toISOString(), end: end.toISOString(), location, attendees };
-}
-
 // ── IPC Handlers ─────────────────────────────────────────────
 
 function registerIpcHandlers() {
@@ -472,7 +437,7 @@ function registerIpcHandlers() {
     // Notify renderer so the pending badge updates
     try {
       if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('sync:changed', {
+        mainWindow.webContents.send(IPC.SYNC_CHANGED, {
           status: sync.getStatus(),
           lastSync: sync.getLastSync(),
           pendingCount: 0,
@@ -686,7 +651,7 @@ function registerIpcHandlers() {
     return cache.getNeedsActionEvents();
   });
 
-  ipcMain.handle('invite:rsvp', async (_event, threadId: string) => {
+  ipcMain.handle(IPC.INVITE_RSVP, async (_event, threadId: string) => {
     const url = `${KENAZ_BASE}/api/archive/${threadId}`;
     const res = await fetch(url, {
       method: 'POST',
@@ -702,7 +667,7 @@ function registerIpcHandlers() {
   });
 
   // Cross-app
-  ipcMain.handle('cross-app:fetch', async (_event, url: string, options?: any) => {
+  ipcMain.handle(IPC.CROSS_APP_FETCH, async (_event, url: string, options?: any) => {
     const res = await fetch(url, {
       ...options,
       headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -736,7 +701,7 @@ function registerIpcHandlers() {
 
 function notifyEventsChanged() {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('events:changed');
+    mainWindow.webContents.send(IPC.EVENTS_CHANGED);
   }
   updateDockBadge();
 }

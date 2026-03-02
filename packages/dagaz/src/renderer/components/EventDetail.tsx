@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import DOMPurify from 'dompurify';
 import type { CalendarEvent, Attendee } from '../../shared/types';
 import { formatTime, formatTimeRange } from '../lib/utils';
 
@@ -318,7 +319,7 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
             <h3 className="text-[10px] uppercase tracking-wider text-text-muted mb-1">Description</h3>
             <div
               className="text-xs text-text-secondary leading-relaxed selectable prose-links"
-              dangerouslySetInnerHTML={{ __html: ev.description }}
+              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(ev.description, { ALLOWED_TAGS: ['a', 'b', 'i', 'em', 'strong', 'br', 'p', 'ul', 'ol', 'li', 'u', 'span', 'div', 'h1', 'h2', 'h3'], ALLOWED_ATTR: ['href', 'target', 'rel', 'class'] }) }}
             />
           </div>
         )}

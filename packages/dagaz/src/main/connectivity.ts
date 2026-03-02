@@ -1,5 +1,6 @@
 import { net, BrowserWindow } from 'electron';
 import { EventEmitter } from 'events';
+import { IPC } from '../shared/types';
 
 /**
  * Layered connectivity monitor:
@@ -98,7 +99,7 @@ export class ConnectivityMonitor extends EventEmitter {
   private notifyRenderer(online: boolean): void {
     try {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send('connectivity:changed', online);
+        this.mainWindow.webContents.send(IPC.CONNECTIVITY_CHANGED, online);
       }
     } catch (e) {
       console.error('[Dagaz Connectivity] Failed to notify renderer:', e);

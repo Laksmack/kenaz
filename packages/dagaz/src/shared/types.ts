@@ -251,9 +251,23 @@ export const IPC = {
 
   // Pending Invites (from Kenaz)
   PENDING_INVITES: 'pending-invites:list',
+  INVITE_RSVP: 'invite:rsvp',
 
   // Needs-action events (from calendar DB)
   NEEDS_ACTION_EVENTS: 'events:needs-action',
+
+  // Cross-app
+  CROSS_APP_FETCH: 'cross-app:fetch',
+
+  // Update
+  UPDATE_STATE: 'update:state',
+  UPDATE_CHECK: 'update:check',
+  UPDATE_INSTALL: 'update:install',
+
+  // Push events from main process
+  SYNC_CHANGED: 'sync:changed',
+  EVENTS_CHANGED: 'events:changed',
+  CONNECTIVITY_CHANGED: 'connectivity:changed',
 } as const;
 
 // ── Pending Invites ─────────────────────────────────────────

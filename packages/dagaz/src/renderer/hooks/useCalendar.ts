@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { CalendarEvent, Calendar, ViewType, SyncState } from '../../shared/types';
 
-export function useCalendar(view: ViewType, currentDate: Date, weekDays: 5 | 7) {
+export function useCalendar(view: ViewType, currentDate: Date, weekDays: 5 | 7, isOnline = true) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [calendars, setCalendars] = useState<Calendar[]>([]);
   const [loading, setLoading] = useState(false);
@@ -33,7 +33,6 @@ export function useCalendar(view: ViewType, currentDate: Date, weekDays: 5 | 7) 
       case 'month': {
         const first = new Date(d.getFullYear(), d.getMonth(), 1);
         const last = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-        // Extend to cover visible days from adjacent months
         const startDay = (first.getDay() + 6) % 7;
         const start = new Date(first);
         start.setDate(start.getDate() - startDay);
@@ -76,12 +75,15 @@ export function useCalendar(view: ViewType, currentDate: Date, weekDays: 5 | 7) 
 
   const refresh = useCallback(async (opts?: { full?: boolean }) => {
     setLoading(true);
-    try {
-      // Trigger a real backend sync (full on manual refresh) then read updated cache
-      await window.dagaz.triggerSync({ full: opts?.full ?? true });
-    } catch (e) {
-      console.error('[Dagaz] Sync trigger failed:', e);
+    // Only trigger a network sync when online
+    if (isOnline) {
+      try {
+        await window.dagaz.triggerSync({ full: opts?.full ?? true });
+      } catch (e) {
+        console.error('[Dagaz] Sync trigger failed:', e);
+      }
     }
+    // Always read from local cache (works offline)
     try {
       const { start, end } = getDateRange();
       const evts = await window.dagaz.getEvents(start, end);
@@ -93,36 +95,34 @@ export function useCalendar(view: ViewType, currentDate: Date, weekDays: 5 | 7) 
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [getDateRange]);
+  }, [getDateRange, isOnline]);
 
-  // Initial load — full sync on mount, then read cache
+  // Initial load
   useEffect(() => {
     refresh({ full: false });
   }, [refresh]);
 
-  // Listen for background sync completions and event changes — re-read cache
+  // Re-sync when coming back online
+  const prevOnlineRef = useRef(isOnline);
+  useEffect(() => {
+    if (isOnline && !prevOnlineRef.current) {
+      refresh({ full: true });
+    }
+    prevOnlineRef.current = isOnline;
+  }, [isOnline, refresh]);
+
+  // Listen for background sync completions and event changes
   useEffect(() => {
     const unsubSync = window.dagaz.onSyncChanged(() => {
-      // Background sync finished — re-read cache without triggering another sync
       fetchEvents();
     });
     const unsubEvents = window.dagaz.onEventsChanged(() => {
       fetchEvents();
     });
-
-    return () => {
-      unsubSync();
-      unsubEvents();
-    };
+    return () => { unsubSync(); unsubEvents(); };
   }, [fetchEvents]);
 
-  return {
-    events,
-    calendars,
-    loading,
-    refresh,
-    fetchCalendars,
-  };
+  return { events, calendars, loading, refresh, fetchCalendars };
 }
 
 export function useSync() {

@@ -1,6 +1,6 @@
 {
   "name": "@futhark/dagaz",
-  "version": "0.19.8",
+  "version": "1.0.0",
   "description": "Dagaz ᛞ — Personal calendar",
   "main": "dist/main/main/main.js",
   "private": true,
@@ -13,6 +13,8 @@
     "build": "npm run build:main && npm run build:renderer",
     "start": "electron .",
     "render-icons": "node scripts/render-icons.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "dist": "npm run build && electron-builder --mac",
     "dist:dir": "npm run build && electron-builder --mac --dir"
   },
@@ -78,6 +80,7 @@
     "@napi-rs/canvas": "^0.1.92",
     "better-sqlite3": "^12.6.2",
     "chrono-node": "^2.7.0",
+    "dompurify": "^3.3.1",
     "dotenv": "^17.2.4",
     "electron-updater": "^6.8.3",
     "express": "^4.18.2",
@@ -88,7 +91,10 @@
   },
   "devDependencies": {
     "@electron/notarize": "^3.1.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/better-sqlite3": "^7.6.13",
+    "@types/dompurify": "^3.0.5",
     "@types/express": "^4.17.21",
     "@types/node": "^22.0.0",
     "@types/react": "^18.2.48",
@@ -99,9 +105,11 @@
     "electron": "^39.0.0",
     "electron-builder": "^26.7.0",
     "esbuild": "^0.24.0",
+    "jsdom": "^28.1.0",
     "postcss": "^8.4.33",
     "tailwindcss": "^3.4.1",
     "typescript": "^5.7.0",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vitest": "^4.0.18"
   }
 }

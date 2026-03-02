@@ -216,3 +216,22 @@
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover);
 }
+
+/* ── Reduced motion ──────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-up {
+    animation: none;
+  }
+  .event-block,
+  .view-tab,
+  .sidebar-item,
+  .mini-cal-day {
+    transition: none !important;
+  }
+  .animate-spin {
+    animation: none;
+  }
+  .animate-pulse {
+    animation: none;
+  }
+}
