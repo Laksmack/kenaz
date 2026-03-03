@@ -444,7 +444,7 @@ export default function App() {
 
         {/* Content area */}
         <div className="flex-1 flex overflow-hidden">
-          <ErrorBoundary>
+          <ErrorBoundary inline>
           <div className="flex-1 min-w-0">
             {currentView === 'week' && (
               <WeekView currentDate={currentDate} events={events} overlayEvents={overlayEvents} pendingInvites={pendingInvites}
@@ -465,7 +465,7 @@ export default function App() {
           </div>
           </ErrorBoundary>
 
-          <ErrorBoundary>
+          <ErrorBoundary inline>
           {selectedEvent ? (
             <EventDetail event={selectedEvent} onClose={() => { setSelectedEvent(null); if (needsActionEvents.length > 0) setShowInvitesPanel(true); }}
               onDelete={handleDeleteEvent} onRSVP={handleRSVP} onEdit={openEditEvent} />

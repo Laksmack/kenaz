@@ -293,6 +293,8 @@ export class CacheStore {
       params.push(...calendarIds);
     }
 
+    // Exclude timed events with empty/missing start_time (corrupt local-only events)
+    query += ` AND NOT (e.all_day = 0 AND (e.start_time IS NULL OR e.start_time = ''))`;
     query += ' ORDER BY e.all_day DESC, e.start_time ASC';
 
     const rows = this.db.prepare(query).all(...params) as any[];

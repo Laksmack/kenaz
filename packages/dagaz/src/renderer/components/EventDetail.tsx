@@ -56,17 +56,21 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
     if (ev.html_link) window.dagaz.openExternal(ev.html_link);
   };
 
-  // Date/time formatting
-  const startDate = new Date(ev.all_day ? (ev.start_date || ev.start_time) : ev.start_time);
-  const endDate = new Date(ev.all_day ? (ev.end_date || ev.end_time) : ev.end_time);
+  // Date/time formatting — guard against empty/invalid times
+  const rawStart = ev.all_day ? (ev.start_date || ev.start_time) : ev.start_time;
+  const rawEnd = ev.all_day ? (ev.end_date || ev.end_time) : ev.end_time;
+  const startDate = rawStart ? new Date(rawStart) : null;
+  const endDate = rawEnd ? new Date(rawEnd) : null;
+  const startValid = startDate && !isNaN(startDate.getTime());
+  const endValid = endDate && !isNaN(endDate.getTime());
 
-  const dateDisplay = startDate.toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
-  });
+  const dateDisplay = startValid
+    ? startDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+    : 'Unknown date';
 
   const timeDisplay = ev.all_day
     ? 'All day'
-    : formatTimeRange(ev.start_time, ev.end_time);
+    : (startValid && endValid) ? formatTimeRange(ev.start_time, ev.end_time) : 'Unknown time';
 
   // Recurrence — show parsed rule, or fallback for recurring instances
   const recurrenceText = ev.recurrence_rule

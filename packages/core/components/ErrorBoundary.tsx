@@ -6,7 +6,7 @@ interface ErrorBoundaryState {
 }
 
 export class ErrorBoundary extends React.Component<
-  { children: React.ReactNode },
+  { children: React.ReactNode; inline?: boolean },
   ErrorBoundaryState
 > {
   constructor(props: { children: React.ReactNode }) {
@@ -34,7 +34,7 @@ export class ErrorBoundary extends React.Component<
   render() {
     if (this.state.hasError) {
       return (
-        <div className="h-screen flex items-center justify-center bg-bg-primary text-text-primary p-8">
+        <div className={`${this.props.inline ? 'h-full' : 'h-screen'} flex items-center justify-center bg-bg-primary text-text-primary p-8`}>
           <div className="max-w-md text-center space-y-4">
             <div className="text-4xl mb-2">⚠️</div>
             <h1 className="text-lg font-semibold">Something went wrong</h1>
