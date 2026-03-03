@@ -51,6 +51,25 @@ function createWindow() {
     },
   });
 
+  // Log renderer errors to main process console for debugging
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    if (level >= 2) { // warnings and errors
+      console.error(`[Renderer ${level === 2 ? 'WARN' : 'ERROR'}] ${message} (${sourceId}:${line})`);
+    }
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[Dagaz] Render process gone:', details.reason, details.exitCode);
+  });
+
+  mainWindow.webContents.on('unresponsive', () => {
+    console.error('[Dagaz] Renderer became unresponsive');
+  });
+
+  mainWindow.webContents.on('preload-error', (_event, preloadPath, error) => {
+    console.error('[Dagaz] Preload script error:', preloadPath, error.message);
+  });
+
   if (isDev) {
     mainWindow.loadURL('http://localhost:5175');
     mainWindow.webContents.openDevTools({ mode: 'detach' });
