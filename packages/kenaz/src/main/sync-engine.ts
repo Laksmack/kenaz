@@ -232,9 +232,7 @@ export class SyncEngine {
                 if (hadFull) {
                   return this.gmail.fetchThread(id);
                 } else {
-                  // Just fetch metadata — the list view version
-                  const result = await this.gmail.fetchThreads(`rfc822msgid:${id}`, 1);
-                  return result.threads[0] || null;
+                  return this.gmail.fetchThreadMetadata(id);
                 }
               } catch (e: any) {
                 // Thread may have been deleted
@@ -304,6 +302,16 @@ export class SyncEngine {
                 }
               }
             }
+          }
+        }
+
+        // ── Safety net: strip INBOX from threads we couldn't re-fetch ──
+        // If a thread was in inboxRemovedThreadIds but returned null from the API
+        // (e.g. deleted, or fetch failed), its stale INBOX label would persist in
+        // cache forever. Explicitly clean those up.
+        for (const threadId of inboxRemovedThreadIds) {
+          if (!inboxAddedThreadIds.has(threadId)) {
+            this.cache.updateThreadLabels(threadId, [], ['INBOX']);
           }
         }
 
