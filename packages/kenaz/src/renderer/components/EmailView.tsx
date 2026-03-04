@@ -157,7 +157,7 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
         onDoubleClick={thread.labels.includes('DRAFT') && onEditDraft ? () => onEditDraft(thread) : undefined}
         style={thread.labels.includes('DRAFT') && onEditDraft ? { cursor: 'pointer' } : undefined}
       >
-        <div className="flex items-center gap-1.5 mb-2">
+        <div className="flex items-start justify-between gap-2 mb-2">
           <h2 className="text-lg font-semibold text-text-primary leading-tight">
             {thread.subject || '(no subject)'}
           </h2>
