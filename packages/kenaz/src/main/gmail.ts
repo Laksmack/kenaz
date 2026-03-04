@@ -350,7 +350,7 @@ export class GmailService {
    * Only returns headers, labels, and snippet (no body content).
    * Used for list views where we don't need message bodies.
    */
-  private async fetchThreadMetadata(threadId: string): Promise<EmailThread | null> {
+  async fetchThreadMetadata(threadId: string): Promise<EmailThread | null> {
     if (!this.gmail) throw new Error('Not authenticated');
 
     try {
