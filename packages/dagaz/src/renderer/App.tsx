@@ -334,11 +334,6 @@ export default function App() {
             todayEvents={todayEvents}
             currentView={currentView}
             onViewChange={setCurrentView}
-            pendingInvites={pendingInvites}
-            pendingInvitesLoading={pendingInvitesLoading}
-            onRefreshInvites={refreshPendingInvites}
-            onDismissInvite={dismissPendingInvite}
-            onRsvpInvite={handleInviteRsvp}
           >
             <PeopleOverlay
               people={overlayPeople}
@@ -367,7 +362,7 @@ export default function App() {
           <div className="flex-1" />
 
           <div className="titlebar-no-drag flex items-center gap-1 mr-3" role="tablist" aria-label="Calendar views">
-            {needsActionEvents.length > 0 && (
+            {(needsActionEvents.length > 0 || pendingInvites.length > 0) && (
               <button
                 onClick={() => { setShowInvitesPanel(true); setSelectedEvent(null); }}
                 className={`view-tab flex items-center gap-1.5 ${showInvitesPanel && !selectedEvent ? 'active' : ''}`}
@@ -376,7 +371,7 @@ export default function App() {
                 aria-selected={showInvitesPanel && !selectedEvent}
               >
                 Pending
-                <span className="px-1.5 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary text-[10px] font-semibold leading-none">{needsActionEvents.length}</span>
+                <span className="px-1.5 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary text-[10px] font-semibold leading-none">{needsActionEvents.length + pendingInvites.length}</span>
               </button>
             )}
             {([
@@ -467,11 +462,13 @@ export default function App() {
 
           <ErrorBoundary inline>
           {selectedEvent ? (
-            <EventDetail event={selectedEvent} onClose={() => { setSelectedEvent(null); if (needsActionEvents.length > 0) setShowInvitesPanel(true); }}
+            <EventDetail event={selectedEvent} onClose={() => { setSelectedEvent(null); if (needsActionEvents.length > 0 || pendingInvites.length > 0) setShowInvitesPanel(true); }}
               onDelete={handleDeleteEvent} onRSVP={handleRSVP} onEdit={openEditEvent} />
-          ) : (showInvitesPanel || needsActionEvents.length > 0) && (
+          ) : (showInvitesPanel || needsActionEvents.length > 0 || pendingInvites.length > 0) && (
             <InviteReviewPanel events={needsActionEvents} allEvents={events} isLoading={needsActionLoading}
-              onRefresh={refreshNeedsAction} onRsvp={handleRSVP} onSelectEvent={selectEvent} onDateSelect={handleDateSelect} />
+              onRefresh={refreshNeedsAction} onRsvp={handleRSVP} onSelectEvent={selectEvent} onDateSelect={handleDateSelect}
+              pendingInvites={pendingInvites} pendingInvitesLoading={pendingInvitesLoading}
+              onRefreshInvites={refreshPendingInvites} onDismissInvite={dismissPendingInvite} onRsvpInvite={handleInviteRsvp} />
           )}
           </ErrorBoundary>
         </div>

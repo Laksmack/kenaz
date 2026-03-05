@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import type { Calendar, CalendarEvent, ViewType, PendingInvite } from '../../shared/types';
+import type { Calendar, CalendarEvent, ViewType } from '../../shared/types';
 import { getMonthDates, isSameDay, dateKey, formatTime } from '../lib/utils';
-import { PendingInvitesPanel } from './PendingInvitesPanel';
 
 interface Props {
   calendars: Calendar[];
@@ -11,18 +10,12 @@ interface Props {
   todayEvents: CalendarEvent[];
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
-  pendingInvites: PendingInvite[];
-  pendingInvitesLoading: boolean;
-  onRefreshInvites: () => void;
-  onDismissInvite: (threadId: string) => void;
-  onRsvpInvite: (invite: PendingInvite, response: 'accepted' | 'declined' | 'tentative') => Promise<void>;
   children?: React.ReactNode;
 }
 
 export function Sidebar({
   calendars, currentDate, onDateSelect, onCalendarToggle,
   todayEvents, currentView, onViewChange,
-  pendingInvites, pendingInvitesLoading, onRefreshInvites, onDismissInvite, onRsvpInvite,
   children,
 }: Props) {
   const [miniCalMonth, setMiniCalMonth] = useState(() => {
@@ -151,17 +144,6 @@ export function Sidebar({
 
       {/* People Overlay (children) */}
       {children}
-
-      {/* Pending Invites */}
-      <PendingInvitesPanel
-        invites={pendingInvites}
-        isLoading={pendingInvitesLoading}
-        onRefresh={onRefreshInvites}
-        onDismiss={onDismissInvite}
-        onRsvp={onRsvpInvite}
-        confirmedEvents={todayEvents}
-        onDateSelect={onDateSelect}
-      />
 
       {/* Today's Agenda */}
       <div className="flex-1">
