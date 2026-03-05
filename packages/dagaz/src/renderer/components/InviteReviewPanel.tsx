@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import type { CalendarEvent } from '../../shared/types';
+import type { CalendarEvent, PendingInvite } from '../../shared/types';
 import { formatTime } from '../lib/utils';
 
 type RsvpResponse = 'accepted' | 'declined' | 'tentative';
@@ -12,6 +12,11 @@ interface Props {
   onRsvp: (eventId: string, response: RsvpResponse) => Promise<void>;
   onSelectEvent: (event: CalendarEvent) => void;
   onDateSelect: (date: Date) => void;
+  pendingInvites: PendingInvite[];
+  pendingInvitesLoading: boolean;
+  onRefreshInvites: () => void;
+  onDismissInvite: (threadId: string) => void;
+  onRsvpInvite: (invite: PendingInvite, response: RsvpResponse) => Promise<void>;
 }
 
 function hasConflict(event: CalendarEvent, allEvents: CalendarEvent[]): boolean {
@@ -24,6 +29,18 @@ function hasConflict(event: CalendarEvent, allEvents: CalendarEvent[]): boolean 
     const oStart = new Date(other.start_time).getTime();
     const oEnd = new Date(other.end_time).getTime();
     return eStart < oEnd && oStart < eEnd;
+  });
+}
+
+function hasInviteConflict(invite: PendingInvite, events: CalendarEvent[]): boolean {
+  if (!invite.startTime || !invite.endTime) return false;
+  const iStart = new Date(invite.startTime).getTime();
+  const iEnd = new Date(invite.endTime).getTime();
+  return events.some(e => {
+    if (e.all_day || e.status === 'cancelled') return false;
+    const eStart = new Date(e.start_time).getTime();
+    const eEnd = new Date(e.end_time).getTime();
+    return iStart < eEnd && eStart < iEnd;
   });
 }
 
@@ -46,10 +63,33 @@ function formatInviteDateTime(startTime: string, endTime: string): { date: strin
   return { date: dateStr, time: timeStr };
 }
 
-export function InviteReviewPanel({ events, allEvents, isLoading, onRefresh, onRsvp, onSelectEvent, onDateSelect }: Props) {
+function formatPendingDate(startTime: string | null): string {
+  if (!startTime) return 'Time unknown';
+  const d = new Date(startTime);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const tomorrow = new Date(now);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const isTomorrow = d.toDateString() === tomorrow.toDateString();
+
+  const timeStr = formatTime(startTime);
+  if (isToday) return `Today ${timeStr}`;
+  if (isTomorrow) return `Tomorrow ${timeStr}`;
+  return `${d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} ${timeStr}`;
+}
+
+export function InviteReviewPanel({
+  events, allEvents, isLoading, onRefresh, onRsvp, onSelectEvent, onDateSelect,
+  pendingInvites, pendingInvitesLoading, onRefreshInvites, onDismissInvite, onRsvpInvite,
+}: Props) {
   const eventsWithConflicts = useMemo(
     () => events.map(ev => ({ event: ev, conflict: hasConflict(ev, allEvents) })),
     [events, allEvents],
+  );
+
+  const invitesWithConflicts = useMemo(
+    () => pendingInvites.map(inv => ({ ...inv, conflict: hasInviteConflict(inv, allEvents) })),
+    [pendingInvites, allEvents],
   );
 
   const [actionStates, setActionStates] = useState<Record<string, 'loading' | 'done' | 'error'>>({});
@@ -66,10 +106,12 @@ export function InviteReviewPanel({ events, allEvents, isLoading, onRefresh, onR
     });
   }, [eventIds]);
 
-  const visibleCount = useMemo(
+  const visibleEventCount = useMemo(
     () => events.filter(e => actionStates[e.id] !== 'done').length,
     [events, actionStates],
   );
+
+  const totalCount = visibleEventCount + pendingInvites.length;
 
   const handleAction = async (event: CalendarEvent, response: RsvpResponse) => {
     setActionStates(prev => ({ ...prev, [event.id]: 'loading' }));
@@ -82,26 +124,40 @@ export function InviteReviewPanel({ events, allEvents, isLoading, onRefresh, onR
     }
   };
 
+  const handleInviteRsvp = async (invite: PendingInvite, response: RsvpResponse) => {
+    onDismissInvite(invite.threadId);
+    try {
+      await onRsvpInvite(invite, response);
+    } catch (e: any) {
+      console.error(`[Dagaz] RSVP failed for "${invite.title}":`, e);
+    }
+  };
+
+  const handleRefreshAll = () => {
+    onRefresh();
+    onRefreshInvites();
+  };
+
   return (
     <div className="w-80 border-l border-border-subtle bg-bg-secondary flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-border-subtle">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-text-primary">Needs Response</h2>
-          {visibleCount > 0 && (
+          {totalCount > 0 && (
             <span className="px-1.5 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary text-[10px] font-semibold">
-              {visibleCount}
+              {totalCount}
             </span>
           )}
         </div>
         <button
-          onClick={onRefresh}
-          disabled={isLoading}
+          onClick={handleRefreshAll}
+          disabled={isLoading || pendingInvitesLoading}
           className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-text-primary transition-colors disabled:opacity-40"
           title="Refresh"
         >
           <svg
-            className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`}
+            className={`w-4 h-4 ${isLoading || pendingInvitesLoading ? 'animate-spin' : ''}`}
             fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -111,7 +167,7 @@ export function InviteReviewPanel({ events, allEvents, isLoading, onRefresh, onR
 
       {/* Event list */}
       <div className="flex-1 overflow-y-auto scrollbar-thin">
-        {visibleCount === 0 && (
+        {totalCount === 0 && (
           <div className="flex flex-col items-center justify-center h-full text-text-muted px-6">
             <svg className="w-8 h-8 mb-3 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -119,6 +175,8 @@ export function InviteReviewPanel({ events, allEvents, isLoading, onRefresh, onR
             <span className="text-xs">All caught up</span>
           </div>
         )}
+
+        {/* Calendar events needing RSVP */}
         {eventsWithConflicts.map(({ event, conflict }, idx) => {
           const { date, time } = formatInviteDateTime(event.start_time, event.end_time);
           const state = actionStates[event.id];
@@ -237,6 +295,76 @@ export function InviteReviewPanel({ events, allEvents, isLoading, onRefresh, onR
             </div>
           );
         })}
+
+        {/* Email invites from Kenaz */}
+        {invitesWithConflicts.length > 0 && visibleEventCount > 0 && (
+          <div className="border-t border-border-subtle" />
+        )}
+        {invitesWithConflicts.map((invite, idx) => (
+          <div
+            key={invite.threadId}
+            className={`p-4 ${(idx > 0 || visibleEventCount > 0) ? 'border-t border-border-subtle' : ''} hover:bg-bg-hover/50 transition-colors`}
+          >
+            {/* Title */}
+            <div
+              className="text-sm font-medium text-text-primary cursor-pointer hover:text-accent-primary transition-colors leading-snug"
+              onClick={() => invite.startTime && onDateSelect(new Date(invite.startTime))}
+              title={invite.subject}
+            >
+              {invite.title}
+            </div>
+
+            {/* Date & time */}
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <svg className="w-3.5 h-3.5 text-text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              <span className="text-xs text-text-secondary">{formatPendingDate(invite.startTime)}</span>
+            </div>
+
+            {/* Organizer */}
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <svg className="w-3.5 h-3.5 text-text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              <span className="text-xs text-text-secondary truncate" title={invite.organizerEmail}>
+                {invite.organizer}
+              </span>
+            </div>
+
+            {/* Conflict warning */}
+            {invite.conflict && (
+              <div className="flex items-center gap-1.5 mt-2 px-2 py-1.5 rounded-md bg-yellow-500/10 border border-yellow-500/20">
+                <svg className="w-3.5 h-3.5 text-yellow-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span className="text-[10px] text-yellow-400 font-medium">Conflicts with existing event</span>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={(e) => { e.stopPropagation(); handleInviteRsvp(invite, 'accepted'); }}
+                className="flex-1 px-2 py-1.5 rounded-md text-xs font-medium bg-green-500/15 text-green-400 hover:bg-green-500/25 transition-colors"
+              >
+                Accept
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleInviteRsvp(invite, 'tentative'); }}
+                className="flex-1 px-2 py-1.5 rounded-md text-xs font-medium bg-yellow-500/15 text-yellow-400 hover:bg-yellow-500/25 transition-colors"
+              >
+                Maybe
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleInviteRsvp(invite, 'declined'); }}
+                className="flex-1 px-2 py-1.5 rounded-md text-xs font-medium bg-red-500/15 text-red-400 hover:bg-red-500/25 transition-colors"
+              >
+                Decline
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );
