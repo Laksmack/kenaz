@@ -301,6 +301,9 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
 
   if (!open) return null;
 
+  // Guard: useEffect hasn't initialized the form fields yet
+  if (!date || !startTime || !endTime) return null;
+
   const { startD, endD } = buildDates();
   const dur = durationLabel(startD, endD);
 

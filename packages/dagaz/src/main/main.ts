@@ -94,6 +94,18 @@ function createWindow() {
     return { action: 'deny' };
   });
 
+  // Intercept in-page link clicks so they open in the system browser
+  // instead of navigating the Electron window away from the app
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    // Allow loading the app itself (dev server or file://)
+    const currentUrl = mainWindow?.webContents.getURL() || '';
+    const isSameOrigin = currentUrl && new URL(url).origin === new URL(currentUrl).origin;
+    if (!isSameOrigin) {
+      event.preventDefault();
+      shell.openExternal(url);
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
     connectivity.setMainWindow(null);
