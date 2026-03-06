@@ -61,14 +61,22 @@ export function initAutoUpdater(
     setTimeout(() => setState({ status: 'idle' }), 10_000);
   });
 
-  ipcMain.handle('update:check', () => autoUpdater.checkForUpdates());
+  ipcMain.handle('update:check', () => doCheckForUpdates());
   ipcMain.handle('update:install', () => autoUpdater.quitAndInstall());
 
-  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 5_000);
+  setTimeout(() => doCheckForUpdates(), 5_000);
   checkInterval = setInterval(
-    () => autoUpdater.checkForUpdates().catch(() => {}),
+    () => doCheckForUpdates(),
     30 * 60 * 1000,
   );
+}
+
+function doCheckForUpdates() {
+  autoUpdater.checkForUpdates().catch((err) => {
+    console.error('[auto-updater] checkForUpdates failed:', err.message);
+    setState({ status: 'error', message: err.message });
+    setTimeout(() => setState({ status: 'idle' }), 10_000);
+  });
 }
 
 export function getUpdateMenuItems(): Electron.MenuItemConstructorOptions[] {
@@ -83,8 +91,8 @@ export function getUpdateMenuItems(): Electron.MenuItemConstructorOptions[] {
         click: () => autoUpdater.quitAndInstall(),
       }];
     case 'error':
-      return [{ label: 'Update Error — Retry', click: () => autoUpdater.checkForUpdates() }];
+      return [{ label: 'Update Error — Retry', click: () => doCheckForUpdates() }];
     default:
-      return [{ label: 'Check for Updates...', click: () => autoUpdater.checkForUpdates() }];
+      return [{ label: 'Check for Updates...', click: () => doCheckForUpdates() }];
   }
 }
