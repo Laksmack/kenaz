@@ -22,6 +22,11 @@ const PAGE_SIZE = 50;
 
 export type InboxSort = 'newest' | 'oldest';
 
+// Views that always show newest-first regardless of the inbox sort setting.
+// These load 50 threads at a time from Gmail (which returns newest-first),
+// so reversing them would produce a confusing mixed order.
+const ALWAYS_NEWEST_FIRST: Set<ViewType> = new Set(['sent', 'all', 'search']);
+
 export function useEmails(currentView: ViewType, searchQuery: string, enabled: boolean = true, views: View[] = [], sort: InboxSort = 'newest') {
   const [threads, setThreads] = useState<EmailThread[]>([]);
   const [loading, setLoading] = useState(false);
@@ -35,9 +40,12 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
   // Derive query string directly (no useCallback indirection)
   const query = buildQuery(currentView, searchQuery, views);
 
+  // Sent, All Mail, and Search always use newest-first
+  const effectiveSort = ALWAYS_NEWEST_FIRST.has(currentView) ? 'newest' : sort;
+
   const applySort = useCallback((list: EmailThread[]) => {
-    return sort === 'oldest' ? [...list].reverse() : list;
-  }, [sort]);
+    return effectiveSort === 'oldest' ? [...list].reverse() : list;
+  }, [effectiveSort]);
 
   const fetchThreads = useCallback(async () => {
     if (!enabled) return;
@@ -68,7 +76,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
         const existingIds = new Set(prev.map((t) => t.id));
         const newThreads = result.threads.filter((t: EmailThread) => !existingIds.has(t.id));
         // Gmail pages go further back in time; for oldest-first those go to the top
-        const merged = sort === 'oldest'
+        const merged = effectiveSort === 'oldest'
           ? [...newThreads.reverse(), ...prev]
           : [...prev, ...newThreads];
         cacheRef.current[query] = merged;
@@ -79,7 +87,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     } finally {
       setLoadingMore(false);
     }
-  }, [query, enabled, loadingMore, sort]);
+  }, [query, enabled, loadingMore, effectiveSort]);
 
   // Fetch whenever query, enabled, or sort changes
   useEffect(() => {
@@ -91,7 +99,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     }
     // Always fetch fresh data in the background
     fetchThreads();
-  }, [query, enabled, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [query, enabled, effectiveSort]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Listen for push updates from sync engine
   useEffect(() => {

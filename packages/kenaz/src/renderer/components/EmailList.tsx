@@ -639,9 +639,24 @@ function EmailListItem({
       className={`email-item ${selected ? 'active' : ''} ${multiSelected ? 'multi-selected' : ''} ${thread.isUnread ? 'unread' : ''}`}
     >
       <div className="flex items-center gap-2 mb-1">
-        {/* Sender */}
+        {/* Sender (or recipient in Sent view) */}
         <span className={`text-sm truncate flex-1 ${thread.isUnread ? 'text-text-primary font-semibold' : 'text-text-secondary'}`}>
           {(() => {
+            // In Sent view, show recipients instead of sender (like Gmail)
+            if (currentView === 'sent') {
+              // Find the first message we sent to get the recipients
+              const sentMsg = userEmail
+                ? thread.messages.find((m) => m.from.email.toLowerCase() === userEmail.toLowerCase())
+                : thread.messages[0];
+              if (sentMsg && sentMsg.to.length > 0) {
+                const toNames = sentMsg.to
+                  .filter((r) => !userEmail || r.email.toLowerCase() !== userEmail.toLowerCase())
+                  .map((r) => r.name || r.email);
+                if (toNames.length > 0) {
+                  return toNames.length <= 2 ? toNames.join(', ') : `${toNames[0]} +${toNames.length - 1}`;
+                }
+              }
+            }
             const name = thread.from.name || thread.from.email;
             // If sender is current user and name looks like an email, use display name
             if (userDisplayName && userEmail && thread.from.email.toLowerCase() === userEmail.toLowerCase() && name.includes('@')) {
