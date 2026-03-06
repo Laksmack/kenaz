@@ -678,7 +678,7 @@ export class GmailService {
       userId: 'me',
       id: threadId,
       requestBody: {
-        removeLabelIds: ['INBOX'],
+        removeLabelIds: ['INBOX', 'UNREAD'],
       },
     });
   }
