@@ -52,6 +52,7 @@ const IPC = {
   SNOOZE_CANCEL: 'snooze:cancel',
   SNOOZE_LIST: 'snooze:list',
   MCP_STATUS: 'mcp:status',
+  PRINT_EMAIL: 'print:email',
   ACCOUNTS_LIST: 'accounts:list',
   ACCOUNTS_ADD: 'accounts:add',
   ACCOUNTS_REMOVE: 'accounts:remove',
@@ -169,6 +170,9 @@ const api = {
   snoozeThread: (threadId: string, days: number) => ipcRenderer.invoke(IPC.SNOOZE_THREAD, threadId, days),
   cancelSnooze: (threadId: string) => ipcRenderer.invoke(IPC.SNOOZE_CANCEL, threadId),
   listSnoozed: () => ipcRenderer.invoke(IPC.SNOOZE_LIST),
+
+  // Print
+  printEmail: (html: string) => ipcRenderer.invoke(IPC.PRINT_EMAIL, html),
 
   // MCP
   getMcpStatus: () => ipcRenderer.invoke(IPC.MCP_STATUS),

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { EmailList } from './components/EmailList';
-import { EmailView } from './components/EmailView';
+import { EmailView, buildPrintHtml } from './components/EmailView';
 import { Sidebar } from './components/Sidebar';
 import { ComposeBar } from './components/ComposeBar';
 import { ViewNav } from './components/ViewNav';
@@ -988,6 +988,9 @@ export default function App() {
       // ComposeBar handles its own Escape (saves draft if changes)
       else if (composeOpen) { /* handled by ComposeBar */ }
       else setSelectedThread(null);
+    },
+    onPrint: () => {
+      if (selectedThread) window.kenaz.printEmail(buildPrintHtml(selectedThread));
     },
     onSnooze: handleSnooze,
     onSnoozeMode: setSnoozeMode,

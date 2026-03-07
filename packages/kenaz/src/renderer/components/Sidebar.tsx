@@ -326,6 +326,7 @@ function ShortcutsHelp() {
         <ShortcutRow keys="R" label="Reply" />
         <ShortcutRow keys="J/K" label="Navigate" />
         <ShortcutRow keys="Z+N" label="Snooze N days" />
+        <ShortcutRow keys="⌘P" label="Print" />
         <ShortcutRow keys="/" label="Adv. Search" />
         <ShortcutRow keys="Esc" label="Back" />
       </div>

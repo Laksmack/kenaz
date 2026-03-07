@@ -238,6 +238,9 @@ export const IPC = {
   // MCP
   MCP_STATUS: 'mcp:status',
 
+  // Print
+  PRINT_EMAIL: 'print:email',
+
   // Accounts
   ACCOUNTS_LIST: 'accounts:list',
   ACCOUNTS_ADD: 'accounts:add',

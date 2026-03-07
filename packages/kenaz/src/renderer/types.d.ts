@@ -64,6 +64,9 @@ declare global {
       cancelSnooze: (threadId: string) => Promise<void>;
       listSnoozed: () => Promise<Array<{ threadId: string; snoozeUntil: string; snoozedAt: string }>>;
 
+      // Print
+      printEmail: (html: string) => Promise<void>;
+
       // MCP
       getMcpStatus: () => Promise<{ enabled: boolean; claudeDesktopConfig: any; serverPath: string }>;
 
