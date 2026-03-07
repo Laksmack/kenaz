@@ -14,6 +14,7 @@ interface ShortcutHandlers {
   onEscape: () => void;
   onRefresh: () => void;
   onSettings: () => void;
+  onPrint?: () => void;
   onSnooze?: (days: number) => void;
   onSnoozeMode?: (active: boolean) => void;
   enabled: boolean;
@@ -84,6 +85,13 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'r') {
         e.preventDefault();
         handlers.onRefresh();
+        return;
+      }
+
+      // Cmd+P = print
+      if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
+        e.preventDefault();
+        handlers.onPrint?.();
         return;
       }
 

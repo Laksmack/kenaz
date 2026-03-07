@@ -767,6 +767,23 @@ function registerIpcHandlers() {
     return res.json();
   });
 
+  // ── Print ──
+  ipcMain.handle(IPC.PRINT_EMAIL, async (_event, html: string) => {
+    const printWin = new BrowserWindow({
+      show: false,
+      width: 800,
+      height: 600,
+      webPreferences: { javascript: false },
+    });
+    await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    printWin.webContents.print({}, (success, failureReason) => {
+      if (!success && failureReason !== 'cancelled') {
+        console.error('[Kenaz] Print failed:', failureReason);
+      }
+      printWin.close();
+    });
+  });
+
   // ── MCP ──
   ipcMain.handle(IPC.MCP_STATUS, async () => {
     const appConfig = accountManager.getActiveServices()?.config.get() || globalConfig.get();
