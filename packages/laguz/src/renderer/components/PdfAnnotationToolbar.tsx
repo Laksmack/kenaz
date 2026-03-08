@@ -59,6 +59,7 @@ interface PdfAnnotationToolbarProps {
   hasAnnotations: boolean;
   onSignClick: () => void;
   onPrint?: () => void;
+  onSaveAs?: () => void;
   activeColor: string;
   onColorChange: (color: string) => void;
 }
@@ -71,6 +72,7 @@ export function PdfAnnotationToolbar({
   hasAnnotations,
   onSignClick,
   onPrint,
+  onSaveAs,
   activeColor,
   onColorChange,
 }: PdfAnnotationToolbarProps) {
@@ -144,29 +146,32 @@ export function PdfAnnotationToolbar({
       <div className="flex-1" />
 
       {/* Actions */}
-      <button
-        onClick={onSave}
-        disabled={!hasAnnotations}
-        className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-          hasAnnotations
-            ? 'bg-accent-primary/15 text-accent-primary hover:bg-accent-primary/25'
-            : 'text-text-muted/40 cursor-default'
-        }`}
-      >
-        Save to PDF
-      </button>
-      <button
-        onClick={onFlatten}
-        disabled={!hasAnnotations}
-        className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
-          hasAnnotations
-            ? 'text-text-secondary hover:bg-bg-hover hover:text-text-primary'
-            : 'text-text-muted/40 cursor-default'
-        }`}
-        title="Save flattened copy (bakes annotations into a new PDF)"
-      >
-        Export Copy
-      </button>
+      {hasAnnotations && (
+        <>
+          <button
+            onClick={onSave}
+            className="px-2.5 py-1 rounded text-xs font-medium transition-colors bg-accent-primary/15 text-accent-primary hover:bg-accent-primary/25"
+          >
+            Apply Edits
+          </button>
+          <button
+            onClick={onFlatten}
+            className="px-2.5 py-1 rounded text-xs font-medium transition-colors text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+            title="Save flattened copy (bakes annotations into a new PDF)"
+          >
+            Export Copy
+          </button>
+        </>
+      )}
+      {onSaveAs && (
+        <button
+          onClick={onSaveAs}
+          className="px-2.5 py-1 rounded text-xs font-medium transition-colors text-text-secondary hover:bg-bg-hover hover:text-text-primary"
+          title="Save a copy of this PDF to a chosen location"
+        >
+          Save As…
+        </button>
+      )}
     </div>
   );
 }

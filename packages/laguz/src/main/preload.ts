@@ -70,6 +70,7 @@ const api = {
 
   // Print
   printFile: (filePath: string) => ipcRenderer.invoke('laguz:printFile', filePath),
+  saveFileAs: (filePath: string) => ipcRenderer.invoke('laguz:saveFileAs', filePath),
 
   // Cross-app
   crossAppFetch: (url: string, options?: any) => ipcRenderer.invoke('cross-app:fetch', url, options),

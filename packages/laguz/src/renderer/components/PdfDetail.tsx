@@ -114,6 +114,10 @@ export function PdfDetail({ filePath }: PdfDetailProps) {
     window.laguz.printFile(filePath);
   }, [filePath]);
 
+  const handleSaveAs = useCallback(() => {
+    window.laguz.saveFileAs(filePath);
+  }, [filePath]);
+
   const handleSignClick = useCallback(() => {
     setActiveTool(null);
     setShowSignPanel(true);
@@ -149,6 +153,7 @@ export function PdfDetail({ filePath }: PdfDetailProps) {
         hasAnnotations={annotations.length > 0}
         onSignClick={handleSignClick}
         onPrint={handlePrint}
+        onSaveAs={handleSaveAs}
         activeColor={activeColor}
         onColorChange={setActiveColor}
       />

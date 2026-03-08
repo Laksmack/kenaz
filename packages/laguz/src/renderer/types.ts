@@ -216,6 +216,7 @@ declare global {
 
       // Print
       printFile: (filePath: string) => Promise<void>;
+      saveFileAs: (filePath: string) => Promise<void>;
 
       crossAppFetch: (url: string, options?: any) => Promise<any>;
       onOpenFile: (cb: (path: string) => void) => () => void;
