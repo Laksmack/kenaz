@@ -44,6 +44,7 @@ export function startApiServer(
     start: z.string().optional(),
     end: z.string().optional(),
     all_day: z.boolean().optional(),
+    time_zone: z.string().optional(),
     attendees: z.array(z.string().email()).optional(),
     transparency: z.enum(['opaque', 'transparent']).optional(),
     visibility: z.string().optional(),
@@ -441,6 +442,17 @@ export function startApiServer(
   });
 
   // ── Settings ──────────────────────────────────────────────
+
+  app.get('/api/timezone', (_req, res) => {
+    try {
+      const primaryId = cache.getPrimaryCalendarId();
+      const cal = primaryId ? cache.getCalendar(primaryId) : null;
+      const timezone = cal?.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      res.json({ timezone });
+    } catch (e: any) {
+      res.json({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+    }
+  });
 
   app.get('/api/settings', (_req, res) => {
     res.json({ message: 'Settings managed via IPC' });

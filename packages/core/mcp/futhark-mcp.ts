@@ -688,6 +688,17 @@ server.tool(
 
 // ── Write ──
 
+/** Resolve IANA timezone: use explicit value, or fall back to user's primary calendar timezone */
+async function resolveTimezone(explicit?: string): Promise<string | undefined> {
+  if (explicit) return explicit;
+  try {
+    const { timezone } = await api('dagaz', '/api/timezone');
+    return timezone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 server.tool(
   'dagaz_create_event',
   'Create a new calendar event. Supports natural language input via the text field, or structured fields. For all-day events use date-only strings (YYYY-MM-DD) and set all_day=true.',
@@ -705,8 +716,10 @@ server.tool(
     transparency: z.enum(['opaque', 'transparent']).optional().describe('"opaque" = busy (default), "transparent" = free/available'),
     visibility: z.enum(['default', 'public', 'private', 'confidential']).optional(),
     recurrence: z.array(z.string()).optional().describe('RRULE strings, e.g. ["RRULE:FREQ=WEEKLY;BYDAY=MO"]'),
+    timezone: z.string().optional().describe('IANA timezone, e.g. "America/New_York". Defaults to user\'s calendar timezone if omitted.'),
   },
   async (args) => {
+    const time_zone = await resolveTimezone(args.timezone);
     let eventData: any;
 
     if (args.text) {
@@ -724,6 +737,7 @@ server.tool(
         ...(args.visibility && { visibility: args.visibility }),
         ...(args.all_day !== undefined && { all_day: args.all_day }),
         ...(args.recurrence && { recurrence: args.recurrence }),
+        ...(time_zone && { time_zone }),
       };
       if (args.attendees) {
         eventData.attendees = [...(parsed.attendees || []), ...args.attendees];
@@ -738,6 +752,7 @@ server.tool(
         location: args.location, description: args.description, attendees: args.attendees,
         calendar_id: args.calendar_id, add_conferencing: args.add_conferencing,
         transparency: args.transparency, visibility: args.visibility, recurrence: args.recurrence,
+        time_zone,
       };
     }
 
@@ -763,11 +778,15 @@ server.tool(
     attendees: z.array(z.string()).optional().describe('Email addresses (replaces existing)'),
     transparency: z.enum(['opaque', 'transparent']).optional(),
     visibility: z.enum(['default', 'public', 'private', 'confidential']).optional(),
+    timezone: z.string().optional().describe('IANA timezone for start/end, e.g. "America/New_York". Defaults to user\'s calendar timezone if omitted and start/end are provided.'),
   },
-  async ({ event_id, ...updates }) => {
+  async ({ event_id, timezone, ...updates }) => {
+    // Only resolve timezone when times are being changed
+    const time_zone = (updates.start || updates.end) ? await resolveTimezone(timezone) : undefined;
+    const body = { ...updates, ...(time_zone && { time_zone }) };
     const data = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}`, {
       method: 'PUT',
-      body: JSON.stringify(updates),
+      body: JSON.stringify(body),
     });
     return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
   }
@@ -781,10 +800,13 @@ server.tool(
     new_start: z.string().describe('New start time (ISO datetime)'),
     new_end: z.string().describe('New end time (ISO datetime)'),
     note: z.string().optional().describe('Optional note to attendees about why'),
+    timezone: z.string().optional().describe('IANA timezone, e.g. "America/New_York". Defaults to existing event timezone or user\'s calendar timezone.'),
   },
-  async ({ event_id, new_start, new_end, note }) => {
+  async ({ event_id, new_start, new_end, note, timezone }) => {
     const existing = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}`);
-    const updates: any = { start: new_start, end: new_end };
+    // Preserve existing event timezone, fall back to user default
+    const time_zone = await resolveTimezone(timezone || existing.time_zone || undefined);
+    const updates: any = { start: new_start, end: new_end, ...(time_zone && { time_zone }) };
     if (note) {
       const timestamp = new Date().toLocaleString();
       updates.description = (existing.description || '') + `\n\n---\nRescheduled on ${timestamp}: ${note}`;
@@ -816,8 +838,10 @@ server.tool(
       add_conferencing: z.boolean().optional(),
       transparency: z.enum(['opaque', 'transparent']).optional(),
     })).describe('Array of events to create'),
+    timezone: z.string().optional().describe('IANA timezone for all events, e.g. "America/New_York". Defaults to user\'s calendar timezone.'),
   },
-  async ({ events }) => {
+  async ({ events, timezone }) => {
+    const time_zone = await resolveTimezone(timezone);
     const results: any[] = [];
     const errors: any[] = [];
     for (let i = 0; i < events.length; i++) {
@@ -826,7 +850,7 @@ server.tool(
         const isAllDay = evt.all_day ?? (/^\d{4}-\d{2}-\d{2}$/.test(evt.start) && /^\d{4}-\d{2}-\d{2}$/.test(evt.end));
         const data = await api('dagaz', '/api/events', {
           method: 'POST',
-          body: JSON.stringify({ ...evt, all_day: isAllDay }),
+          body: JSON.stringify({ ...evt, all_day: isAllDay, ...(time_zone && !isAllDay && { time_zone }) }),
         });
         results.push({ index: i, success: true, event: data });
       } catch (e: any) {

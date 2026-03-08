@@ -310,8 +310,8 @@ export class GoogleCalendarService {
         if (updates.start) requestBody.start = { date: updates.start.split('T')[0] };
         if (updates.end) requestBody.end = { date: updates.end.split('T')[0] };
       } else {
-        if (updates.start) requestBody.start = { dateTime: updates.start };
-        if (updates.end) requestBody.end = { dateTime: updates.end };
+        if (updates.start) requestBody.start = { dateTime: updates.start, timeZone: updates.time_zone };
+        if (updates.end) requestBody.end = { dateTime: updates.end, timeZone: updates.time_zone };
       }
     }
 

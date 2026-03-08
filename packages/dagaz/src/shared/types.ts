@@ -137,6 +137,7 @@ export interface UpdateEventInput {
   start?: string;
   end?: string;
   all_day?: boolean;
+  time_zone?: string;
   attendees?: string[];
   reminders?: ReminderOverride[];
   transparency?: 'opaque' | 'transparent';
