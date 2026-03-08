@@ -490,22 +490,22 @@ function registerIpcHandlers() {
     const ext = path.extname(abs).toLowerCase();
 
     if (ext === '.pdf') {
-      // For PDFs, open the native print dialog via a hidden window
+      // Show a window so the native print dialog can attach to it
       const printWin = new BrowserWindow({
-        show: false,
+        show: true,
         width: 800,
         height: 1000,
+        title: `Print — ${path.basename(abs)}`,
         webPreferences: { javascript: true },
       });
-      // Use file:// URL so Chromium's built-in PDF viewer loads it
       await printWin.loadURL(`file://${abs}`);
       // Give the PDF plugin time to render
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 1500));
       printWin.webContents.print({}, (_success, _reason) => {
         printWin.close();
       });
     } else {
-      // For markdown/text, render to HTML and print
+      // For markdown/text, render to HTML and print via a visible window
       let content = '';
       try { content = fs.readFileSync(abs, 'utf-8'); } catch { return; }
       const html = `<!DOCTYPE html>
@@ -517,7 +517,7 @@ function registerIpcHandlers() {
   @media print { body { padding: 0; } }
 </style></head><body><pre style="white-space:pre-wrap;font-family:inherit;background:none;padding:0;">${content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></body></html>`;
       const printWin = new BrowserWindow({
-        show: false,
+        show: true,
         width: 800,
         height: 900,
         webPreferences: { javascript: false },
@@ -528,6 +528,20 @@ function registerIpcHandlers() {
         printWin.close();
       });
     }
+  });
+
+  // ── Save As ──
+  ipcMain.handle('laguz:saveFileAs', async (_event, filePath: string) => {
+    const abs = path.isAbsolute(filePath) ? filePath : path.join(config.vaultPath, filePath);
+    const ext = path.extname(abs);
+    const baseName = path.basename(abs);
+    const { canceled, filePath: dest } = await dialog.showSaveDialog({
+      defaultPath: path.join(app.getPath('downloads'), baseName),
+      filters: ext === '.pdf' ? [{ name: 'PDF', extensions: ['pdf'] }] : [],
+    });
+    if (canceled || !dest) return;
+    fs.copyFileSync(abs, dest);
+    shell.showItemInFolder(dest);
   });
 
   // Cross-app
