@@ -205,20 +205,22 @@ export function TaskList({ tasks, selectedId, onSelect, onComplete, onUpdate, lo
                 </button>
 
                 {/* Title + inline tags */}
-                <div className="flex-1 min-w-0 flex items-center gap-2">
-                  <span className={cn(
-                    'text-sm truncate',
-                    task.status === 'completed' && 'line-through text-text-muted'
-                  )}>
-                    {task.title}
-                  </span>
-                  {task.tags && task.tags.length > 0 && (
-                    <div className="flex gap-1 flex-shrink-0">
-                      {task.tags.slice(0, 3).map(tag => (
-                        <span key={tag} className="tag-pill">{tag}</span>
-                      ))}
-                    </div>
-                  )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start gap-2">
+                    <span className={cn(
+                      'text-sm break-words',
+                      task.status === 'completed' && 'line-through text-text-muted'
+                    )}>
+                      {task.title}
+                    </span>
+                    {task.tags && task.tags.length > 0 && (
+                      <div className="flex gap-1 flex-shrink-0 pt-0.5">
+                        {task.tags.slice(0, 3).map(tag => (
+                          <span key={tag} className="tag-pill">{tag}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Recurrence indicator */}

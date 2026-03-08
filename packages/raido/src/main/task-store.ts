@@ -476,16 +476,23 @@ export class TaskStore {
       SELECT title FROM tasks WHERE status = 'open'
     `).all() as { title: string }[];
 
-    const counts = new Map<string, number>();
+    // Case-insensitive grouping: merge [travel] and [Travel] into one group
+    const counts = new Map<string, number>();       // lowercase key -> count
+    const displayNames = new Map<string, string>(); // lowercase key -> best display name
     for (const row of rows) {
       const group = extractGroup(row.title);
       if (group) {
-        counts.set(group, (counts.get(group) || 0) + 1);
+        const key = group.toLowerCase();
+        counts.set(key, (counts.get(key) || 0) + 1);
+        // Prefer the capitalized variant as display name (e.g. "Travel" over "travel")
+        if (!displayNames.has(key) || group[0] === group[0].toUpperCase()) {
+          displayNames.set(key, group);
+        }
       }
     }
 
     return Array.from(counts.entries())
-      .map(([name, count]) => ({ name, count }))
+      .map(([key, count]) => ({ name: displayNames.get(key)!, count }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
@@ -494,7 +501,7 @@ export class TaskStore {
     const today = localToday();
     const rows = this.db.prepare(`
       SELECT * FROM tasks
-      WHERE title LIKE ? AND status = 'open'
+      WHERE title LIKE ? COLLATE NOCASE AND status = 'open'
     `).all(`${prefix}%`) as any[];
 
     const tasks = rows.map(r => this.enrichTask(r));

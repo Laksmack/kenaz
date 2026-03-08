@@ -17,6 +17,8 @@ export default function App() {
   const [quickAddTitle, setQuickAddTitle] = useState('');
   const [settingsOpen, setSettingsOpen] = useState(false);
   const quickAddRef = useRef<HTMLInputElement>(null);
+  const [listWidth, setListWidth] = useState(400);
+  const resizing = useRef(false);
 
   const viewQuery = currentView === 'search' ? searchQuery : currentView === 'group' ? selectedGroup || undefined : undefined;
   const { tasks, loading, stats, groups, refresh } = useTasks(currentView as any, viewQuery);
@@ -45,6 +47,29 @@ export default function App() {
     setQuickAddOpen(true);
     setTimeout(() => quickAddRef.current?.focus(), 50);
   }, []);
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    resizing.current = true;
+    const startX = e.clientX;
+    const startWidth = listWidth;
+    const onMove = (me: MouseEvent) => {
+      if (!resizing.current) return;
+      const newWidth = Math.min(800, Math.max(250, startWidth + (me.clientX - startX)));
+      setListWidth(newWidth);
+    };
+    const onUp = () => {
+      resizing.current = false;
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [listWidth]);
 
   const handleViewChange = useCallback((view: string) => {
     setCurrentView(view as ViewType);
@@ -341,7 +366,7 @@ export default function App() {
 
         {/* Content area */}
         <div className="flex-1 flex overflow-hidden">
-          <div className="w-2/5 min-w-[300px] max-w-[500px] border-r border-border-subtle">
+          <div className="relative flex-shrink-0" style={{ width: listWidth }}>
             <TaskList
               tasks={tasks}
               selectedId={selectedTask?.id || null}
@@ -351,7 +376,13 @@ export default function App() {
               loading={loading}
               title={viewTitle}
             />
+            {/* Resize handle */}
+            <div
+              onMouseDown={handleResizeStart}
+              className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-accent-primary/30 active:bg-accent-primary/50 transition-colors z-10"
+            />
           </div>
+          <div className="w-px bg-border-subtle flex-shrink-0" />
 
           <TaskDetail
             task={selectedTask}
