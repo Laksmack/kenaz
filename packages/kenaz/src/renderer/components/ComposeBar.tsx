@@ -187,7 +187,25 @@ function EmailChipInput({
             key={`${email}-${i}`}
             className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent-primary/15 text-accent-primary text-[11px] font-medium max-w-[200px]"
           >
-            <span className="truncate">{email}</span>
+            <span
+              className="truncate cursor-pointer select-all"
+              title={`${email} — click to copy`}
+              onClick={(e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(email);
+                const el = e.currentTarget;
+                el.style.opacity = '0.5';
+                setTimeout(() => { el.style.opacity = '1'; }, 200);
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                navigator.clipboard.writeText(email);
+                const el = e.currentTarget;
+                el.style.opacity = '0.5';
+                setTimeout(() => { el.style.opacity = '1'; }, 200);
+              }}
+            >{email}</span>
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); removeEmail(i); }}
