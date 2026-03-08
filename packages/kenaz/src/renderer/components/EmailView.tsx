@@ -131,7 +131,7 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
         if (l.id !== l.name) map[l.id] = l.name;
       }
       setLabelMap(map);
-    }).catch(() => {});
+    }).catch((e) => console.error('[EmailView] Failed to load label map:', e));
   }, [showDetails]);
 
   // Resolve a label ID to its human-readable name

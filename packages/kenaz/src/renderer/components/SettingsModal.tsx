@@ -1171,7 +1171,7 @@ function CacheSettings({ config, onSave, saving, saved }: TabProps) {
   const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
-    window.kenaz.getCacheStats().then(setStats).catch(() => {});
+    window.kenaz.getCacheStats().then(setStats).catch((e) => console.error('[Settings] Failed to load cache stats:', e));
   }, []);
 
   const handleClear = async () => {

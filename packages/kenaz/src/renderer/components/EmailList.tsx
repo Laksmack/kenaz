@@ -138,7 +138,7 @@ export function EmailList({ threads, selectedId, selectedIds, loading, loadingMo
         map.set(item.threadId, item.snoozeUntil);
       }
       setSnoozeMap(map);
-    }).catch(() => {});
+    }).catch((e) => console.error('[EmailList] Failed to load snooze map:', e));
   }, [currentView, threads]);
 
   // Close context menu on click outside or Escape

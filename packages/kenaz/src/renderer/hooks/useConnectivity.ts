@@ -16,7 +16,7 @@ export function useConnectivity(): { isOnline: boolean; pendingActions: number; 
       setIsOnline(status.online);
       setPendingActions(status.pendingActions);
       setOutboxCount(status.outboxCount);
-    }).catch(() => {});
+    }).catch((e) => console.error('[Connectivity] Initial status check failed:', e));
 
     // Poll for pending counts periodically
     const interval = setInterval(async () => {
@@ -25,7 +25,9 @@ export function useConnectivity(): { isOnline: boolean; pendingActions: number; 
         setIsOnline(status.online);
         setPendingActions(status.pendingActions);
         setOutboxCount(status.outboxCount);
-      } catch {}
+      } catch (e) {
+        console.error('[Connectivity] Status poll failed:', e);
+      }
     }, 10000);
 
     return () => {

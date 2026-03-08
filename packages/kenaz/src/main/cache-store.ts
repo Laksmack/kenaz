@@ -771,7 +771,9 @@ export class CacheStore {
           sizeBytes += fs.statSync(walPath).size;
         }
       }
-    } catch {}
+    } catch (e) {
+      console.error('[Cache] Failed to stat database size:', e);
+    }
 
     return {
       sizeBytes,
@@ -821,7 +823,9 @@ export class CacheStore {
     // Rebuild FTS
     try {
       this.db.exec("INSERT INTO messages_fts(messages_fts) VALUES('rebuild')");
-    } catch {}
+    } catch (e) {
+      console.error('[Cache] Failed to rebuild FTS index:', e);
+    }
   }
 
   /**

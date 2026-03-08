@@ -116,7 +116,8 @@ export default function App() {
             try {
               const result = await window.kenaz.fetchThreads(v.query || 'in:inbox', 50);
               counts[v.id] = result.threads.length;
-            } catch {
+            } catch (e) {
+              console.error(`[App] Failed to fetch count for view "${v.id}":`, e);
               counts[v.id] = 0;
             }
           })
@@ -656,7 +657,9 @@ export default function App() {
       try {
         const result = await window.kenaz.sendEmail(payload);
         if (draftId) {
-          try { await window.kenaz.deleteDraft(draftId); } catch {}
+          try { await window.kenaz.deleteDraft(draftId); } catch (e) {
+            console.error('[App] Failed to delete draft after send:', e);
+          }
         }
 
         // Handle queued (offline) response

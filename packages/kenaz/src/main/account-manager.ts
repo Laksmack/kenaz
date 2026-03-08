@@ -234,21 +234,20 @@ export class AccountManager {
 
     const result = await tempGmail.authenticate();
     if (!result.success) {
-      // Clean up temp dir
-      try { fs.rmSync(tempDir, { recursive: true }); } catch {}
+      try { fs.rmSync(tempDir, { recursive: true }); } catch (e) { console.error('[Accounts] Cleanup failed:', e); }
       return { success: false, error: result.error };
     }
 
     // Get the authenticated email
     const isAuth = await tempGmail.isAuthenticated();
     if (!isAuth) {
-      try { fs.rmSync(tempDir, { recursive: true }); } catch {}
+      try { fs.rmSync(tempDir, { recursive: true }); } catch (e) { console.error('[Accounts] Cleanup failed:', e); }
       return { success: false, error: 'Authentication check failed' };
     }
 
     const email = tempGmail.getUserEmail();
     if (!email) {
-      try { fs.rmSync(tempDir, { recursive: true }); } catch {}
+      try { fs.rmSync(tempDir, { recursive: true }); } catch (e) { console.error('[Accounts] Cleanup failed:', e); }
       return { success: false, error: 'Could not determine account email' };
     }
 
@@ -261,7 +260,7 @@ export class AccountManager {
       if (fs.existsSync(tempToken)) {
         fs.copyFileSync(tempToken, finalToken);
       }
-      try { fs.rmSync(tempDir, { recursive: true }); } catch {}
+      try { fs.rmSync(tempDir, { recursive: true }); } catch (e) { console.error('[Accounts] Cleanup failed:', e); }
     } else {
       fs.renameSync(tempDir, finalDir);
     }

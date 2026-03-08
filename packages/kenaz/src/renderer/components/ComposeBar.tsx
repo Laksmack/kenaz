@@ -92,7 +92,8 @@ function EmailChipInput({
         setSuggestions(filtered);
         setShowSuggestions(filtered.length > 0);
         setSelectedIdx(0);
-      } catch {
+      } catch (e) {
+        console.error('[Compose] Contact suggestion failed:', e);
         setSuggestions([]);
         setShowSuggestions(false);
       }
@@ -450,7 +451,9 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
         attachments: attachments.length > 0 ? attachments : undefined,
       });
       if (initialData?.draftId) {
-        try { await window.kenaz.deleteDraft(initialData.draftId); } catch {}
+        try { await window.kenaz.deleteDraft(initialData.draftId); } catch (e) {
+          console.error('[Compose] Failed to delete old draft:', e);
+        }
       }
     } catch (e) {
       console.error('Failed to save draft:', e);
@@ -469,6 +472,38 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
     }
     onClose();
   }, [initialData, onClose]);
+
+  // Periodic autosave: save draft every 30s while there are unsaved changes
+  const autosaveDraftIdRef = useRef<string | undefined>(initialData?.draftId);
+  useEffect(() => {
+    if (!hasChanges || sentRef.current) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const draftBody = composeMode === 'html' ? bodyHtml : bodyMarkdown;
+        const result = await window.kenaz.createDraft({
+          to: to.length > 0 ? to.join(', ') : undefined,
+          cc: cc.length > 0 ? cc.join(', ') : undefined,
+          bcc: bcc.length > 0 ? bcc.join(', ') : undefined,
+          subject: subject || undefined,
+          body_markdown: draftBody || undefined,
+          reply_to_thread_id: initialData?.replyToThreadId,
+          attachments: attachments.length > 0 ? attachments : undefined,
+        });
+        if (autosaveDraftIdRef.current && autosaveDraftIdRef.current !== result?.id) {
+          try { await window.kenaz.deleteDraft(autosaveDraftIdRef.current); } catch (e) {
+            console.error('[Compose] Failed to delete previous autosave draft:', e);
+          }
+        }
+        if (result?.id) autosaveDraftIdRef.current = result.id;
+        console.log('[Compose] Autosaved draft');
+      } catch (e) {
+        console.error('[Compose] Autosave failed:', e);
+      }
+    }, 30_000);
+
+    return () => clearTimeout(timer);
+  }, [hasChanges, to, cc, bcc, subject, bodyMarkdown, bodyHtml, composeMode, initialData, attachments]);
 
   // Escape key → save draft if changes, otherwise just close
   useEffect(() => {

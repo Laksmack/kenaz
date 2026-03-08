@@ -297,7 +297,9 @@ export class SyncEngine {
                         body: lastMsg.snippet || thread.snippet || '',
                         silent: false,
                       }).show();
-                    } catch {}
+                    } catch (e) {
+                      console.error('[SyncEngine] Failed to show notification:', e);
+                    }
                   }
                 }
               }
@@ -513,7 +515,9 @@ export class SyncEngine {
           body: thread?.snippet || '',
           silent: false,
         }).show();
-      } catch {}
+      } catch (e) {
+        console.error('[SyncEngine] Failed to show snooze notification:', e);
+      }
 
       console.log(`[SyncEngine] Woke thread "${subject.slice(0, 40)}" (${reason})`);
     } catch (e) {
@@ -526,7 +530,9 @@ export class SyncEngine {
       if (this.mainWindow && !this.mainWindow.isDestroyed()) {
         this.mainWindow.webContents.send('threads:updated', { source: 'sync' });
       }
-    } catch {}
+    } catch (e) {
+      console.error('[SyncEngine] Failed to notify renderer:', e);
+    }
   }
 
   private isNetworkError(e: any): boolean {

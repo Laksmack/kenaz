@@ -1,5 +1,13 @@
-import { app, BrowserWindow, ipcMain, shell, Notification, Menu, MenuItem, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Notification, Menu, MenuItem, dialog, session } from 'electron';
 import path from 'path';
+import log from 'electron-log/main';
+
+// ── Persistent logging ───────────────────────────────────────
+// Writes to ~/Library/Logs/Kenaz/main.log with automatic 5 MB rotation.
+// All existing console.log/error calls throughout the codebase are captured.
+log.initialize();
+log.transports.file.maxSize = 5 * 1024 * 1024;
+Object.assign(console, log.functions);
 
 import { initAutoUpdater, getUpdateMenuItems } from '@futhark/core/lib/auto-updater';
 import { startApiServer, type ServiceResolver } from './api-server';
@@ -10,6 +18,17 @@ import { migrateToMultiAccount } from './migrate-accounts';
 import { applyRules } from './rule-engine';
 import { IPC } from '../shared/types';
 import type { SendEmailPayload, View, Rule } from '../shared/types';
+
+// ── Crash resilience ─────────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  log.error('[Kenaz] Uncaught exception:', err);
+  dialog.showErrorBox('Kenaz — Unexpected Error', `${err.message}\n\n${err.stack}`);
+  app.quit();
+});
+
+process.on('unhandledRejection', (reason) => {
+  log.error('[Kenaz] Unhandled rejection:', reason);
+});
 
 let mainWindow: BrowserWindow | null = null;
 let accountManager: AccountManager;
@@ -304,7 +323,7 @@ function registerIpcHandlers() {
                 }
               }
             })
-            .catch(() => {});
+            .catch((e) => console.error('[Kenaz] Background thread refresh failed:', e));
         }
         return cached;
       }
@@ -343,7 +362,9 @@ function registerIpcHandlers() {
     if (appConfig.cacheEnabled) {
       try {
         localResults = cache.searchLocal(query, 50);
-      } catch {}
+      } catch (e) {
+        console.error('[Cache] Local search failed:', e);
+      }
     }
 
     if (!connectivity.isOnline) {
@@ -360,12 +381,15 @@ function registerIpcHandlers() {
               cache.upsertMessages(thread.messages);
             }
           }
-        } catch {}
+        } catch (e) {
+          console.error('[Cache] Failed to cache search results:', e);
+        }
       }
       const apiIds = new Set(result.threads.map((t: any) => t.id));
       const uniqueLocal = localResults.filter(t => !apiIds.has(t.id));
       return [...result.threads, ...uniqueLocal];
-    } catch {
+    } catch (e) {
+      console.error('[Kenaz] Search API failed, returning local results:', e);
       return localResults;
     }
   });
@@ -393,7 +417,9 @@ function registerIpcHandlers() {
         if (payload.cc) sentTo.push(...payload.cc.split(',').map(e => ({ name: '', email: e.trim() })));
         if (payload.bcc) sentTo.push(...payload.bcc.split(',').map(e => ({ name: '', email: e.trim() })));
         cache.recordContacts(sentTo, 3);
-      } catch {}
+      } catch (e) {
+        console.error('[Cache] Failed to record sent contacts:', e);
+      }
       return result;
     } catch (e: any) {
       const msg = (e.message || '').toLowerCase();
@@ -649,7 +675,7 @@ function registerIpcHandlers() {
     const result = svc.config.update(updates);
     // Sync display name to Gmail sendAs when it changes
     if (updates.displayName !== undefined) {
-      svc.gmail.syncDisplayName(updates.displayName).catch(() => {});
+      svc.gmail.syncDisplayName(updates.displayName).catch((e) => console.error('[Kenaz] Failed to sync display name:', e));
     }
     return result;
   });
@@ -810,7 +836,9 @@ function registerIpcHandlers() {
       const { getFutharkMcpConfig, isMcpInstalled } = require(installerPath);
       mcpConfig = getFutharkMcpConfig();
       installed = isMcpInstalled();
-    } catch {}
+    } catch (e) {
+      console.error('[MCP] Failed to load MCP status:', e);
+    }
     return {
       enabled: (appConfig as any).mcpEnabled ?? false,
       installed,
@@ -938,12 +966,33 @@ async function installFutharkMcp() {
 }
 
 app.whenReady().then(async () => {
+  // ── Content Security Policy ──────────────────────────────
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self';" +
+          " script-src 'self';" +
+          " style-src 'self' 'unsafe-inline';" +
+          " img-src 'self' data: https:;" +
+          " font-src 'self' data:;" +
+          " connect-src 'self' http://localhost:* https://*.googleapis.com https://*.hubapi.com https://*.google.com;" +
+          " frame-src 'self' data:;"
+        ],
+      },
+    });
+  });
+
   await initServices();
   registerIpcHandlers();
   setupOfflineFlush();
   buildAppMenu();
   createWindow();
   initAutoUpdater(mainWindow!, buildAppMenu);
+  // Re-enable auto-updater logging (core sets it to null by default)
+  const { autoUpdater } = require('electron-updater');
+  autoUpdater.logger = log;
   installFutharkMcp();
 
   // Start the API server with a resolver that follows account switches
