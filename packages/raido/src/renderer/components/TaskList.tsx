@@ -255,9 +255,9 @@ export function TaskList({ tasks, selectedId, onSelect, onComplete, onUpdate, lo
           const fetcher = window.raido.crossAppFetch;
           const actions = [
             { label: 'Copy Reference', icon: '📋', fn: () => { navigator.clipboard.writeText(`[${task.title}] (raido:task:${task.id})`); } },
-            { label: 'Draft Email in Kenaz', icon: 'ᚲ', fn: async () => { try { await createDraftFromTask(fetcher, ctx); window.raido.notify('Kenaz', `Draft created: ${ctx.title}`); } catch { window.raido.notify('Kenaz', 'Failed — is Kenaz running?'); } } },
-            { label: 'Create Note in Laguz', icon: 'ᛚ', fn: async () => { try { await createNoteFromTask(fetcher, ctx); window.raido.notify('Laguz', `Note created: ${ctx.title}`); } catch { window.raido.notify('Laguz', 'Failed — is Laguz running?'); } } },
-            { label: 'Create Event in Dagaz', icon: 'ᛞ', fn: async () => { try { await createEventFromTask(fetcher, ctx); window.raido.notify('Dagaz', `Event created: ${ctx.title}`); } catch { window.raido.notify('Dagaz', 'Failed — is Dagaz running?'); } } },
+            { label: 'Draft Email in Kenaz', icon: 'ᚲ', fn: async () => { try { await createDraftFromTask(fetcher, ctx); window.raido.notify('Kenaz', `Draft created: ${ctx.title}`); } catch (e) { console.error('[CrossApp] Kenaz draft failed:', e); window.raido.notify('Kenaz', 'Failed — is Kenaz running?'); } } },
+            { label: 'Create Note in Laguz', icon: 'ᛚ', fn: async () => { try { await createNoteFromTask(fetcher, ctx); window.raido.notify('Laguz', `Note created: ${ctx.title}`); } catch (e) { console.error('[CrossApp] Laguz note failed:', e); window.raido.notify('Laguz', 'Failed — is Laguz running?'); } } },
+            { label: 'Create Event in Dagaz', icon: 'ᛞ', fn: async () => { try { await createEventFromTask(fetcher, ctx); window.raido.notify('Dagaz', `Event created: ${ctx.title}`); } catch (e) { console.error('[CrossApp] Dagaz event failed:', e); window.raido.notify('Dagaz', 'Failed — is Dagaz running?'); } } },
           ];
           return (
             <div

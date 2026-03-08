@@ -46,7 +46,7 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
       setEditingTitle(false);
       setEditingNotes(false);
       setChecklist(task.checklist || []);
-      window.raido.getAttachments(task.id).then(setAttachments).catch(() => setAttachments([]));
+      window.raido.getAttachments(task.id).then(setAttachments).catch((e) => { console.error('[TaskDetail] Failed to load attachments:', e); setAttachments([]); });
     } else {
       setAttachments([]);
       setChecklist([]);
@@ -93,7 +93,7 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
             method: 'POST',
             body: JSON.stringify({ action: 'focus-thread', threadId: task.kenaz_thread_id }),
           });
-        } catch { window.raido.notify('Kenaz', 'Could not open thread — is Kenaz running?'); }
+        } catch (e) { console.error('[CrossApp] Kenaz open failed:', e); window.raido.notify('Kenaz', 'Could not open thread — is Kenaz running?'); }
       },
     });
     if (task.hubspot_deal_id) items.push({
@@ -108,7 +108,7 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
             method: 'POST',
             body: JSON.stringify({ action: 'focus-note', path: task.vault_path }),
           });
-        } catch { window.raido.notify('Laguz', 'Could not open note — is Laguz running?'); }
+        } catch (e) { console.error('[CrossApp] Laguz open failed:', e); window.raido.notify('Laguz', 'Could not open note — is Laguz running?'); }
       },
     });
     if (task.calendar_event_id) items.push({
@@ -119,7 +119,7 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
             method: 'POST',
             body: JSON.stringify({ action: 'focus-event', eventId: task.calendar_event_id }),
           });
-        } catch { window.raido.notify('Dagaz', 'Could not open event — is Dagaz running?'); }
+        } catch (e) { console.error('[CrossApp] Dagaz open failed:', e); window.raido.notify('Dagaz', 'Could not open event — is Dagaz running?'); }
       },
     });
     return items;

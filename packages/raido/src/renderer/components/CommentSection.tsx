@@ -15,7 +15,7 @@ export function CommentSection({ taskId }: Props) {
   const { key: editorKey, reset: resetEditor } = useRichEditorReset();
 
   useEffect(() => {
-    window.raido.getComments(taskId).then(setComments).catch(() => setComments([]));
+    window.raido.getComments(taskId).then(setComments).catch((e) => { console.error('[Comments] Failed to load comments:', e); setComments([]); });
   }, [taskId]);
 
   const submit = useCallback(async () => {

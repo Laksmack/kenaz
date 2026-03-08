@@ -1,12 +1,29 @@
-import { app, BrowserWindow, ipcMain, shell, Notification, dialog, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Notification, dialog, Menu, session } from 'electron';
 import fs from 'fs';
 import path from 'path';
+import log from 'electron-log/main';
+
+// ── Persistent logging ───────────────────────────────────────
+log.initialize();
+log.transports.file.maxSize = 5 * 1024 * 1024;
+Object.assign(console, log.functions);
 
 import { initAutoUpdater, getUpdateMenuItems } from '@futhark/core/lib/auto-updater';
 import { startApiServer } from './api-server';
 import { ConfigStore } from './config';
 import { TaskStore } from './task-store';
 import { IPC } from '../shared/types';
+
+// ── Crash resilience ─────────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  log.error('[Raidō] Uncaught exception:', err);
+  dialog.showErrorBox('Raidō — Unexpected Error', `${err.message}\n\n${err.stack}`);
+  app.quit();
+});
+
+process.on('unhandledRejection', (reason) => {
+  log.error('[Raidō] Unhandled rejection:', reason);
+});
 
 let mainWindow: BrowserWindow | null = null;
 let config: ConfigStore;
@@ -265,7 +282,9 @@ function registerIpcHandlers() {
       const { getFutharkMcpConfig, isMcpInstalled } = require(installerPath);
       mcpConfig = getFutharkMcpConfig();
       installed = isMcpInstalled();
-    } catch {}
+    } catch (e) {
+      console.error('[MCP] Failed to load MCP status:', e);
+    }
     return {
       enabled: appConfig.mcpEnabled,
       installed,
@@ -328,11 +347,31 @@ function buildAppMenu() {
 }
 
 app.whenReady().then(async () => {
+  // ── Content Security Policy ──────────────────────────────
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self';" +
+          " script-src 'self';" +
+          " style-src 'self' 'unsafe-inline';" +
+          " img-src 'self' data: https:;" +
+          " font-src 'self' data:;" +
+          " connect-src 'self' http://localhost:*;" +
+          " frame-src 'self' data:;"
+        ],
+      },
+    });
+  });
+
   await initServices();
   registerIpcHandlers();
   buildAppMenu();
   createWindow();
   initAutoUpdater(mainWindow!, buildAppMenu);
+  const { autoUpdater } = require('electron-updater');
+  autoUpdater.logger = log;
   startBadgeMonitor();
   installFutharkMcp();
 

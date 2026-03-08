@@ -275,8 +275,8 @@ export function startApiServer(store: TaskStore, port: number) {
             sourceRef: `kenaz:${threadId}:${att.messageId}:${att.id}`,
           });
           results.push(saved);
-        } catch {
-          console.error(`[Raidō] Failed to pull attachment: ${att.filename}`);
+        } catch (e) {
+          console.error(`[Raidō] Failed to pull attachment: ${att.filename}`, e);
         }
       }
 

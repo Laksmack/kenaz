@@ -614,7 +614,7 @@ export class TaskStore {
   deleteAttachment(taskId: string, attachmentId: string): boolean {
     const filePath = this.getAttachmentPath(taskId, attachmentId);
     if (filePath) {
-      try { fs.unlinkSync(filePath); } catch {}
+      try { fs.unlinkSync(filePath); } catch (e) { console.error('[TaskStore] Failed to delete attachment file:', e); }
     }
     const result = this.db.prepare(
       'DELETE FROM task_attachments WHERE id = ? AND task_id = ?'
