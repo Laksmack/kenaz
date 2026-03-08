@@ -327,6 +327,16 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
             )}
             <div className="w-px h-4 bg-border-subtle mx-1" />
             <ActionButton
+              label="Print"
+              shortcut="⌘P"
+              onClick={() => window.kenaz.printEmail(buildPrintHtml(thread))}
+              icon={
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" />
+                </svg>
+              }
+            />
+            <ActionButton
               label="Details"
               shortcut="I"
               onClick={() => setShowDetails((p) => !p)}
