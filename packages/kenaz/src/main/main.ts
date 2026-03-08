@@ -795,32 +795,20 @@ function registerIpcHandlers() {
 
   // ── Print ──
   ipcMain.handle(IPC.PRINT_EMAIL, async (_event, html: string) => {
-    const os = require('os');
-    const fs = require('fs');
-    const { exec } = require('child_process');
     const printWin = new BrowserWindow({
       show: false,
       width: 800,
-      height: 900,
+      height: 1056,
       webPreferences: { javascript: false },
     });
     try {
       await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
-      // Wait for content to fully render
       await new Promise((r) => setTimeout(r, 500));
-      const pdfBuffer = await printWin.webContents.printToPDF({
-        printBackground: true,
-        margins: { marginType: 'default' },
-      });
-      const tmpPath = path.join(os.tmpdir(), `kenaz-print-${Date.now()}.pdf`);
-      fs.writeFileSync(tmpPath, pdfBuffer);
-      // Open in Laguz if installed, fall back to default PDF viewer
-      exec(`open -a Laguz "${tmpPath}"`, (err: any) => {
-        if (err) shell.openPath(tmpPath);
+      printWin.webContents.print({ printBackground: true }, (_success, _reason) => {
+        printWin.close();
       });
     } catch (e) {
-      console.error('[Kenaz] Print to PDF failed:', e);
-    } finally {
+      console.error('[Kenaz] Print failed:', e);
       printWin.close();
     }
   });
