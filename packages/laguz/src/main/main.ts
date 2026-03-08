@@ -474,6 +474,52 @@ function registerIpcHandlers() {
     return { supported: true, saveTo: targetDir };
   });
 
+  // ── Print ──
+  ipcMain.handle('laguz:printFile', async (_event, filePath: string) => {
+    const abs = path.isAbsolute(filePath) ? filePath : path.join(config.vaultPath, filePath);
+    const ext = path.extname(abs).toLowerCase();
+
+    if (ext === '.pdf') {
+      // For PDFs, open the native print dialog via a hidden window
+      const printWin = new BrowserWindow({
+        show: false,
+        width: 800,
+        height: 1000,
+        webPreferences: { javascript: true },
+      });
+      // Use file:// URL so Chromium's built-in PDF viewer loads it
+      await printWin.loadURL(`file://${abs}`);
+      // Give the PDF plugin time to render
+      await new Promise(r => setTimeout(r, 1000));
+      printWin.webContents.print({}, (_success, _reason) => {
+        printWin.close();
+      });
+    } else {
+      // For markdown/text, render to HTML and print
+      let content = '';
+      try { content = fs.readFileSync(abs, 'utf-8'); } catch { return; }
+      const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><style>
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; font-size: 14px; line-height: 1.6; }
+  pre, code { background: #f5f5f4; padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  pre { padding: 12px; overflow-x: auto; }
+  h1,h2,h3 { margin-top: 1.5em; }
+  @media print { body { padding: 0; } }
+</style></head><body><pre style="white-space:pre-wrap;font-family:inherit;background:none;padding:0;">${content.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre></body></html>`;
+      const printWin = new BrowserWindow({
+        show: false,
+        width: 800,
+        height: 900,
+        webPreferences: { javascript: false },
+      });
+      await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      await new Promise(r => setTimeout(r, 500));
+      printWin.webContents.print({}, (_success, _reason) => {
+        printWin.close();
+      });
+    }
+  });
+
   // Cross-app
   ipcMain.handle('cross-app:fetch', async (_event, url: string, options?: any) => {
     const res = await fetch(url, {

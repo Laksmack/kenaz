@@ -68,6 +68,9 @@ const api = {
   copyCabinetFile: (sourcePath: string, targetFolder: string) => ipcRenderer.invoke('laguz:copyCabinetFile', sourcePath, targetFolder),
   openScanner: (cabinetFolder?: string) => ipcRenderer.invoke('laguz:openScanner', cabinetFolder),
 
+  // Print
+  printFile: (filePath: string) => ipcRenderer.invoke('laguz:printFile', filePath),
+
   // Cross-app
   crossAppFetch: (url: string, options?: any) => ipcRenderer.invoke('cross-app:fetch', url, options),
 

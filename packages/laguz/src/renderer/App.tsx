@@ -232,6 +232,14 @@ export default function App() {
         return;
       }
 
+      // ⌘P print current file
+      if ((e.metaKey || e.ctrlKey) && e.key === 'p') {
+        e.preventDefault();
+        const filePath = activeTab?.filePath;
+        if (filePath) window.laguz.printFile(filePath);
+        return;
+      }
+
       // ⌘\ toggle split
       if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
         e.preventDefault();
@@ -289,7 +297,7 @@ export default function App() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [handleViewChange, settingsOpen, activeTabId, closeTab, splitTabId, tabs]);
+  }, [handleViewChange, settingsOpen, activeTabId, activeTab, closeTab, splitTabId, tabs]);
 
   if (!config) {
     return (
