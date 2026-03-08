@@ -1,15 +1,25 @@
-import { app, BrowserWindow, shell, ipcMain, dialog, Menu } from 'electron';
+import { app, BrowserWindow, shell, ipcMain, dialog, Menu, session } from 'electron';
 import path from 'path';
 import fs from 'fs';
 import { execSync } from 'child_process';
+import log from 'electron-log/main';
+
+// ── Persistent logging ───────────────────────────────────────
+log.initialize();
+log.transports.file.maxSize = 5 * 1024 * 1024;
+Object.assign(console, log.functions);
 
 import { initAutoUpdater, getUpdateMenuItems } from '@futhark/core/lib/auto-updater';
 
-// Catch fatal errors during module loading
-process.on('uncaughtException', (e) => {
-  const msg = `[Laguz] FATAL uncaught exception: ${e?.message ?? e}\n${e?.stack ?? ''}`;
-  try { fs.appendFileSync(path.join(app.getPath('userData'), 'crash.log'), `${new Date().toISOString()} ${msg}\n`); } catch {}
-  console.error(msg);
+// ── Crash resilience ─────────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  log.error('[Laguz] Uncaught exception:', err);
+  dialog.showErrorBox('Laguz — Unexpected Error', `${err.message}\n\n${err.stack}`);
+  app.quit();
+});
+
+process.on('unhandledRejection', (reason) => {
+  log.error('[Laguz] Unhandled rejection:', reason);
 });
 
 import { config } from './config';
@@ -384,7 +394,7 @@ function registerIpcHandlers() {
         });
         if (!res.ok) return null;
         return res.json();
-      } catch { return null; }
+      } catch (e) { console.error('[FolderContext] Cross-app fetch failed:', url, e); return null; }
     };
 
     const [emailData, taskData, taskGroupData, agendaData] = await Promise.all([
@@ -698,6 +708,24 @@ async function installFutharkMcp() {
 }
 
 app.whenReady().then(async () => {
+  // ── Content Security Policy ──────────────────────────────
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self';" +
+          " script-src 'self';" +
+          " style-src 'self' 'unsafe-inline';" +
+          " img-src 'self' data: https: blob:;" +
+          " font-src 'self' data: https://fonts.gstatic.com;" +
+          " connect-src 'self' http://localhost:*;" +
+          " frame-src 'self' data: blob:;"
+        ],
+      },
+    });
+  });
+
   console.log('[Laguz] app ready');
   try {
     await initServices();
@@ -714,6 +742,8 @@ app.whenReady().then(async () => {
   }
 
   initAutoUpdater(mainWindow!, buildAppMenu);
+  const { autoUpdater } = require('electron-updater');
+  autoUpdater.logger = log;
   installFutharkMcp();
 
   // Send any file that was opened before the window was ready
@@ -750,10 +780,3 @@ app.on('before-quit', () => {
   store?.close();
 });
 
-process.on('uncaughtException', (e) => {
-  console.error('[Laguz] Uncaught exception:', e);
-});
-
-process.on('unhandledRejection', (e) => {
-  console.error('[Laguz] Unhandled rejection:', e);
-});

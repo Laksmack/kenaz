@@ -676,7 +676,7 @@ function NoteEditor({ content, notePath, onContentChange, onDone, isMd = true, s
         clearTimeout(saveTimerRef.current);
         const currentContent = viewRef.current?.state.doc.toString();
         if (currentContent && currentContent !== lastSavedRef.current) {
-          saveFn(notePath, currentContent).catch(() => {});
+          saveFn(notePath, currentContent).catch((e) => console.error('[NoteDetail] Save on unmount failed:', e));
         }
       }
       viewRef.current?.destroy();
@@ -741,7 +741,7 @@ function MarkdownDetail({ notePath, onMarkProcessed, onFolderNavigate, onNoteNav
   useEffect(() => {
     window.laguz.getVaultFolders().then(folders => {
       setFolderNames(new Set(folders.map(f => f.name)));
-    }).catch(() => {});
+    }).catch((e) => console.error('[NoteDetail] Failed to load vault folders:', e));
   }, []);
 
   const handleMarkProcessed = useCallback(async () => {
@@ -1381,7 +1381,7 @@ function CabinetDocumentDetail({ filePath }: { filePath: string }) {
     try {
       const d = await window.laguz.getCabinetDocument(filePath);
       setDoc(d);
-    } catch {}
+    } catch (e) { console.error('[NoteDetail] Failed to load cabinet document:', e); }
     setLoading(false);
   }, [filePath]);
 

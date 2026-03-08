@@ -337,7 +337,7 @@ export function startApiServer(store: VaultStore, signatureStore: SignatureStore
           });
           if (!r.ok) return null;
           return r.json();
-        } catch { return null; }
+        } catch (e) { console.error('[API] Cross-app fetch failed:', url, e); return null; }
       };
 
       const [emailData, taskData, taskGroupData, agendaData] = await Promise.all([

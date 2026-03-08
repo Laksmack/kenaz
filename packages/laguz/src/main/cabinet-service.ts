@@ -101,7 +101,7 @@ export class CabinetService {
     try {
       const info = await pdfService.getPdfInfo(docPath);
       pageCount = info.pageCount;
-    } catch {}
+    } catch (e) { console.error('[Cabinet] Failed to get PDF page count:', docPath, e); }
 
     try {
       text = await pdfService.readPdfText(docPath);

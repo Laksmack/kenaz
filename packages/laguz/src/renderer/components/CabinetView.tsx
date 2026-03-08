@@ -39,7 +39,7 @@ export function CabinetView({ activeFilePath, onOpenFile }: CabinetViewProps) {
     try {
       const f = await window.laguz.getCabinetFolders(parent || undefined);
       setFolders(f);
-    } catch { setFolders([]); }
+    } catch (e) { console.error('[Cabinet] Failed to load folders:', e); setFolders([]); }
   }, []);
 
   const loadDocuments = useCallback(async (folder: string) => {
@@ -47,7 +47,7 @@ export function CabinetView({ activeFilePath, onOpenFile }: CabinetViewProps) {
     try {
       const docs = await window.laguz.getCabinetDocuments(folder || undefined);
       setDocuments(docs);
-    } catch { setDocuments([]); }
+    } catch (e) { console.error('[Cabinet] Failed to load documents:', e); setDocuments([]); }
     setLoading(false);
   }, []);
 
@@ -55,7 +55,7 @@ export function CabinetView({ activeFilePath, onOpenFile }: CabinetViewProps) {
     try {
       const status = await window.laguz.getCabinetOcrStatus();
       setOcrStatus(status);
-    } catch {}
+    } catch (e) { console.error('[Cabinet] Failed to refresh OCR status:', e); }
   }, []);
 
   useEffect(() => {
@@ -105,7 +105,8 @@ export function CabinetView({ activeFilePath, onOpenFile }: CabinetViewProps) {
           folder: currentFolder || undefined,
         });
         setSearchResults(results);
-      } catch {
+      } catch (e) {
+        console.error('[Cabinet] Search failed:', e);
         setSearchResults([]);
       }
     }, 300);

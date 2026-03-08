@@ -60,7 +60,8 @@ export class SignatureStore {
     if (!fs.existsSync(PROFILE_PATH)) return null;
     try {
       return JSON.parse(fs.readFileSync(PROFILE_PATH, 'utf-8'));
-    } catch {
+    } catch (e) {
+      console.error('[SignatureStore] Failed to parse profile:', e);
       return null;
     }
   }

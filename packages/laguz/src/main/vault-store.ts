@@ -453,7 +453,7 @@ export class VaultStore {
             try {
               this.indexNote(full);
               added++;
-            } catch {}
+            } catch (e) { console.error('[VaultStore] Failed to index note:', full, e); }
           }
         } else if (entry.name.endsWith('.pdf')) {
           const rel = path.relative(config.vaultPath, full);
@@ -462,7 +462,7 @@ export class VaultStore {
             try {
               this.indexFile(full);
               added++;
-            } catch {}
+            } catch (e) { console.error('[VaultStore] Failed to index file:', full, e); }
           }
         }
       }
@@ -772,7 +772,7 @@ export class VaultStore {
             walk(path.join(dir, entry.name), rel);
           }
         }
-      } catch {}
+      } catch (e) { console.error('[VaultStore] Failed to read folder:', dir, e); }
     };
     walk(config.vaultPath, '');
     return folders;
@@ -901,7 +901,7 @@ export class VaultStore {
         if (entry.name.startsWith('.')) continue;
         if (entry.isDirectory()) folders.push(entry.name);
       }
-    } catch {}
+    } catch (e) { console.error('[VaultStore] Failed to read cabinet dir:', cabinetDir, e); }
     return folders.sort();
   }
 

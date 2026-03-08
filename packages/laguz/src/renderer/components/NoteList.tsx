@@ -175,10 +175,10 @@ export function NoteList({ notes, selectedPath, onSelect, loading, emptyMessage,
               const full = await window.laguz.getNote(note.path);
               const fullCtx = { ...ctx, content: full?.content || '' };
               await createDraftFromNote(fetcher, fullCtx);
-            } catch {}
+            } catch (e) { console.error('[CrossApp] Kenaz draft failed:', e); }
           }},
-          { label: 'Create Event in Dagaz', icon: 'ᛞ', fn: async () => { try { await createEventFromNote(fetcher, ctx); } catch {} } },
-          { label: 'Create Todo in Raidō', icon: 'ᚱ', fn: async () => { try { await createTodoFromNote(fetcher, ctx); } catch {} } },
+          { label: 'Create Event in Dagaz', icon: 'ᛞ', fn: async () => { try { await createEventFromNote(fetcher, ctx); } catch (e) { console.error('[CrossApp] Dagaz event failed:', e); } } },
+          { label: 'Create Todo in Raidō', icon: 'ᚱ', fn: async () => { try { await createTodoFromNote(fetcher, ctx); } catch (e) { console.error('[CrossApp] Raido todo failed:', e); } } },
         ];
         return (
           <div

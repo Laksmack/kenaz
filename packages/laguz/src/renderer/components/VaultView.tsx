@@ -35,7 +35,7 @@ export function VaultView({ searchQuery, activeFilePath, onOpenFile }: VaultView
   useEffect(() => {
     window.laguz.getVaultFiles('pdf').then(files => {
       setPdfFiles(files.map(vaultFileToSummary));
-    }).catch(() => {});
+    }).catch((e) => console.error('[VaultView] Failed to load PDF files:', e));
   }, []);
 
   useEffect(() => {
@@ -66,7 +66,7 @@ export function VaultView({ searchQuery, activeFilePath, onOpenFile }: VaultView
     refreshRecent();
     window.laguz.getVaultFiles('pdf').then(files => {
       setPdfFiles(files.map(vaultFileToSummary));
-    }).catch(() => {});
+    }).catch((e) => console.error('[VaultView] Failed to refresh PDF files:', e));
   }, [refreshRecent]);
 
   return (
