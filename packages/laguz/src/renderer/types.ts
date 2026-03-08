@@ -214,6 +214,9 @@ declare global {
       copyCabinetFile: (sourcePath: string, targetFolder: string) => Promise<{ path: string; filename: string }>;
       openScanner: (cabinetFolder?: string) => Promise<{ supported: boolean; saveTo?: string }>;
 
+      // Print
+      printFile: (filePath: string) => Promise<void>;
+
       crossAppFetch: (url: string, options?: any) => Promise<any>;
       onOpenFile: (cb: (path: string) => void) => () => void;
     };
