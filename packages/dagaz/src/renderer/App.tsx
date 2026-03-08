@@ -103,7 +103,7 @@ export default function App() {
       const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1).toISOString();
       const evts = await window.dagaz.getEvents(start, end);
       setTodayEvents((evts || []).filter((e: CalendarEvent) => !e.all_day));
-    } catch { /* silent */ }
+    } catch (e) { console.error('[App] Failed to fetch today events:', e); }
   }, []);
 
   useEffect(() => { fetchTodayEvents(); }, [fetchTodayEvents]);
@@ -196,7 +196,9 @@ export default function App() {
     if (updated?.summary) {
       const match = pendingInvites.find(inv => inv.title === updated.summary);
       if (match) {
-        try { await window.dagaz.rsvpInvite(match.threadId, 'done'); dismissPendingInvite(match.threadId); refreshPendingInvites(); } catch {}
+        try { await window.dagaz.rsvpInvite(match.threadId, 'done'); dismissPendingInvite(match.threadId); refreshPendingInvites(); } catch (e) {
+          console.error('[App] Failed to archive invite after RSVP:', e);
+        }
       }
     }
   }, [rawEvents, selectedEvent, refreshNeedsAction, pendingInvites, dismissPendingInvite, refreshPendingInvites, showRsvpConfirm]);

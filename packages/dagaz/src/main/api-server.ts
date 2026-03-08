@@ -92,8 +92,8 @@ export function startApiServer(
         signal: AbortSignal.timeout(3000),
       });
       console.log(`[Dagaz] Archived invite email for "${eventSummary}" in Kenaz (thread ${threadId})`);
-    } catch {
-      // Kenaz not running or error — silently ignore
+    } catch (e) {
+      console.error(`[Dagaz] Failed to archive invite in Kenaz for "${eventSummary}":`, e);
     }
   }
 
@@ -275,7 +275,7 @@ export function startApiServer(
           cache.updateRecurringSeriesResponse(recurringEventId, response);
         }
 
-        archiveInviteInKenaz(event.summary || '').catch(() => {});
+        archiveInviteInKenaz(event.summary || '').catch((e) => console.error('[Dagaz] Background invite archive failed:', e));
       } else if (event.google_id) {
         // Update local state immediately so the UI reflects the RSVP
         cache.updateEventResponse(event.id, response);

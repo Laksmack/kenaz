@@ -147,6 +147,24 @@ function TimeInput({ value, onChange, id }: { value: string; onChange: (v: strin
   );
 }
 
+const RECURRENCE_PRESETS: Array<{ value: string; label: string; rrule: string | null }> = [
+  { value: 'none', label: 'Does not repeat', rrule: null },
+  { value: 'daily', label: 'Daily', rrule: 'RRULE:FREQ=DAILY' },
+  { value: 'weekdays', label: 'Every weekday (Mon–Fri)', rrule: 'RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' },
+  { value: 'weekly', label: 'Weekly', rrule: 'RRULE:FREQ=WEEKLY' },
+  { value: 'biweekly', label: 'Every 2 weeks', rrule: 'RRULE:FREQ=WEEKLY;INTERVAL=2' },
+  { value: 'monthly', label: 'Monthly', rrule: 'RRULE:FREQ=MONTHLY' },
+  { value: 'yearly', label: 'Yearly', rrule: 'RRULE:FREQ=YEARLY' },
+];
+
+function recurrenceRuleToPreset(rule: string): string {
+  const r = rule.replace(/\n/g, '').trim().toUpperCase();
+  for (const p of RECURRENCE_PRESETS) {
+    if (p.rrule && r.includes(p.rrule.replace('RRULE:', ''))) return p.value;
+  }
+  return 'none';
+}
+
 export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, calendars, defaultCalendarId, defaultStart, defaultEnd, defaultAttendees }: Props) {
   const isEditing = !!editingEvent;
   const [title, setTitle] = useState('');
@@ -160,6 +178,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
   const [contactSuggestions, setContactSuggestions] = useState<Array<{ email: string; display_name: string | null; count: number }>>([]);
   const [suggestionIdx, setSuggestionIdx] = useState(-1);
   const suggestDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const [recurrence, setRecurrence] = useState('none');
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
   const [addConferencing, setAddConferencing] = useState(false);
@@ -196,6 +215,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
       setLocation(ev.location || '');
       // Strip HTML tags from description for plain-text editing
       setDescription(ev.description ? ev.description.replace(/<[^>]*>/g, '') : '');
+      setRecurrence(ev.recurrence_rule ? recurrenceRuleToPreset(ev.recurrence_rule) : 'none');
       setAddConferencing(!!ev.conference_data || !!ev.hangout_link);
       setAttendeeInput('');
       setAttendees(
@@ -219,6 +239,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
       setAllDay(false);
       setLocation('');
       setDescription('');
+      setRecurrence('none');
       setAddConferencing(false);
       setAttendeeInput('');
       setAttendees(defaultAttendees?.filter(p => p.visible).map(p => p.email) || []);
@@ -249,8 +270,10 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
     if (!title.trim()) return;
     const { startD, endD } = buildDates();
 
+    const rruleEntry = RECURRENCE_PRESETS.find(p => p.value === recurrence);
+    const recurrenceRules = rruleEntry?.rrule ? [rruleEntry.rrule] : undefined;
+
     if (isEditing && editingEvent && onUpdate) {
-      // Edit mode: send only the updated fields
       const updates: UpdateEventInput = {
         summary: title.trim(),
         start: allDay ? date : startD.toISOString(),
@@ -263,7 +286,6 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
       onUpdate(editingEvent.id, updates);
       onClose();
     } else {
-      // Create mode
       const data: CreateEventInput = {
         summary: title.trim(),
         start: allDay ? date : startD.toISOString(),
@@ -274,11 +296,12 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
         description: description || undefined,
         calendar_id: calendarId || undefined,
         add_conferencing: addConferencing,
+        recurrence: recurrenceRules,
       };
       onCreate(data);
       onClose();
     }
-  }, [title, buildDates, allDay, date, endDate, attendees, location, description, calendarId, addConferencing, isEditing, editingEvent, onUpdate, onCreate, onClose]);
+  }, [title, buildDates, allDay, date, endDate, attendees, location, description, calendarId, addConferencing, recurrence, isEditing, editingEvent, onUpdate, onCreate, onClose]);
 
   const addAttendee = useCallback((raw: string) => {
     const email = raw.trim().toLowerCase();
@@ -303,7 +326,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
         const added = new Set(attendees);
         setContactSuggestions((hits || []).filter((r: any) => !added.has(r.email)));
         setSuggestionIdx(-1);
-      } catch { setContactSuggestions([]); }
+      } catch (e) { console.error('[QuickCreate] Contact search failed:', e); setContactSuggestions([]); }
     }, 150);
   }, [attendees]);
 
@@ -438,6 +461,26 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
             </label>
           </div>
         </div>
+
+        {/* Recurrence */}
+        {!isEditing && (
+          <div className="px-4 py-2.5 border-t border-border-subtle">
+            <div className="flex items-center gap-3">
+              <svg className="w-4 h-4 text-text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
+              </svg>
+              <select
+                value={recurrence}
+                onChange={e => setRecurrence(e.target.value)}
+                className="flex-1 bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary/40 cursor-pointer"
+              >
+                {RECURRENCE_PRESETS.map(p => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
 
         {/* Participants */}
         <div className="px-4 py-2.5 border-t border-border-subtle">

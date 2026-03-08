@@ -112,7 +112,7 @@ export class CacheStore {
     `);
 
     // Migrations — add columns if missing
-    try { this.db.exec('ALTER TABLE events ADD COLUMN attachments TEXT'); } catch {}
+    try { this.db.exec('ALTER TABLE events ADD COLUMN attachments TEXT'); } catch (e) { /* column already exists */ }
   }
 
   private genId(): string {

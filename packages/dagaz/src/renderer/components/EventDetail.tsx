@@ -24,7 +24,7 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
       window.dagaz.getEvent(event.id).then((e) => {
         if (e) setFullEvent(e);
         else setFullEvent(event);
-      }).catch(() => setFullEvent(event));
+      }).catch((e) => { console.error('[EventDetail] Failed to fetch full event:', e); setFullEvent(event); });
     } else {
       setFullEvent(null);
     }

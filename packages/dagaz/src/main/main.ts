@@ -1,6 +1,12 @@
-import { app, BrowserWindow, ipcMain, shell, Notification, powerMonitor, dialog, Menu } from 'electron';
+import { app, BrowserWindow, ipcMain, shell, Notification, powerMonitor, dialog, Menu, session } from 'electron';
 import path from 'path';
+import log from 'electron-log/main';
 import * as chrono from 'chrono-node';
+
+// ── Persistent logging ───────────────────────────────────────
+log.initialize();
+log.transports.file.maxSize = 5 * 1024 * 1024;
+Object.assign(console, log.functions);
 
 import { initAutoUpdater, getUpdateMenuItems } from '@futhark/core/lib/auto-updater';
 import { GoogleCalendarService } from './google-calendar';
@@ -17,6 +23,17 @@ import {
 import { IPC } from '../shared/types';
 import type { CreateEventInput, UpdateEventInput } from '../shared/types';
 import { parseNaturalLanguage } from '../shared/parse-natural-language';
+
+// ── Crash resilience ─────────────────────────────────────────
+process.on('uncaughtException', (err) => {
+  log.error('[Dagaz] Uncaught exception:', err);
+  dialog.showErrorBox('Dagaz — Unexpected Error', `${err.message}\n\n${err.stack}`);
+  app.quit();
+});
+
+process.on('unhandledRejection', (reason) => {
+  log.error('[Dagaz] Unhandled rejection:', reason);
+});
 
 let mainWindow: BrowserWindow | null = null;
 let google: GoogleCalendarService;
@@ -224,7 +241,7 @@ async function updateDockBadge() {
     if (invites.length > needsActionCount) {
       kenazExtra = invites.length - needsActionCount;
     }
-  } catch { /* Kenaz unavailable — ignore */ }
+  } catch (e) { console.error('[Badge] Kenaz unavailable:', e); }
   const total = needsActionCount + kenazExtra;
   const badge = total > 0 ? total.toString() : '';
   console.log(`[Badge] Setting dock badge to "${badge || '(clear)'}" (${needsActionCount} needsAction + ${kenazExtra} extra from Kenaz)`);
@@ -485,7 +502,9 @@ function registerIpcHandlers() {
           pendingCount: 0,
         });
       }
-    } catch {}
+    } catch (e) {
+      console.error('[Dagaz] Failed to notify renderer of queue clear:', e);
+    }
     return cleared;
   });
 
@@ -557,8 +576,8 @@ function registerIpcHandlers() {
         const data = await res.json();
         tasks = data.tasks || [];
       }
-    } catch {
-      // Raidō not available
+    } catch (e) {
+      console.error('[DayPlan] Raido unavailable:', e);
     }
 
     return { events, tasks, date: d };
@@ -589,7 +608,9 @@ function registerIpcHandlers() {
             });
           }
         }
-      } catch {}
+      } catch (e) {
+        console.error(`[Context] Failed to fetch email threads for ${attendee.email}:`, e);
+      }
 
       try {
         const res = await fetch(
@@ -600,7 +621,9 @@ function registerIpcHandlers() {
           const data = await res.json();
           if (data.contact) context.hubspotContacts.push({ attendee_email: attendee.email, ...data });
         }
-      } catch {}
+      } catch (e) {
+        console.error(`[Context] Failed to fetch HubSpot contact for ${attendee.email}:`, e);
+      }
     }
 
     return context;
@@ -667,12 +690,13 @@ function registerIpcHandlers() {
         noPaginate: true,
       });
       return { accessible: true, fullAccess: true };
-    } catch {
-      // Try FreeBusy as fallback
+    } catch (e) {
+      console.error(`[Overlay] Full calendar access failed for ${email}:`, e);
       try {
         await google.getFreeBusy([email], new Date().toISOString(), new Date(Date.now() + 86400000).toISOString());
         return { accessible: true, fullAccess: false };
-      } catch {
+      } catch (fbErr) {
+        console.error(`[Overlay] FreeBusy fallback also failed for ${email}:`, fbErr);
         return { accessible: false };
       }
     }
@@ -732,7 +756,9 @@ function registerIpcHandlers() {
       const { getFutharkMcpConfig, isMcpInstalled } = require(installerPath);
       mcpConfig = getFutharkMcpConfig();
       installed = isMcpInstalled();
-    } catch {}
+    } catch (e) {
+      console.error('[MCP] Failed to load MCP status:', e);
+    }
     return {
       enabled: appConfig.mcpEnabled,
       installed,
@@ -802,11 +828,31 @@ function buildAppMenu() {
 }
 
 app.whenReady().then(async () => {
+  // ── Content Security Policy ──────────────────────────────
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self';" +
+          " script-src 'self';" +
+          " style-src 'self' 'unsafe-inline';" +
+          " img-src 'self' data: https:;" +
+          " font-src 'self' data:;" +
+          " connect-src 'self' http://localhost:* https://*.googleapis.com https://*.google.com;" +
+          " frame-src 'self' data:;"
+        ],
+      },
+    });
+  });
+
   await initServices();
   registerIpcHandlers();
   buildAppMenu();
   createWindow();
   initAutoUpdater(mainWindow!, buildAppMenu);
+  const { autoUpdater } = require('electron-updater');
+  autoUpdater.logger = log;
   startBadgeMonitor();
   initDockIcon();
   installFutharkMcp();

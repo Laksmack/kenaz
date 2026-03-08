@@ -133,7 +133,7 @@ export function useSync() {
   });
 
   useEffect(() => {
-    window.dagaz.getSyncStatus().then((s) => setSyncState(s as SyncState)).catch(() => {});
+    window.dagaz.getSyncStatus().then((s) => setSyncState(s as SyncState)).catch((e) => console.error('[Sync] Initial status check failed:', e));
 
     const unsub = window.dagaz.onSyncChanged((state: any) => {
       setSyncState(state as SyncState);
