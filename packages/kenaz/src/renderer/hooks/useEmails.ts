@@ -27,7 +27,7 @@ export type InboxSort = 'newest' | 'oldest';
 // so reversing them would produce a confusing mixed order.
 const ALWAYS_NEWEST_FIRST: Set<ViewType> = new Set(['sent', 'all', 'search']);
 
-export function useEmails(currentView: ViewType, searchQuery: string, enabled: boolean = true, views: View[] = [], sort: InboxSort = 'newest') {
+export function useEmails(currentView: ViewType, searchQuery: string, enabled: boolean = true, views: View[] = [], sort: InboxSort = 'newest', userEmail: string = '') {
   const [threads, setThreads] = useState<EmailThread[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -44,8 +44,19 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
   const effectiveSort = ALWAYS_NEWEST_FIRST.has(currentView) ? 'newest' : sort;
 
   const applySort = useCallback((list: EmailThread[]) => {
+    // For Sent view, re-sort by the date of the user's last sent message
+    if (currentView === 'sent' && userEmail) {
+      const lowerEmail = userEmail.toLowerCase();
+      return [...list].sort((a, b) => {
+        const aSent = [...a.messages].reverse().find((m) => m.from.email.toLowerCase() === lowerEmail);
+        const bSent = [...b.messages].reverse().find((m) => m.from.email.toLowerCase() === lowerEmail);
+        const aDate = aSent ? new Date(aSent.date).getTime() : new Date(a.lastDate).getTime();
+        const bDate = bSent ? new Date(bSent.date).getTime() : new Date(b.lastDate).getTime();
+        return bDate - aDate; // newest first
+      });
+    }
     return effectiveSort === 'oldest' ? [...list].reverse() : list;
-  }, [effectiveSort]);
+  }, [effectiveSort, currentView, userEmail]);
 
   const fetchThreads = useCallback(async () => {
     if (!enabled) return;

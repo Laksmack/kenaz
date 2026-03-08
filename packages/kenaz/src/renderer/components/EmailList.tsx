@@ -631,6 +631,11 @@ function EmailListItem({
   const role = getUserRole(thread, userEmail);
   const nudge = detectNudge(thread, userEmail, currentView);
 
+  // In Sent view, find the last message the user sent (for snippet, date, and recipients)
+  const lastSentMsg = currentView === 'sent' && userEmail
+    ? [...thread.messages].reverse().find((m) => m.from.email.toLowerCase() === userEmail.toLowerCase())
+    : null;
+
   return (
     <div
       onClick={onClick}
@@ -642,19 +647,13 @@ function EmailListItem({
         {/* Sender (or recipient in Sent view) */}
         <span className={`text-sm truncate flex-1 ${thread.isUnread ? 'text-text-primary font-semibold' : 'text-text-secondary'}`}>
           {(() => {
-            // In Sent view, show recipients instead of sender (like Gmail)
-            if (currentView === 'sent') {
-              // Find the first message we sent to get the recipients
-              const sentMsg = userEmail
-                ? thread.messages.find((m) => m.from.email.toLowerCase() === userEmail.toLowerCase())
-                : thread.messages[0];
-              if (sentMsg && sentMsg.to.length > 0) {
-                const toNames = sentMsg.to
-                  .filter((r) => !userEmail || r.email.toLowerCase() !== userEmail.toLowerCase())
-                  .map((r) => r.name || r.email);
-                if (toNames.length > 0) {
-                  return toNames.length <= 2 ? toNames.join(', ') : `${toNames[0]} +${toNames.length - 1}`;
-                }
+            // In Sent view, show recipients of the last message we sent
+            if (lastSentMsg && lastSentMsg.to.length > 0) {
+              const toNames = lastSentMsg.to
+                .filter((r) => !userEmail || r.email.toLowerCase() !== userEmail.toLowerCase())
+                .map((r) => r.name || r.email);
+              if (toNames.length > 0) {
+                return toNames.length <= 2 ? toNames.join(', ') : `${toNames[0]} +${toNames.length - 1}`;
               }
             }
             const name = thread.from.name || thread.from.email;
@@ -678,7 +677,7 @@ function EmailListItem({
 
         {/* Date */}
         <span className="text-xs text-text-muted flex-shrink-0">
-          {formatRelativeDate(thread.lastDate)}
+          {formatRelativeDate(lastSentMsg ? lastSentMsg.date : thread.lastDate)}
         </span>
       </div>
 
@@ -692,7 +691,7 @@ function EmailListItem({
 
       {/* Snippet */}
       <div className="text-xs text-text-muted truncate">
-        {cleanSnippet(thread.snippet)}
+        {cleanSnippet(lastSentMsg ? lastSentMsg.snippet : thread.snippet)}
       </div>
 
       {/* Labels + Nudge */}
