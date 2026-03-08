@@ -330,7 +330,11 @@ export class SyncEngine {
           case 'update': {
             const event = this.cache.getEventByGoogleId(item.event_id);
             if (event?.google_id) {
-              await this.google.updateEvent(item.calendar_id, event.google_id, payload);
+              const result = await this.google.updateEvent(item.calendar_id, event.google_id, payload);
+              // Restore attendees from Google response (includes server-side response_status, etc.)
+              if (result.attendees) {
+                this.cache.upsertAttendees(event.id, result.attendees.map(a => ({ ...a, event_id: event.id })));
+              }
             }
             break;
           }

@@ -157,6 +157,9 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
   const [allDay, setAllDay] = useState(false);
   const [attendees, setAttendees] = useState<string[]>([]);
   const [attendeeInput, setAttendeeInput] = useState('');
+  const [contactSuggestions, setContactSuggestions] = useState<Array<{ email: string; display_name: string | null; count: number }>>([]);
+  const [suggestionIdx, setSuggestionIdx] = useState(-1);
+  const suggestDebounceRef = useRef<ReturnType<typeof setTimeout>>();
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
   const [addConferencing, setAddConferencing] = useState(false);
@@ -283,13 +286,56 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
       setAttendees(prev => [...prev, email]);
     }
     setAttendeeInput('');
+    setContactSuggestions([]);
+    setSuggestionIdx(-1);
   }, [attendees]);
 
   const removeAttendee = useCallback((email: string) => {
     setAttendees(prev => prev.filter(e => e !== email));
   }, []);
 
+  const searchAttendeeContacts = useCallback((q: string) => {
+    if (suggestDebounceRef.current) clearTimeout(suggestDebounceRef.current);
+    if (q.length < 2) { setContactSuggestions([]); setSuggestionIdx(-1); return; }
+    suggestDebounceRef.current = setTimeout(async () => {
+      try {
+        const hits = await window.dagaz.searchContacts(q);
+        const added = new Set(attendees);
+        setContactSuggestions((hits || []).filter((r: any) => !added.has(r.email)));
+        setSuggestionIdx(-1);
+      } catch { setContactSuggestions([]); }
+    }, 150);
+  }, [attendees]);
+
+  const handleAttendeeInputChange = useCallback((val: string) => {
+    setAttendeeInput(val);
+    searchAttendeeContacts(val);
+  }, [searchAttendeeContacts]);
+
   const handleAttendeeKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (contactSuggestions.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSuggestionIdx(prev => Math.min(prev + 1, contactSuggestions.length - 1));
+        return;
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSuggestionIdx(prev => Math.max(prev - 1, -1));
+        return;
+      }
+      if ((e.key === 'Enter' || e.key === 'Tab') && suggestionIdx >= 0) {
+        e.preventDefault();
+        addAttendee(contactSuggestions[suggestionIdx].email);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setContactSuggestions([]);
+        setSuggestionIdx(-1);
+        return;
+      }
+    }
     if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
       e.preventDefault();
       if (attendeeInput.trim()) addAttendee(attendeeInput);
@@ -297,7 +343,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
     if (e.key === 'Backspace' && !attendeeInput && attendees.length > 0) {
       removeAttendee(attendees[attendees.length - 1]);
     }
-  }, [attendeeInput, attendees, addAttendee, removeAttendee]);
+  }, [attendeeInput, attendees, addAttendee, removeAttendee, contactSuggestions, suggestionIdx]);
 
   if (!open) return null;
 
@@ -399,7 +445,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
             <svg className="w-4 h-4 text-text-muted flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
             </svg>
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 relative">
               <div className="flex flex-wrap items-center gap-1">
                 {attendees.map(email => (
                   <span key={email} className="inline-flex items-center gap-1 bg-bg-tertiary border border-border-subtle rounded-full px-2 py-0.5 text-[11px] text-text-secondary">
@@ -408,15 +454,33 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
                   </span>
                 ))}
                 <input
-                  type="email"
+                  type="text"
                   value={attendeeInput}
-                  onChange={e => setAttendeeInput(e.target.value)}
+                  onChange={e => handleAttendeeInputChange(e.target.value)}
                   onKeyDown={handleAttendeeKeyDown}
-                  onBlur={() => { if (attendeeInput.trim()) addAttendee(attendeeInput); }}
+                  onBlur={() => { setTimeout(() => { setContactSuggestions([]); setSuggestionIdx(-1); }, 150); if (attendeeInput.trim()) addAttendee(attendeeInput); }}
                   placeholder={attendees.length ? 'Add another…' : 'Add participants'}
                   className="flex-1 min-w-[120px] bg-transparent border-none outline-none text-xs text-text-primary placeholder-text-muted/50 py-0.5"
+                  autoComplete="off"
                 />
               </div>
+              {contactSuggestions.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1 bg-bg-secondary border border-border-subtle rounded-md shadow-lg z-50 overflow-hidden">
+                  {contactSuggestions.map((c, i) => (
+                    <button
+                      key={c.email}
+                      className={`w-full text-left px-3 py-1.5 text-xs flex flex-col gap-0 transition-colors ${
+                        i === suggestionIdx ? 'bg-accent-primary/20 text-text-primary' : 'text-text-secondary hover:bg-bg-tertiary'
+                      }`}
+                      onMouseDown={e => { e.preventDefault(); addAttendee(c.email); }}
+                      onMouseEnter={() => setSuggestionIdx(i)}
+                    >
+                      {c.display_name && <span className="text-text-primary">{c.display_name}</span>}
+                      <span className="text-text-muted text-[10px]">{c.email}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
