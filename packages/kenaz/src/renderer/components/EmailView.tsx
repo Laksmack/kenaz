@@ -762,6 +762,26 @@ function RsvpBar({ message, onArchive }: { message: Email; onArchive?: () => voi
   );
 }
 
+function CopyableEmail({ name, email }: { name?: string; email: string }) {
+  const display = name || email;
+  const handleCopy = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard.writeText(email);
+    const el = e.currentTarget as HTMLElement;
+    el.style.opacity = '0.5';
+    setTimeout(() => { el.style.opacity = '1'; }, 200);
+  };
+  return (
+    <span
+      className="cursor-pointer hover:underline hover:text-text-primary transition-colors"
+      title={`${email} — click to copy`}
+      onClick={handleCopy}
+      onContextMenu={handleCopy}
+    >{display}</span>
+  );
+}
+
 function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNewest: boolean; onArchive?: () => void }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   // Newest message shows everything by default; older messages collapse quotes
@@ -986,12 +1006,22 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
           </div>
           <div className="selectable">
             <div className="text-sm font-medium text-text-primary">
-              {message.from.name || message.from.email}
+              <CopyableEmail name={message.from.name} email={message.from.email} />
             </div>
             <div className="text-xs text-text-muted">
-              to {message.to.map((t) => t.name || t.email).join(', ')}
+              to {message.to.map((t, i) => (
+                <span key={t.email + i}>
+                  {i > 0 && ', '}
+                  <CopyableEmail name={t.name} email={t.email} />
+                </span>
+              ))}
               {message.cc.length > 0 && (
-                <span> · cc: {message.cc.map((c) => c.name || c.email).join(', ')}</span>
+                <span> · cc: {message.cc.map((c, i) => (
+                  <span key={c.email + i}>
+                    {i > 0 && ', '}
+                    <CopyableEmail name={c.name} email={c.email} />
+                  </span>
+                ))}</span>
               )}
             </div>
           </div>
