@@ -247,6 +247,21 @@ export class GoogleCalendarService {
     return this.parseGoogleEvent(res.data, calendarId);
   }
 
+  /**
+   * When a named IANA timezone is provided, strip UTC offsets from the ISO datetime
+   * so Google interprets the time as local in that timezone. This is required for
+   * recurring events (Google needs a named tz for DST-aware recurrence) and avoids
+   * ambiguity when both an offset and timeZone are present.
+   */
+  private buildTimedSlot(dateTime: string, timeZone?: string): { dateTime: string; timeZone?: string } {
+    if (timeZone) {
+      // Strip trailing offset (e.g. -05:00, +00:00, Z) so Google uses timeZone field
+      const stripped = dateTime.replace(/([+-]\d{2}:\d{2}|Z)$/, '');
+      return { dateTime: stripped, timeZone };
+    }
+    return { dateTime };
+  }
+
   async createEvent(calendarId: string, input: CreateEventInput): Promise<Partial<CalendarEvent> & { google_id: string; calendar_id: string }> {
     if (!this.calendar) throw new Error('Not authenticated');
 
@@ -256,10 +271,10 @@ export class GoogleCalendarService {
       location: input.location,
       start: input.all_day
         ? { date: input.start.split('T')[0] }
-        : { dateTime: input.start, timeZone: input.time_zone },
+        : this.buildTimedSlot(input.start, input.time_zone),
       end: input.all_day
         ? { date: input.end.split('T')[0] }
-        : { dateTime: input.end, timeZone: input.time_zone },
+        : this.buildTimedSlot(input.end, input.time_zone),
       transparency: input.transparency,
       visibility: input.visibility,
       recurrence: input.recurrence,
@@ -310,8 +325,8 @@ export class GoogleCalendarService {
         if (updates.start) requestBody.start = { date: updates.start.split('T')[0] };
         if (updates.end) requestBody.end = { date: updates.end.split('T')[0] };
       } else {
-        if (updates.start) requestBody.start = { dateTime: updates.start, timeZone: updates.time_zone };
-        if (updates.end) requestBody.end = { dateTime: updates.end, timeZone: updates.time_zone };
+        if (updates.start) requestBody.start = this.buildTimedSlot(updates.start, updates.time_zone);
+        if (updates.end) requestBody.end = this.buildTimedSlot(updates.end, updates.time_zone);
       }
     }
 
