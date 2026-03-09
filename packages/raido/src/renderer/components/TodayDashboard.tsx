@@ -50,6 +50,14 @@ interface TodayDashboardProps {
   onUpdate: (id: string, updates: Partial<Task>) => void;
   suggestionPinned?: boolean;
   onToggleSuggestion?: (pinned: boolean) => void;
+  hubspotEnabled?: boolean;
+  hubspotPortalId?: string;
+  hubspotOwnerId?: string;
+  hubspotPipeline?: string;
+}
+
+function hubspotDealUrl(portalId: string, dealId: string): string {
+  return `https://app.hubspot.com/contacts/${portalId}/record/0-3/${dealId}`;
 }
 
 const STALE_THRESHOLDS: Record<string, number> = {
@@ -104,6 +112,10 @@ export function TodayDashboard({
   onUpdate,
   suggestionPinned = false,
   onToggleSuggestion,
+  hubspotEnabled = false,
+  hubspotPortalId = '',
+  hubspotOwnerId = '',
+  hubspotPipeline = '',
 }: TodayDashboardProps) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -136,10 +148,18 @@ export function TodayDashboard({
   }, []);
 
   const fetchDeals = useCallback(async () => {
+    if (!hubspotEnabled) {
+      setDealsLoading(false);
+      return;
+    }
     setDealsLoading(true);
     setDealsError(false);
     try {
-      const data = await window.raido.crossAppFetch('http://localhost:3141/api/hubspot/deals');
+      const params = new URLSearchParams();
+      if (hubspotOwnerId) params.set('owner', hubspotOwnerId);
+      if (hubspotPipeline) params.set('pipeline', hubspotPipeline);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const data = await window.raido.crossAppFetch(`http://localhost:3141/api/hubspot/deals${qs}`);
       const scored: ScoredDeal[] = (data.deals || []).map((d: HubSpotDeal) => {
         const { days, status } = getDealRecency(d);
         return { ...d, daysSinceActivity: days, recency: status };
@@ -152,7 +172,7 @@ export function TodayDashboard({
     } finally {
       setDealsLoading(false);
     }
-  }, []);
+  }, [hubspotEnabled, hubspotOwnerId, hubspotPipeline]);
 
   const fetchSuggestion = useCallback(async () => {
     setSuggestionLoading(true);
@@ -365,7 +385,7 @@ export function TodayDashboard({
       )}
 
       {/* ── Zone C: HubSpot Pulse ───────────────────────────── */}
-      <div className="flex-shrink-0">
+      {hubspotEnabled && <div className="flex-shrink-0">
         <div className="px-4 pt-3 pb-1 flex items-center justify-between">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">Deal Pulse</span>
           <button
@@ -390,7 +410,7 @@ export function TodayDashboard({
             deals.map((deal) => (
               <a
                 key={deal.id}
-                href={`https://app.hubspot.com/contacts/deals/${deal.id}`}
+                href={hubspotPortalId ? hubspotDealUrl(hubspotPortalId, deal.id) : '#'}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-3 px-3 py-2 rounded-md hover:bg-bg-hover transition-colors cursor-pointer text-sm"
@@ -416,7 +436,7 @@ export function TodayDashboard({
             ))
           )}
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

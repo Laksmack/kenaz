@@ -350,7 +350,8 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
     try {
       const stage = req.query.stage as string | undefined;
       const owner = req.query.owner as string | undefined;
-      const deals = await hs().listActiveDeals(stage, owner);
+      const pipeline = req.query.pipeline as string | undefined;
+      const deals = await hs().listActiveDeals(stage, owner, pipeline);
       res.json({ deals });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -615,7 +616,7 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
           get: { summary: 'Look up HubSpot contact by email', operationId: 'getHubspotContact', tags: ['HubSpot'], parameters: [{ name: 'email', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Contact, deals, activities' } } },
         },
         '/api/hubspot/deals': {
-          get: { summary: 'List active HubSpot deals', operationId: 'getHubspotDeals', tags: ['HubSpot'], parameters: [{ name: 'stage', in: 'query', schema: { type: 'string' } }, { name: 'owner', in: 'query', schema: { type: 'string' } }], responses: { '200': { description: 'Deal list' } } },
+          get: { summary: 'List active HubSpot deals', operationId: 'getHubspotDeals', tags: ['HubSpot'], parameters: [{ name: 'stage', in: 'query', schema: { type: 'string' } }, { name: 'owner', in: 'query', schema: { type: 'string' } }, { name: 'pipeline', in: 'query', schema: { type: 'string' } }], responses: { '200': { description: 'Deal list' } } },
         },
         '/api/hubspot/recent/{email}': {
           get: { summary: 'Recent HubSpot activities for a contact', operationId: 'getHubspotRecent', tags: ['HubSpot'], parameters: [{ name: 'email', in: 'path', required: true, schema: { type: 'string' } }, { name: 'limit', in: 'query', schema: { type: 'integer', default: 10 } }], responses: { '200': { description: 'Recent activities' } } },

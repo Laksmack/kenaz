@@ -9,18 +9,27 @@ interface SidebarProps {
   groups: TaskGroup[];
   selectedGroup: string | null;
   onSelectGroup: (name: string) => void;
+  hubspotEnabled?: boolean;
 }
 
-const NAV_ITEMS = [
-  { id: 'today', name: 'Today', icon: '☀️', statKey: 'today' as const },
-  { id: 'inbox', name: 'Inbox', icon: '📥', statKey: 'inbox' as const },
+interface NavItem {
+  id: string;
+  name: string;
+  icon: string;
+  statKey?: keyof TaskStats;
+  requiresHubspot?: boolean;
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { id: 'today', name: 'Today', icon: '☀️', statKey: 'today' },
+  { id: 'inbox', name: 'Inbox', icon: '📥', statKey: 'inbox' },
   { id: 'upcoming', name: 'Upcoming', icon: '📅' },
   { id: 'logbook', name: 'Logbook', icon: '📖' },
-  { id: 'pipeline', name: 'Pipeline', icon: '📊' },
-  { id: 'deferred', name: 'Deferred', icon: '🔕', statKey: 'deferred' as const },
+  { id: 'pipeline', name: 'Pipeline', icon: '📊', requiresHubspot: true },
+  { id: 'deferred', name: 'Deferred', icon: '🔕', statKey: 'deferred' },
 ];
 
-export function Sidebar({ currentView, onViewChange, stats, groups, selectedGroup, onSelectGroup }: SidebarProps) {
+export function Sidebar({ currentView, onViewChange, stats, groups, selectedGroup, onSelectGroup, hubspotEnabled = false }: SidebarProps) {
   const activeGroups = groups.filter(g => g.count > 0);
 
   return (
@@ -30,7 +39,7 @@ export function Sidebar({ currentView, onViewChange, stats, groups, selectedGrou
 
       {/* Nav items */}
       <nav className="px-3 space-y-0.5">
-        {NAV_ITEMS.map((item) => {
+        {NAV_ITEMS.filter(item => !item.requiresHubspot || hubspotEnabled).map((item) => {
           const count = item.statKey ? stats[item.statKey] : undefined;
           const isActive = currentView === item.id;
           return (

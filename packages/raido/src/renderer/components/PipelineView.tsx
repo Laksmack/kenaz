@@ -70,7 +70,17 @@ function recencyTextColor(status: RecencyStatus): string {
 
 type SortKey = 'activity' | 'value' | 'stage' | 'company';
 
-export function PipelineView() {
+function hubspotDealUrl(portalId: string, dealId: string): string {
+  return `https://app.hubspot.com/contacts/${portalId}/record/0-3/${dealId}`;
+}
+
+interface PipelineViewProps {
+  hubspotPortalId?: string;
+  hubspotOwnerId?: string;
+  hubspotPipeline?: string;
+}
+
+export function PipelineView({ hubspotPortalId = '', hubspotOwnerId = '', hubspotPipeline = '' }: PipelineViewProps) {
   const [deals, setDeals] = useState<NormalizedDeal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -83,7 +93,11 @@ export function PipelineView() {
     setLoading(true);
     setError(false);
     try {
-      const qs = stageFilter ? `?stage=${encodeURIComponent(stageFilter)}` : '';
+      const params = new URLSearchParams();
+      if (stageFilter) params.set('stage', stageFilter);
+      if (hubspotOwnerId) params.set('owner', hubspotOwnerId);
+      if (hubspotPipeline) params.set('pipeline', hubspotPipeline);
+      const qs = params.toString() ? `?${params.toString()}` : '';
       const data = await window.raido.crossAppFetch(`http://localhost:3141/api/hubspot/deals${qs}`);
       const now = new Date();
       const cutoff = new Date(now.getTime() - daysBack * 86400000);
@@ -105,7 +119,7 @@ export function PipelineView() {
     } finally {
       setLoading(false);
     }
-  }, [daysBack, stageFilter]);
+  }, [daysBack, stageFilter, hubspotOwnerId, hubspotPipeline]);
 
   useEffect(() => {
     fetchDeals();
@@ -232,7 +246,7 @@ export function PipelineView() {
             return (
               <a
                 key={deal.id}
-                href={`https://app.hubspot.com/contacts/deals/${deal.id}`}
+                href={hubspotPortalId ? hubspotDealUrl(hubspotPortalId, deal.id) : '#'}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-3 px-5 py-2.5 border-b border-border-subtle hover:bg-bg-hover transition-colors cursor-pointer"

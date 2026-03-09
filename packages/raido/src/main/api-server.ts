@@ -1,7 +1,8 @@
 import express from 'express';
 import type { TaskStore } from './task-store';
+import type { ConfigStore } from './config';
 
-export function startApiServer(store: TaskStore, port: number) {
+export function startApiServer(store: TaskStore, port: number, configStore?: ConfigStore) {
   const app = express();
   app.use(express.json({ limit: '50mb' }));
 
@@ -320,7 +321,12 @@ export function startApiServer(store: TaskStore, port: number) {
       } catch { /* Dagaz not available */ }
 
       try {
-        const hs = await fetch('http://localhost:3141/api/hubspot/deals', { signal: AbortSignal.timeout(3000) });
+        const cfg = configStore?.get();
+        const hsParams = new URLSearchParams();
+        if (cfg?.hubspot_owner_id) hsParams.set('owner', cfg.hubspot_owner_id);
+        if (cfg?.hubspot_pipeline) hsParams.set('pipeline', cfg.hubspot_pipeline);
+        const hsQs = hsParams.toString() ? `?${hsParams.toString()}` : '';
+        const hs = await fetch(`http://localhost:3141/api/hubspot/deals${hsQs}`, { signal: AbortSignal.timeout(3000) });
         if (hs.ok) { const d = await hs.json(); deals = (d.deals || []).slice(0, 5); }
       } catch { /* Kenaz not available */ }
 

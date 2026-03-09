@@ -88,7 +88,7 @@ async function initServices() {
 
   const appConfig = config.get();
   if (appConfig.apiEnabled) {
-    startApiServer(store, appConfig.apiPort);
+    startApiServer(store, appConfig.apiPort, config);
   }
 }
 

@@ -272,7 +272,7 @@ export class HubSpotService {
     }
   }
 
-  async listActiveDeals(stage?: string, owner?: string): Promise<HubSpotDeal[]> {
+  async listActiveDeals(stage?: string, owner?: string, pipeline?: string): Promise<HubSpotDeal[]> {
     try {
       await this.loadStageLabels();
 
@@ -288,6 +288,9 @@ export class HubSpotService {
       }
       if (owner) {
         filters.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: owner });
+      }
+      if (pipeline) {
+        filters.push({ propertyName: 'pipeline', operator: 'EQ', value: pipeline });
       }
 
       const body: any = {

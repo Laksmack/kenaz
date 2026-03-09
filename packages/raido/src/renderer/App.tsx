@@ -256,6 +256,7 @@ export default function App() {
             groups={groups}
             selectedGroup={selectedGroup}
             onSelectGroup={handleSelectGroup}
+            hubspotEnabled={appConfig?.hubspot_enabled || false}
           />
         </div>
       </div>
@@ -386,6 +387,10 @@ export default function App() {
                     window.raido.setConfig({ today_suggestion_pinned: pinned } as any);
                     setAppConfig(prev => prev ? { ...prev, today_suggestion_pinned: pinned } : prev);
                   }}
+                  hubspotEnabled={appConfig?.hubspot_enabled || false}
+                  hubspotPortalId={appConfig?.hubspot_portal_id || ''}
+                  hubspotOwnerId={appConfig?.hubspot_owner_id || ''}
+                  hubspotPipeline={appConfig?.hubspot_pipeline || ''}
                 />
                 <div
                   onMouseDown={handleResizeStart}
@@ -401,7 +406,11 @@ export default function App() {
               />
             </>
           ) : currentView === 'pipeline' ? (
-            <PipelineView />
+            <PipelineView
+              hubspotPortalId={appConfig?.hubspot_portal_id || ''}
+              hubspotOwnerId={appConfig?.hubspot_owner_id || ''}
+              hubspotPipeline={appConfig?.hubspot_pipeline || ''}
+            />
           ) : (
             <>
               <div className="relative flex-shrink-0" style={{ width: listWidth }}>

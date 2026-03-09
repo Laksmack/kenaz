@@ -5,7 +5,7 @@ interface Props {
   onClose: () => void;
 }
 
-type SettingsTab = 'general' | 'api' | 'mcp';
+type SettingsTab = 'general' | 'hubspot' | 'api' | 'mcp';
 
 export function SettingsModal({ onClose }: Props) {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -50,6 +50,7 @@ export function SettingsModal({ onClose }: Props) {
 
   const tabs: { id: SettingsTab; label: string; icon: string }[] = [
     { id: 'general', label: 'General', icon: '⚙️' },
+    { id: 'hubspot', label: 'HubSpot', icon: '🟠' },
     { id: 'api', label: 'API', icon: '🔌' },
     { id: 'mcp', label: 'MCP', icon: 'ᚱ' },
   ];
@@ -84,6 +85,9 @@ export function SettingsModal({ onClose }: Props) {
         <div key={activeTab} className="flex-1 p-6 overflow-y-auto animate-fadeIn">
           {activeTab === 'general' && (
             <GeneralSettings config={config} onSave={handleSave} saving={saving} saved={saved} />
+          )}
+          {activeTab === 'hubspot' && (
+            <HubSpotSettings config={config} onSave={handleSave} saving={saving} saved={saved} />
           )}
           {activeTab === 'api' && (
             <APISettings config={config} onSave={handleSave} saving={saving} saved={saved} />
@@ -135,6 +139,74 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
         </SettingsField>
 
         <SaveButton onClick={() => onSave({ theme })} saving={saving} saved={saved} />
+      </div>
+    </div>
+  );
+}
+
+function HubSpotSettings({ config, onSave, saving, saved }: TabProps) {
+  const [enabled, setEnabled] = useState(config.hubspot_enabled ?? false);
+  const [portalId, setPortalId] = useState(config.hubspot_portal_id ?? '');
+  const [ownerId, setOwnerId] = useState(config.hubspot_owner_id ?? '');
+  const [pipeline, setPipeline] = useState(config.hubspot_pipeline ?? 'default');
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-text-primary mb-1">HubSpot Integration</h3>
+      <p className="text-xs text-text-muted mb-4">
+        Connect to HubSpot through Kenaz to show deal pulse in the Today dashboard and Pipeline view.
+        The actual API token is configured in Kenaz — these settings control how Raiðo queries and links to your portal.
+      </p>
+      <div className="space-y-4">
+        <SettingsField label="Enable HubSpot" description="Show HubSpot deals in the Today dashboard (Zone C) and Pipeline view">
+          <ToggleSwitch checked={enabled} onChange={(v) => { setEnabled(v); onSave({ hubspot_enabled: v }); }} />
+        </SettingsField>
+
+        {enabled && (
+          <>
+            <SettingsField label="Portal ID" description="Your HubSpot account ID (the number in your HubSpot URLs, e.g. 7917625). Used to build clickable links to deals.">
+              <input
+                value={portalId}
+                onChange={(e) => setPortalId(e.target.value.trim())}
+                placeholder="e.g. 7917625"
+                className="w-48 bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary font-mono"
+              />
+            </SettingsField>
+
+            <SettingsField label="Owner ID" description="Your HubSpot user/owner ID. Filters deals to only show yours. Find it in HubSpot → Settings → Users & Teams → click your name → the ID in the URL.">
+              <input
+                value={ownerId}
+                onChange={(e) => setOwnerId(e.target.value.trim())}
+                placeholder="e.g. 12345678"
+                className="w-48 bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary font-mono"
+              />
+            </SettingsField>
+
+            <SettingsField label="Pipeline" description="The pipeline name to filter deals by. Use 'default' for the default sales pipeline.">
+              <input
+                value={pipeline}
+                onChange={(e) => setPipeline(e.target.value.trim())}
+                placeholder="default"
+                className="w-48 bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary"
+              />
+            </SettingsField>
+
+            <div className="p-3 rounded-lg bg-bg-primary border border-border-subtle">
+              <div className="text-[10px] text-text-muted space-y-1">
+                <div className="text-[9px] text-text-secondary font-semibold uppercase tracking-wider mb-1">How it works</div>
+                <div>Raiðo proxies HubSpot requests through Kenaz (port 3141). Make sure Kenaz is running and has a valid HubSpot API token configured.</div>
+                <div className="mt-2"><span className="font-semibold text-text-secondary">Portal ID</span> — in any HubSpot URL: <span className="font-mono">app.hubspot.com/contacts/<span className="text-accent-primary">7917625</span>/...</span></div>
+                <div><span className="font-semibold text-text-secondary">Owner ID</span> — filters the deal list to just your deals. Without it, you'll see all deals in the portal.</div>
+              </div>
+            </div>
+
+            <SaveButton
+              onClick={() => onSave({ hubspot_portal_id: portalId, hubspot_owner_id: ownerId, hubspot_pipeline: pipeline })}
+              saving={saving}
+              saved={saved}
+            />
+          </>
+        )}
       </div>
     </div>
   );

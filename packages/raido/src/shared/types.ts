@@ -131,7 +131,10 @@ export interface AppConfig {
   mcpEnabled: boolean;
   theme: 'dark' | 'light' | 'system';
   today_suggestion_pinned: boolean;
-  hubspot_owner_id?: string;
+  hubspot_enabled: boolean;
+  hubspot_portal_id: string;
+  hubspot_owner_id: string;
+  hubspot_pipeline: string;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -140,6 +143,10 @@ export const DEFAULT_CONFIG: AppConfig = {
   mcpEnabled: true,
   theme: 'dark',
   today_suggestion_pinned: false,
+  hubspot_enabled: false,
+  hubspot_portal_id: '',
+  hubspot_owner_id: '',
+  hubspot_pipeline: 'default',
 };
 
 // ── Sidebar Views ───────────────────────────────────────────
