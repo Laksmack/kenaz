@@ -5,35 +5,36 @@ import { formatFullDate } from '../lib/utils';
 import { detectCalendarInvite } from '../lib/detectInvite';
 
 // ── Print-ready HTML builder ─────────────────────────────────
-// Builds a clean, formatted HTML document for printing — no buttons, no app chrome.
-export function buildPrintHtml(thread: EmailThread): string {
-  const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+// Builds clean, formatted HTML for printing/PDF — no buttons, no app chrome.
 
-  const messages = thread.messages.map((msg) => {
-    const sanitized = DOMPurify.sanitize(msg.body, {
-      ADD_TAGS: ['style'],
-      ADD_ATTR: ['target', 'class', 'style'],
-      ALLOW_DATA_ATTR: false,
-      WHOLE_DOCUMENT: false,
-    });
-    const to = msg.to.map((t) => escHtml(t.name || t.email)).join(', ');
-    const cc = msg.cc.length > 0
-      ? `<div style="color:#666;font-size:12px;margin-top:2px;">CC: ${msg.cc.map((c) => escHtml(c.name || c.email)).join(', ')}</div>`
-      : '';
-    return `
-      <div style="border:1px solid #e0e0e0;border-radius:8px;margin-bottom:16px;overflow:hidden;">
-        <div style="padding:12px 16px;border-bottom:1px solid #e0e0e0;background:#f9f9f9;">
-          <div style="display:flex;justify-content:space-between;align-items:center;">
-            <strong style="font-size:14px;">${escHtml(msg.from.name || msg.from.email)}</strong>
-            <span style="color:#666;font-size:12px;">${escHtml(formatFullDate(msg.date))}</span>
-          </div>
-          <div style="color:#666;font-size:12px;margin-top:2px;">To: ${to}</div>
-          ${cc}
+const escHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+function buildMessageBlock(msg: Email): string {
+  const sanitized = DOMPurify.sanitize(msg.body, {
+    ADD_TAGS: ['style'],
+    ADD_ATTR: ['target', 'class', 'style'],
+    ALLOW_DATA_ATTR: false,
+    WHOLE_DOCUMENT: false,
+  });
+  const to = msg.to.map((t) => escHtml(t.name || t.email)).join(', ');
+  const cc = msg.cc.length > 0
+    ? `<div style="color:#666;font-size:12px;margin-top:2px;">CC: ${msg.cc.map((c) => escHtml(c.name || c.email)).join(', ')}</div>`
+    : '';
+  return `
+    <div style="border:1px solid #e0e0e0;border-radius:8px;margin-bottom:16px;overflow:hidden;">
+      <div style="padding:12px 16px;border-bottom:1px solid #e0e0e0;background:#f9f9f9;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <strong style="font-size:14px;">${escHtml(msg.from.name || msg.from.email)}</strong>
+          <span style="color:#666;font-size:12px;">${escHtml(formatFullDate(msg.date))}</span>
         </div>
-        <div style="padding:16px;font-size:14px;line-height:1.6;">${sanitized}</div>
-      </div>`;
-  }).join('');
+        <div style="color:#666;font-size:12px;margin-top:2px;">To: ${to}</div>
+        ${cc}
+      </div>
+      <div style="padding:16px;font-size:14px;line-height:1.6;">${sanitized}</div>
+    </div>`;
+}
 
+function wrapPrintHtml(subject: string, messagesHtml: string): string {
   return `<!DOCTYPE html>
 <html>
 <head>
@@ -47,10 +48,22 @@ export function buildPrintHtml(thread: EmailThread): string {
   </style>
 </head>
 <body>
-  <h1>${escHtml(thread.subject || '(no subject)')}</h1>
-  ${messages}
+  <h1>${escHtml(subject || '(no subject)')}</h1>
+  ${messagesHtml}
 </body>
 </html>`;
+}
+
+export function buildPrintHtml(thread: EmailThread): string {
+  return wrapPrintHtml(thread.subject, thread.messages.map(buildMessageBlock).join(''));
+}
+
+export function buildPrintHtmlForMessage(thread: EmailThread, message: Email): string {
+  return wrapPrintHtml(thread.subject, buildMessageBlock(message));
+}
+
+export function sanitizeFilename(name: string): string {
+  return name.replace(/[/\\?%*:|"<>]/g, '-').replace(/\s+/g, ' ').trim().substring(0, 100);
 }
 
 function decodeHtmlEntities(text: string): string {
@@ -116,11 +129,15 @@ interface Props {
   onRefreshThread?: () => void;
   userEmail?: string;
   currentView?: string;
+  printMenuOpen?: boolean;
+  onTogglePrintMenu?: () => void;
 }
 
-export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDeleteDraft, onEditDraft, onSendDraft, threadUpdateAvailable, onRefreshThread, userEmail, currentView }: Props) {
+export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDeleteDraft, onEditDraft, onSendDraft, threadUpdateAvailable, onRefreshThread, userEmail, currentView, printMenuOpen, onTogglePrintMenu }: Props) {
   const [showDetails, setShowDetails] = useState(false);
   const [labelMap, setLabelMap] = useState<Record<string, string>>({});
+  const printMenuRef = useRef<HTMLDivElement>(null);
+  const printBtnRef = useRef<HTMLButtonElement>(null);
 
   // Load label name map when details panel is opened
   useEffect(() => {
@@ -136,6 +153,31 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
 
   // Resolve a label ID to its human-readable name
   const labelName = (id: string) => labelMap[id] ? `${labelMap[id]}` : id;
+
+  // Close print menu on click outside or Escape
+  useEffect(() => {
+    if (!printMenuOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (printMenuRef.current && !printMenuRef.current.contains(e.target as Node) &&
+          printBtnRef.current && !printBtnRef.current.contains(e.target as Node)) {
+        onTogglePrintMenu?.();
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onTogglePrintMenu?.();
+    };
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [printMenuOpen, onTogglePrintMenu]);
+
+  // Close print menu when thread changes
+  useEffect(() => {
+    if (printMenuOpen) onTogglePrintMenu?.();
+  }, [thread?.id]);
 
   // Keyboard event bridge: forward key events from iframes to the main window
   // so shortcuts work even when an iframe has focus, without blocking text selection/copy.
@@ -267,16 +309,29 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
                 </svg>
               }
             />
-            <ActionButton
-              label="Print"
-              shortcut="⌘P"
-              onClick={() => window.kenaz.printEmail(buildPrintHtml(thread))}
-              icon={
+            <div className="relative">
+              <button
+                ref={printBtnRef}
+                onClick={() => onTogglePrintMenu?.()}
+                className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs transition-colors hover:bg-bg-hover ${printMenuOpen ? 'text-accent-primary bg-bg-hover' : 'text-text-secondary hover:text-text-primary'}`}
+                title="Print / Save PDF (⌘P)"
+              >
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18.25 7.034V3.375" />
                 </svg>
-              }
-            />
+                <span className="hidden lg:inline">PDF</span>
+                <svg className="w-3 h-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {printMenuOpen && (
+                <PrintMenu
+                  ref={printMenuRef}
+                  thread={thread}
+                  onClose={() => onTogglePrintMenu?.()}
+                />
+              )}
+            </div>
             {/* Draft-specific actions: Send + Edit */}
             {thread.labels.includes('DRAFT') && onSendDraft && (
               <ActionButton
@@ -326,16 +381,6 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
               />
             )}
             <div className="w-px h-4 bg-border-subtle mx-1" />
-            <ActionButton
-              label="Print"
-              shortcut="⌘P"
-              onClick={() => window.kenaz.printEmail(buildPrintHtml(thread))}
-              icon={
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 9V2h12v7M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2M6 14h12v8H6v-8z" />
-                </svg>
-              }
-            />
             <ActionButton
               label="Details"
               shortcut="I"
@@ -1095,6 +1140,83 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
     </div>
   );
 }
+
+// ── Print / Save PDF popover ─────────────────────────────────
+const PrintMenu = React.forwardRef<HTMLDivElement, { thread: EmailThread; onClose: () => void }>(
+  ({ thread, onClose }, ref) => {
+    const newestMessage = thread.messages[thread.messages.length - 1];
+    const filename = sanitizeFilename(thread.subject || 'email') + '.pdf';
+    const hasMultipleMessages = thread.messages.length > 1;
+
+    const handleAction = (mode: 'pdf' | 'print', scope: 'message' | 'thread') => {
+      const html = scope === 'message'
+        ? buildPrintHtmlForMessage(thread, newestMessage)
+        : buildPrintHtml(thread);
+      onClose();
+      if (mode === 'pdf') {
+        window.kenaz.saveEmailPdf(html, filename);
+      } else {
+        window.kenaz.printEmail(html);
+      }
+    };
+
+    return (
+      <div
+        ref={ref}
+        className="absolute right-0 top-full mt-1 z-50 py-1.5 min-w-[200px] bg-bg-secondary border border-border-subtle rounded-lg shadow-2xl"
+      >
+        <div className="px-3 py-1 text-[10px] text-text-muted uppercase tracking-wider font-medium">
+          Save as PDF
+        </div>
+        <button
+          onClick={() => handleAction('pdf', 'message')}
+          className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+          </svg>
+          This message
+          <span className="ml-auto text-[10px] text-text-muted">⌘S</span>
+        </button>
+        {hasMultipleMessages && (
+          <button
+            onClick={() => handleAction('pdf', 'thread')}
+            className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+            </svg>
+            Entire thread ({thread.messages.length} messages)
+          </button>
+        )}
+        <div className="border-t border-border-subtle my-1" />
+        <div className="px-3 py-1 text-[10px] text-text-muted uppercase tracking-wider font-medium">
+          Print
+        </div>
+        <button
+          onClick={() => handleAction('print', 'message')}
+          className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18.25 7.034V3.375" />
+          </svg>
+          This message
+        </button>
+        {hasMultipleMessages && (
+          <button
+            onClick={() => handleAction('print', 'thread')}
+            className="w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.72 13.829c-.24.03-.48.062-.72.096m.72-.096a42.415 42.415 0 0110.56 0m-10.56 0L6.34 18m10.94-4.171c.24.03.48.062.72.096m-.72-.096L17.66 18m0 0l.229 2.523a1.125 1.125 0 01-1.12 1.227H7.231c-.662 0-1.18-.568-1.12-1.227L6.34 18m11.318 0h1.091A2.25 2.25 0 0021 15.75V9.456c0-1.081-.768-2.015-1.837-2.175a48.055 48.055 0 00-1.913-.247M6.34 18H5.25A2.25 2.25 0 013 15.75V9.456c0-1.081.768-2.015 1.837-2.175a48.041 48.041 0 011.913-.247m10.5 0a48.536 48.536 0 00-10.5 0m10.5 0V3.375c0-.621-.504-1.125-1.125-1.125h-8.25c-.621 0-1.125.504-1.125 1.125v3.659M18.25 7.034V3.375" />
+          </svg>
+            Entire thread ({thread.messages.length} messages)
+          </button>
+        )}
+      </div>
+    );
+  }
+);
 
 function ActionButton({
   label,

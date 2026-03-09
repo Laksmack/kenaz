@@ -66,6 +66,7 @@ declare global {
 
       // Print
       printEmail: (html: string) => Promise<void>;
+      saveEmailPdf: (html: string, defaultFilename: string) => Promise<void>;
 
       // MCP
       getMcpStatus: () => Promise<{ enabled: boolean; claudeDesktopConfig: any; serverPath: string }>;

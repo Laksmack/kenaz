@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { EmailList } from './components/EmailList';
-import { EmailView, buildPrintHtml } from './components/EmailView';
+import { EmailView } from './components/EmailView';
 import { Sidebar } from './components/Sidebar';
 import { ComposeBar } from './components/ComposeBar';
 import { ViewNav } from './components/ViewNav';
@@ -27,6 +27,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [printMenuOpen, setPrintMenuOpen] = useState(false);
   const [settingsTab, setSettingsTab] = useState<string | undefined>(undefined);
   const [prefillRule, setPrefillRule] = useState<Partial<Rule> | undefined>(undefined);
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
@@ -993,7 +994,7 @@ export default function App() {
       else setSelectedThread(null);
     },
     onPrint: () => {
-      if (selectedThread) window.kenaz.printEmail(buildPrintHtml(selectedThread));
+      if (selectedThread) setPrintMenuOpen((p) => !p);
     },
     onSnooze: handleSnooze,
     onSnoozeMode: setSnoozeMode,
@@ -1157,6 +1158,8 @@ export default function App() {
               onRefreshThread={refreshSelectedThread}
               userEmail={userEmail}
               currentView={currentView}
+              printMenuOpen={printMenuOpen}
+              onTogglePrintMenu={() => setPrintMenuOpen((p) => !p)}
             />
           )}
         </div>
