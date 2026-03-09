@@ -18,6 +18,10 @@ export interface HubSpotDeal {
   amount: number;
   closeDate: string;
   pipeline: string;
+  companyName?: string;
+  createDate?: string;
+  lastActivityDate?: string;
+  stageProbability?: number;
 }
 
 export interface HubSpotActivity {

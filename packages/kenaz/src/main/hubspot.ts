@@ -292,7 +292,10 @@ export class HubSpotService {
 
       const body: any = {
         limit: 50,
-        properties: ['dealname', 'dealstage', 'amount', 'closedate', 'pipeline', 'hs_lastmodifieddate'],
+        properties: [
+          'dealname', 'dealstage', 'amount', 'closedate', 'pipeline',
+          'hs_lastmodifieddate', 'createdate', 'hs_deal_stage_probability',
+        ],
         sorts: [{ propertyName: 'hs_lastmodifieddate', direction: 'DESCENDING' }],
       };
       if (filters.length > 0) {
@@ -306,6 +309,9 @@ export class HubSpotService {
 
       if (!res.results || res.results.length === 0) return [];
 
+      const dealIds = res.results.map((d: any) => d.id);
+      const companyMap = await this.fetchDealCompanies(dealIds);
+
       return res.results.map((d: any) => ({
         id: d.id,
         name: d.properties.dealname || '',
@@ -313,11 +319,37 @@ export class HubSpotService {
         amount: parseFloat(d.properties.amount || '0'),
         closeDate: d.properties.closedate || '',
         pipeline: d.properties.pipeline || '',
+        companyName: companyMap.get(d.id) || undefined,
+        createDate: d.properties.createdate || undefined,
+        lastActivityDate: d.properties.hs_lastmodifieddate || undefined,
+        stageProbability: d.properties.hs_deal_stage_probability
+          ? parseFloat(d.properties.hs_deal_stage_probability)
+          : undefined,
       }));
     } catch (e) {
       console.error('Failed to list deals:', e);
       return [];
     }
+  }
+
+  private async fetchDealCompanies(dealIds: string[]): Promise<Map<string, string>> {
+    const map = new Map<string, string>();
+    if (dealIds.length === 0) return map;
+    try {
+      for (const dealId of dealIds) {
+        const assoc = await this.fetch(`/crm/v4/objects/deals/${dealId}/associations/companies`);
+        if (assoc?.results?.length > 0) {
+          const companyId = assoc.results[0].toObjectId;
+          const company = await this.fetch(`/crm/v3/objects/companies/${companyId}?properties=name`);
+          if (company?.properties?.name) {
+            map.set(dealId, company.properties.name);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch deal companies:', e);
+    }
+    return map;
   }
 
   async getRecentActivities(email: string, limit: number = 10): Promise<{

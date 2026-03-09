@@ -13,6 +13,7 @@ const IPC = {
   TASKS_LOGBOOK: 'tasks:logbook',
   TASKS_STATS: 'tasks:stats',
   TASKS_TAGGED: 'tasks:tagged',
+  TASKS_DEFERRED: 'tasks:deferred',
   CHECKLIST_LIST: 'checklist:list',
   CHECKLIST_ADD: 'checklist:add',
   CHECKLIST_UPDATE: 'checklist:update',
@@ -49,6 +50,7 @@ const api = {
   getLogbook: (days?: number) => ipcRenderer.invoke(IPC.TASKS_LOGBOOK, days),
   getStats: () => ipcRenderer.invoke(IPC.TASKS_STATS),
   getTaggedTasks: (tagName: string) => ipcRenderer.invoke(IPC.TASKS_TAGGED, tagName),
+  getDeferred: () => ipcRenderer.invoke(IPC.TASKS_DEFERRED),
 
   // Checklist
   getChecklistItems: (taskId: string) => ipcRenderer.invoke(IPC.CHECKLIST_LIST, taskId),

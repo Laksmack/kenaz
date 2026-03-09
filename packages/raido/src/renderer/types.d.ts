@@ -16,6 +16,7 @@ declare global {
       getLogbook: (days?: number) => Promise<Task[]>;
       getStats: () => Promise<TaskStats>;
       getTaggedTasks: (tagName: string) => Promise<Task[]>;
+      getDeferred: () => Promise<Task[]>;
 
       // Checklist
       getChecklistItems: (taskId: string) => Promise<ChecklistItem[]>;

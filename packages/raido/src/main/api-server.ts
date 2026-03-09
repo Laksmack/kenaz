@@ -7,9 +7,10 @@ export function startApiServer(store: TaskStore, port: number) {
 
   // ── Today ─────────────────────────────────────────────────
 
-  app.get('/api/today', (_req, res) => {
+  app.get('/api/today', (req, res) => {
     try {
-      const tasks = store.getToday();
+      const includeDeferred = req.query.include_deferred === 'true';
+      const tasks = store.getToday(includeDeferred);
       res.json({ tasks });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -29,9 +30,21 @@ export function startApiServer(store: TaskStore, port: number) {
 
   // ── Upcoming ──────────────────────────────────────────────
 
-  app.get('/api/upcoming', (_req, res) => {
+  app.get('/api/upcoming', (req, res) => {
     try {
-      const tasks = store.getUpcoming();
+      const includeDeferred = req.query.include_deferred === 'true';
+      const tasks = store.getUpcoming(includeDeferred);
+      res.json({ tasks });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Deferred ───────────────────────────────────────────────
+
+  app.get('/api/deferred', (_req, res) => {
+    try {
+      const tasks = store.getDeferred();
       res.json({ tasks });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -281,6 +294,80 @@ export function startApiServer(store: TaskStore, port: number) {
       }
 
       res.json({ attachments: results });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Suggest Next Action ────────────────────────────────────
+
+  let suggestCache: { result: any; timestamp: number } | null = null;
+  const SUGGEST_CACHE_MS = 30 * 60 * 1000;
+
+  app.get('/api/suggest-next', async (_req, res) => {
+    try {
+      if (suggestCache && Date.now() - suggestCache.timestamp < SUGGEST_CACHE_MS) {
+        return res.json(suggestCache.result);
+      }
+
+      const tasks = store.getToday();
+      let events: any[] = [];
+      let deals: any[] = [];
+
+      try {
+        const dagaz = await fetch('http://localhost:3143/api/today', { signal: AbortSignal.timeout(3000) });
+        if (dagaz.ok) { const d = await dagaz.json(); events = d.events || []; }
+      } catch { /* Dagaz not available */ }
+
+      try {
+        const hs = await fetch('http://localhost:3141/api/hubspot/deals', { signal: AbortSignal.timeout(3000) });
+        if (hs.ok) { const d = await hs.json(); deals = (d.deals || []).slice(0, 5); }
+      } catch { /* Kenaz not available */ }
+
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        return res.json({ action: 'Configure ANTHROPIC_API_KEY to enable suggestions', rationale: '', source: 'task' });
+      }
+
+      const context = [
+        `Today's tasks (${tasks.length}):`,
+        ...tasks.slice(0, 10).map(t => `- [${t.due_date}] ${t.title} (priority ${t.priority})`),
+        '',
+        `Today's calendar events (${events.length}):`,
+        ...events.slice(0, 8).map((e: any) => `- ${e.start_time ? new Date(e.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'All day'}: ${e.summary}`),
+        '',
+        `Top deals needing attention (${deals.length}):`,
+        ...deals.map((d: any) => `- ${d.name} (${d.stage}) — last activity: ${d.lastActivityDate || 'unknown'}`),
+      ].join('\n');
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 200,
+          messages: [{
+            role: 'user',
+            content: `You are a productivity assistant. Given the user's current day context, suggest exactly ONE specific, actionable next step. Reply as JSON: {"action":"<max 20 words>","rationale":"<1 paragraph>","source":"task"|"email"|"deal"|"calendar"}\n\nContext:\n${context}`,
+          }],
+        }),
+      });
+
+      if (!response.ok) {
+        return res.json({ action: 'Review your overdue tasks', rationale: 'Could not reach AI suggestion service.', source: 'task' });
+      }
+
+      const body = await response.json();
+      const text = body.content?.[0]?.text || '';
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      const result = jsonMatch ? JSON.parse(jsonMatch[0]) : { action: text.slice(0, 80), rationale: '', source: 'task' };
+
+      suggestCache = { result, timestamp: Date.now() };
+      res.json(result);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

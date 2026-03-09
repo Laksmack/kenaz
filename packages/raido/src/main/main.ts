@@ -151,6 +151,7 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.TASKS_LOGBOOK, async (_event, days?: number) => store.getLogbook(days));
   ipcMain.handle(IPC.TASKS_STATS, async () => store.getStats());
   ipcMain.handle(IPC.TASKS_TAGGED, async (_event, tagName: string) => store.getTaggedTasks(tagName));
+  ipcMain.handle(IPC.TASKS_DEFERRED, async () => store.getDeferred());
 
   // Groups
   ipcMain.handle(IPC.GROUPS_LIST, async () => store.getGroups());

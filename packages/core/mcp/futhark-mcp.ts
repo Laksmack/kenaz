@@ -1006,10 +1006,13 @@ server.tool(
 
 server.tool(
   'raido_get_today',
-  "Get today's tasks plus any overdue tasks",
-  {},
-  async () => {
-    const data = await api('raido', '/api/today');
+  "Get today's tasks plus any overdue tasks. Deferred tasks are excluded by default.",
+  {
+    include_deferred: z.boolean().optional().describe('Include tasks that are deferred (hidden until a future date). Default false.'),
+  },
+  async ({ include_deferred }) => {
+    const qs = include_deferred ? '?include_deferred=true' : '';
+    const data = await api('raido', `/api/today${qs}`);
     return { content: [{ type: 'text', text: JSON.stringify(data.tasks, null, 2) }] };
   }
 );
@@ -1026,11 +1029,61 @@ server.tool(
 
 server.tool(
   'raido_get_upcoming',
-  'Get tasks with future due dates ordered by date',
+  'Get tasks with future due dates ordered by date. Deferred tasks are excluded by default.',
+  {
+    include_deferred: z.boolean().optional().describe('Include tasks that are deferred (hidden until a future date). Default false.'),
+  },
+  async ({ include_deferred }) => {
+    const qs = include_deferred ? '?include_deferred=true' : '';
+    const data = await api('raido', `/api/upcoming${qs}`);
+    return { content: [{ type: 'text', text: JSON.stringify(data.tasks, null, 2) }] };
+  }
+);
+
+server.tool(
+  'raido_get_deferred',
+  'Get all currently deferred tasks (hidden until a future date), sorted by defer date ascending.',
   {},
   async () => {
-    const data = await api('raido', '/api/upcoming');
+    const data = await api('raido', '/api/deferred');
     return { content: [{ type: 'text', text: JSON.stringify(data.tasks, null, 2) }] };
+  }
+);
+
+server.tool(
+  'raido_get_pipeline',
+  'Get HubSpot deal pipeline data with recency status for sales momentum visibility. Fetches via Kenaz proxy.',
+  {
+    days_back: z.number().optional().describe('How many days of deals to include (default 90)'),
+    stage_filter: z.string().optional().describe('Filter to a specific deal stage'),
+  },
+  async ({ days_back, stage_filter }) => {
+    try {
+      const qs = stage_filter ? `?stage=${encodeURIComponent(stage_filter)}` : '';
+      const data = await api('kenaz', `/api/hubspot/deals${qs}`);
+      const now = new Date();
+      const cutoffDays = days_back || 90;
+      const cutoff = new Date(now.getTime() - cutoffDays * 86400000);
+
+      const deals = (data.deals || [])
+        .filter((d: any) => !d.createDate || new Date(d.createDate) >= cutoff)
+        .map((d: any) => {
+          const lastActivity = d.lastActivityDate ? new Date(d.lastActivityDate) : null;
+          const days = lastActivity ? Math.floor((now.getTime() - lastActivity.getTime()) / 86400000) : 999;
+          const earlyStages = ['prospecting', 'outreach', 'qualification'];
+          const isEarly = earlyStages.some(s => (d.stage || '').toLowerCase().includes(s));
+          let recency_status: string;
+          if (isEarly) recency_status = 'grey';
+          else if (days <= 3) recency_status = 'warm';
+          else if (days <= 7) recency_status = 'amber';
+          else recency_status = 'cold';
+          return { ...d, days_since_activity: days, recency_status };
+        });
+
+      return { content: [{ type: 'text', text: JSON.stringify(deals, null, 2) }] };
+    } catch (e: any) {
+      return { content: [{ type: 'text', text: `Pipeline fetch failed: ${e.message}. Is Kenaz running?` }] };
+    }
   }
 );
 
@@ -1063,6 +1116,7 @@ server.tool(
     title: z.string().describe('Task title. Use [GroupName] prefix for group assignment, e.g. "[Conagra] Review cameras"'),
     notes: z.string().optional().describe('Markdown notes'),
     due_date: z.string().optional().describe('Due date (YYYY-MM-DD). Tasks without a due date go to Inbox.'),
+    defer_until: z.string().optional().describe('Hide until date (YYYY-MM-DD). Task is invisible in Today/Upcoming until this date arrives.'),
     tags: z.array(z.string()).optional().describe('Tags to apply'),
     priority: z.number().min(0).max(3).optional().describe('Priority: 0=none, 1=low, 2=medium, 3=high'),
     recurrence: z.enum(['daily', 'weekdays', 'weekly', 'biweekly', 'monthly']).optional().describe('Repeat pattern. When completed, a new instance is auto-created with the next due date.'),
@@ -1087,6 +1141,7 @@ server.tool(
     title: z.string().optional(),
     notes: z.string().optional(),
     due_date: z.string().nullable().optional().describe('Due date (YYYY-MM-DD) or null to move to Inbox'),
+    defer_until: z.string().nullable().optional().describe('Hide until date (YYYY-MM-DD) or null to clear deferral. Task is invisible in Today/Upcoming until this date.'),
     completed: z.boolean().optional().describe('Mark as completed'),
     canceled: z.boolean().optional().describe('Mark as canceled'),
     priority: z.number().min(0).max(3).optional(),
@@ -1106,6 +1161,22 @@ server.tool(
       body: JSON.stringify(updates),
     });
     return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  }
+);
+
+// ── Suggest Next Action ──
+
+server.tool(
+  'raido_suggest_next',
+  'Get an AI-generated suggested next action based on today\'s tasks, calendar events, and stale HubSpot deals. Requires ANTHROPIC_API_KEY in the Raidō environment.',
+  {},
+  async () => {
+    try {
+      const data = await api('raido', '/api/suggest-next');
+      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+    } catch (e: any) {
+      return { content: [{ type: 'text', text: `Suggestion failed: ${e.message}` }] };
+    }
   }
 );
 

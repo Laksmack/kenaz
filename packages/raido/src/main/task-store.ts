@@ -98,6 +98,7 @@ export class TaskStore {
 
     this.migrateDropProjects();
     this.migrateAddRecurrence();
+    this.migrateAddDeferUntil();
   }
 
   private migrateDropProjects(): void {
@@ -185,6 +186,14 @@ export class TaskStore {
     console.log('[Raidō] Migration: added recurrence column');
   }
 
+  private migrateAddDeferUntil(): void {
+    const columns = this.db.pragma('table_info(tasks)') as { name: string }[];
+    if (columns.some(c => c.name === 'defer_until')) return;
+    this.db.exec(`ALTER TABLE tasks ADD COLUMN defer_until TEXT`);
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_tasks_defer_until ON tasks(defer_until)`);
+    console.log('[Raidō] Migration: added defer_until column');
+  }
+
   private genId(): string {
     return crypto.randomUUID();
   }
@@ -206,6 +215,7 @@ export class TaskStore {
     return {
       ...row,
       recurrence: row.recurrence || null,
+      defer_until: row.defer_until || null,
       tags: this.getTagsForTask(row.id),
       checklist: this.getChecklistItems(row.id),
     };
@@ -227,37 +237,57 @@ export class TaskStore {
 
   // ── Task Queries ──────────────────────────────────────────
 
-  getToday(): Task[] {
+  getToday(includeDeferred = false): Task[] {
     const today = localToday();
+    const deferClause = includeDeferred ? '' : 'AND (defer_until IS NULL OR defer_until <= ?)';
+    const params = includeDeferred ? [today] : [today, today];
     const rows = this.db.prepare(`
       SELECT * FROM tasks
       WHERE status = 'open'
         AND due_date IS NOT NULL
         AND due_date <= ?
+        ${deferClause}
       ORDER BY due_date ASC, priority DESC, sort_order ASC
-    `).all(today) as any[];
+    `).all(...params) as any[];
     return rows.map(r => this.enrichTask(r));
   }
 
   getInbox(): Task[] {
+    const today = localToday();
     const rows = this.db.prepare(`
       SELECT * FROM tasks
       WHERE status = 'open'
         AND due_date IS NULL
         AND title NOT LIKE '[%'
+        AND (defer_until IS NULL OR defer_until <= ?)
       ORDER BY created_at DESC
-    `).all() as any[];
+    `).all(today) as any[];
     return rows.map(r => this.enrichTask(r));
   }
 
-  getUpcoming(): Task[] {
+  getUpcoming(includeDeferred = false): Task[] {
     const today = localToday();
+    const deferClause = includeDeferred ? '' : 'AND (defer_until IS NULL OR defer_until <= ?)';
+    const params = includeDeferred ? [today] : [today, today];
     const rows = this.db.prepare(`
       SELECT * FROM tasks
       WHERE status = 'open'
         AND due_date IS NOT NULL
         AND due_date > ?
+        ${deferClause}
       ORDER BY due_date ASC, priority DESC
+    `).all(...params) as any[];
+    return rows.map(r => this.enrichTask(r));
+  }
+
+  getDeferred(): Task[] {
+    const today = localToday();
+    const rows = this.db.prepare(`
+      SELECT * FROM tasks
+      WHERE status = 'open'
+        AND defer_until IS NOT NULL
+        AND defer_until > ?
+      ORDER BY defer_until ASC, due_date ASC, priority DESC
     `).all(today) as any[];
     return rows.map(r => this.enrichTask(r));
   }
@@ -272,6 +302,7 @@ export class TaskStore {
     title: string;
     notes?: string;
     due_date?: string;
+    defer_until?: string;
     priority?: number;
     recurrence?: string | null;
     tags?: string[];
@@ -283,15 +314,16 @@ export class TaskStore {
     const id = this.genId();
     const now = this.now();
     this.db.prepare(`
-      INSERT INTO tasks (id, title, notes, due_date, priority, recurrence,
+      INSERT INTO tasks (id, title, notes, due_date, defer_until, priority, recurrence,
                          kenaz_thread_id, hubspot_deal_id, vault_path, calendar_event_id,
                          created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       data.title,
       data.notes || '',
       data.due_date || null,
+      data.defer_until || null,
       data.priority || 0,
       data.recurrence || null,
       data.kenaz_thread_id || null,
@@ -313,6 +345,7 @@ export class TaskStore {
     title: string;
     notes: string;
     due_date: string | null;
+    defer_until: string | null;
     priority: number;
     status: string;
     sort_order: number;
@@ -327,7 +360,7 @@ export class TaskStore {
     const values: any[] = [];
 
     const allowedFields = [
-      'title', 'notes', 'due_date',
+      'title', 'notes', 'due_date', 'defer_until',
       'priority', 'status', 'sort_order', 'recurrence',
       'kenaz_thread_id', 'hubspot_deal_id', 'vault_path', 'calendar_event_id',
     ];
@@ -438,27 +471,36 @@ export class TaskStore {
 
   getStats(): TaskStats {
     const today = localToday();
+    const notDeferred = `AND (defer_until IS NULL OR defer_until <= '${today}')`;
 
     const overdue = (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks
       WHERE due_date < ? AND due_date IS NOT NULL AND status = 'open'
+        ${notDeferred}
     `).get(today) as any).c;
 
     const todayCount = (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks
       WHERE status = 'open' AND due_date IS NOT NULL AND due_date <= ?
+        ${notDeferred}
     `).get(today) as any).c;
 
     const inbox = (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks
       WHERE due_date IS NULL AND status = 'open' AND title NOT LIKE '[%'
+        ${notDeferred}
     `).get() as any).c;
 
     const total_open = (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks WHERE status = 'open'
     `).get() as any).c;
 
-    return { overdue, today: todayCount, inbox, total_open };
+    const deferred = (this.db.prepare(`
+      SELECT COUNT(*) as c FROM tasks
+      WHERE status = 'open' AND defer_until IS NOT NULL AND defer_until > ?
+    `).get(today) as any).c;
+
+    return { overdue, today: todayCount, inbox, total_open, deferred };
   }
 
   getOverdueCount(): number {
@@ -502,7 +544,8 @@ export class TaskStore {
     const rows = this.db.prepare(`
       SELECT * FROM tasks
       WHERE title LIKE ? COLLATE NOCASE AND status = 'open'
-    `).all(`${prefix}%`) as any[];
+        AND (defer_until IS NULL OR defer_until <= ?)
+    `).all(`${prefix}%`, today) as any[];
 
     const tasks = rows.map(r => this.enrichTask(r));
 

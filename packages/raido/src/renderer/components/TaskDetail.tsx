@@ -242,6 +242,38 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
             )}
           </div>
 
+          {/* Defer until */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-text-muted">Hide until:</span>
+            <input
+              type="date"
+              value={task.defer_until || ''}
+              onChange={(e) => onUpdate(task.id, { defer_until: e.target.value || null })}
+              className="bg-bg-tertiary border border-border-subtle rounded px-2 py-1 outline-none text-text-secondary"
+            />
+            {task.defer_until && (() => {
+              const deferDate = new Date(task.defer_until + 'T00:00:00');
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              const isFuture = deferDate > today;
+              if (!isFuture) return null;
+              const label = deferDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              return (
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium px-1.5 py-0.5 rounded-full" style={{ background: 'color-mix(in srgb, var(--color-amber, #f59e0b) 15%, transparent)', color: 'var(--color-amber, #f59e0b)' }}>
+                  Hidden until {label}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onUpdate(task.id, { defer_until: null }); }}
+                    className="hover:opacity-70"
+                  >
+                    <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </span>
+              );
+            })()}
+          </div>
+
           {/* Recurrence */}
           <div className="flex items-center gap-1.5">
             <span className="text-text-muted">Repeat:</span>

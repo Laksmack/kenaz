@@ -7,6 +7,7 @@ export interface Task {
   status: 'open' | 'completed' | 'canceled';
   priority: 0 | 1 | 2 | 3;
   due_date: string | null;
+  defer_until: string | null;
   completed_at: string | null;
   sort_order: number;
   recurrence: 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly' | null;
@@ -66,6 +67,7 @@ export interface TaskStats {
   today: number;
   inbox: number;
   total_open: number;
+  deferred: number;
 }
 
 // ── IPC Channels ────────────────────────────────────────────
@@ -84,6 +86,7 @@ export const IPC = {
   TASKS_LOGBOOK: 'tasks:logbook',
   TASKS_STATS: 'tasks:stats',
   TASKS_TAGGED: 'tasks:tagged',
+  TASKS_DEFERRED: 'tasks:deferred',
 
   // Checklist
   CHECKLIST_LIST: 'checklist:list',
@@ -127,6 +130,8 @@ export interface AppConfig {
   apiPort: number;
   mcpEnabled: boolean;
   theme: 'dark' | 'light' | 'system';
+  today_suggestion_pinned: boolean;
+  hubspot_owner_id?: string;
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -134,11 +139,12 @@ export const DEFAULT_CONFIG: AppConfig = {
   apiPort: 3142,
   mcpEnabled: true,
   theme: 'dark',
+  today_suggestion_pinned: false,
 };
 
 // ── Sidebar Views ───────────────────────────────────────────
 
-export type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'group' | 'search';
+export type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'deferred' | 'pipeline' | 'group' | 'search';
 
 export interface SidebarItem {
   id: ViewType | string;

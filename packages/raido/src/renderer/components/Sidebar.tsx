@@ -16,6 +16,8 @@ const NAV_ITEMS = [
   { id: 'inbox', name: 'Inbox', icon: '📥', statKey: 'inbox' as const },
   { id: 'upcoming', name: 'Upcoming', icon: '📅' },
   { id: 'logbook', name: 'Logbook', icon: '📖' },
+  { id: 'pipeline', name: 'Pipeline', icon: '📊' },
+  { id: 'deferred', name: 'Deferred', icon: '🔕', statKey: 'deferred' as const },
 ];
 
 export function Sidebar({ currentView, onViewChange, stats, groups, selectedGroup, onSelectGroup }: SidebarProps) {

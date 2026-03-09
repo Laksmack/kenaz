@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Task, TaskStats, TaskGroup } from '../../shared/types';
 
-type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'group' | 'search';
+type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'deferred' | 'pipeline' | 'group' | 'search';
 
 export function useTasks(view: ViewType | string, query?: string) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState<TaskStats>({ overdue: 0, today: 0, inbox: 0, total_open: 0 });
+  const [stats, setStats] = useState<TaskStats>({ overdue: 0, today: 0, inbox: 0, total_open: 0, deferred: 0 });
   const [groups, setGroups] = useState<TaskGroup[]>([]);
 
   // Fetch tasks and stats together to ensure sidebar counts match the task list.
@@ -29,6 +29,9 @@ export function useTasks(view: ViewType | string, query?: string) {
         case 'logbook':
           result = await window.raido.getLogbook(30);
           break;
+        case 'deferred':
+          result = await window.raido.getDeferred();
+          break;
         case 'group':
           result = query ? await window.raido.getGroup(query) : [];
           break;
@@ -50,6 +53,7 @@ export function useTasks(view: ViewType | string, query?: string) {
       const correctedStats = { ...s };
       if (view === 'today') correctedStats.today = result.length;
       else if (view === 'inbox') correctedStats.inbox = result.length;
+      else if (view === 'deferred') correctedStats.deferred = result.length;
 
       setStats(correctedStats);
       setGroups(g);

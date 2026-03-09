@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { TaskList } from './components/TaskList';
 import { TaskDetail } from './components/TaskDetail';
+import { TodayDashboard } from './components/TodayDashboard';
+import { PipelineView } from './components/PipelineView';
 import { SettingsModal } from './components/SettingsModal';
 import { useTasks } from './hooks/useTasks';
 import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
@@ -174,6 +176,8 @@ export default function App() {
         case '2': setCurrentView('inbox'); break;
         case '3': setCurrentView('upcoming'); break;
         case '4': setCurrentView('logbook'); break;
+        case '5': setCurrentView('pipeline'); break;
+        case '6': setCurrentView('deferred'); break;
         case 'escape':
           if (settingsOpen) { setSettingsOpen(false); break; }
           setSelectedTask(null);
@@ -232,6 +236,8 @@ export default function App() {
       case 'inbox': return 'Inbox';
       case 'upcoming': return 'Upcoming';
       case 'logbook': return 'Logbook';
+      case 'deferred': return 'Deferred';
+      case 'pipeline': return 'Pipeline';
       case 'search': return 'Search';
       case 'group': return selectedGroup || 'Group';
       default: return '';
@@ -366,30 +372,62 @@ export default function App() {
 
         {/* Content area */}
         <div className="flex-1 flex overflow-hidden">
-          <div className="relative flex-shrink-0" style={{ width: listWidth }}>
-            <TaskList
-              tasks={tasks}
-              selectedId={selectedTask?.id || null}
-              onSelect={setSelectedTask}
-              onComplete={handleComplete}
-              onUpdate={handleUpdate}
-              loading={loading}
-              title={viewTitle}
-            />
-            {/* Resize handle */}
-            <div
-              onMouseDown={handleResizeStart}
-              className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-accent-primary/30 active:bg-accent-primary/50 transition-colors z-10"
-            />
-          </div>
-          <div className="w-px bg-border-subtle flex-shrink-0" />
-
-          <TaskDetail
-            task={selectedTask}
-            onUpdate={handleUpdate}
-            onComplete={handleComplete}
-            onDelete={handleDelete}
-          />
+          {currentView === 'today' ? (
+            <>
+              <div className="relative flex-shrink-0" style={{ width: listWidth }}>
+                <TodayDashboard
+                  tasks={tasks}
+                  selectedId={selectedTask?.id || null}
+                  onSelect={setSelectedTask}
+                  onComplete={handleComplete}
+                  onUpdate={handleUpdate}
+                  suggestionPinned={appConfig?.today_suggestion_pinned || false}
+                  onToggleSuggestion={(pinned) => {
+                    window.raido.setConfig({ today_suggestion_pinned: pinned } as any);
+                    setAppConfig(prev => prev ? { ...prev, today_suggestion_pinned: pinned } : prev);
+                  }}
+                />
+                <div
+                  onMouseDown={handleResizeStart}
+                  className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-accent-primary/30 active:bg-accent-primary/50 transition-colors z-10"
+                />
+              </div>
+              <div className="w-px bg-border-subtle flex-shrink-0" />
+              <TaskDetail
+                task={selectedTask}
+                onUpdate={handleUpdate}
+                onComplete={handleComplete}
+                onDelete={handleDelete}
+              />
+            </>
+          ) : currentView === 'pipeline' ? (
+            <PipelineView />
+          ) : (
+            <>
+              <div className="relative flex-shrink-0" style={{ width: listWidth }}>
+                <TaskList
+                  tasks={tasks}
+                  selectedId={selectedTask?.id || null}
+                  onSelect={setSelectedTask}
+                  onComplete={handleComplete}
+                  onUpdate={handleUpdate}
+                  loading={loading}
+                  title={viewTitle}
+                />
+                <div
+                  onMouseDown={handleResizeStart}
+                  className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-accent-primary/30 active:bg-accent-primary/50 transition-colors z-10"
+                />
+              </div>
+              <div className="w-px bg-border-subtle flex-shrink-0" />
+              <TaskDetail
+                task={selectedTask}
+                onUpdate={handleUpdate}
+                onComplete={handleComplete}
+                onDelete={handleDelete}
+              />
+            </>
+          )}
         </div>
       </div>
 
