@@ -146,7 +146,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   hubspot_enabled: false,
   hubspot_portal_id: '',
   hubspot_owner_id: '',
-  hubspot_pipeline: 'default',
+  hubspot_pipeline: '',
 };
 
 // ── Sidebar Views ───────────────────────────────────────────

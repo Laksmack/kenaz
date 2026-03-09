@@ -441,7 +441,10 @@ export default function App() {
       </div>
 
       {settingsOpen && (
-        <SettingsModal onClose={() => setSettingsOpen(false)} />
+        <SettingsModal onClose={() => {
+          setSettingsOpen(false);
+          window.raido.getConfig().then(setAppConfig);
+        }} />
       )}
     </div>
   );

@@ -182,11 +182,11 @@ function HubSpotSettings({ config, onSave, saving, saved }: TabProps) {
               />
             </SettingsField>
 
-            <SettingsField label="Pipeline" description="The pipeline name to filter deals by. Use 'default' for the default sales pipeline.">
+            <SettingsField label="Pipeline" description="Optional. Filter to a specific sales pipeline by its HubSpot ID. Leave blank to show deals from all pipelines.">
               <input
                 value={pipeline}
                 onChange={(e) => setPipeline(e.target.value.trim())}
-                placeholder="default"
+                placeholder="Leave blank for all pipelines"
                 className="w-48 bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary"
               />
             </SettingsField>

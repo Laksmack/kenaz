@@ -276,9 +276,13 @@ export class HubSpotService {
     try {
       await this.loadStageLabels();
 
+      const closedStageIds = new Set(
+        Object.entries(this.stageLabels)
+          .filter(([, label]) => /^closed/i.test(label))
+          .map(([id]) => id)
+      );
+
       const filters: any[] = [];
-      // Exclude closed-won / closed-lost by default
-      // (HubSpot doesn't have a simple "active" filter, so we search all and rely on limit)
       if (stage) {
         // Try to reverse-lookup stage ID from label
         const stageId = Object.entries(this.stageLabels).find(
@@ -312,10 +316,14 @@ export class HubSpotService {
 
       if (!res.results || res.results.length === 0) return [];
 
-      const dealIds = res.results.map((d: any) => d.id);
+      const activeResults = stage
+        ? res.results
+        : res.results.filter((d: any) => !closedStageIds.has(d.properties.dealstage || ''));
+
+      const dealIds = activeResults.map((d: any) => d.id);
       const companyMap = await this.fetchDealCompanies(dealIds);
 
-      return res.results.map((d: any) => ({
+      return activeResults.map((d: any) => ({
         id: d.id,
         name: d.properties.dealname || '',
         stage: this.getStageName(d.properties.dealstage || ''),
