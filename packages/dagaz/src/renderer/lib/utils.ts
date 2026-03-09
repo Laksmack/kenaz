@@ -65,20 +65,45 @@ export function formatDayHeader(date: Date): string {
 }
 
 /**
- * Get the week dates starting from the given date.
+ * Get the start date for a week view.
+ * - For 5-day or 7-day views: snaps to Monday (classic week view)
+ * - For other N-day views: starts from the given date directly (rolling window)
+ * - weekendWeekAhead: on Sat/Sun, start from today so you see the week ahead
  */
-export function getWeekDates(date: Date, days: 5 | 7 = 5): Date[] {
+export function getWeekStart(date: Date, days: number, weekendWeekAhead = false): Date {
   const d = new Date(date);
-  const dayOfWeek = d.getDay();
+  const dayOfWeek = d.getDay(); // 0=Sun, 6=Sat
 
-  // Start on Monday
-  const monday = new Date(d);
-  monday.setDate(d.getDate() - ((dayOfWeek + 6) % 7));
+  // Weekend week-ahead: on Sat/Sun with 5 or 7-day view, start from today
+  if (weekendWeekAhead && (days === 5 || days === 7) && (dayOfWeek === 0 || dayOfWeek === 6)) {
+    const start = new Date(d);
+    start.setHours(0, 0, 0, 0);
+    return start;
+  }
 
+  // Classic 5/7-day: snap to Monday
+  if (days === 5 || days === 7) {
+    const monday = new Date(d);
+    monday.setDate(d.getDate() - ((dayOfWeek + 6) % 7));
+    monday.setHours(0, 0, 0, 0);
+    return monday;
+  }
+
+  // N-day (2,3,4,6,8,9): rolling window starting from currentDate
+  const start = new Date(d);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+/**
+ * Get the dates for an N-day view starting from the given date.
+ */
+export function getWeekDates(date: Date, days: number = 5, weekendWeekAhead = false): Date[] {
+  const start = getWeekStart(date, days, weekendWeekAhead);
   const dates: Date[] = [];
   for (let i = 0; i < days; i++) {
-    const current = new Date(monday);
-    current.setDate(monday.getDate() + i);
+    const current = new Date(start);
+    current.setDate(start.getDate() + i);
     dates.push(current);
   }
   return dates;

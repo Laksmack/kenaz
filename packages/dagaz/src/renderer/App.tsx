@@ -21,7 +21,7 @@ import { useConfirmDialogs } from './hooks/useConfirmDialogs';
 import { useConnectivity } from './hooks/useConnectivity';
 import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
 import { ErrorBoundary } from '@futhark/core/components/ErrorBoundary';
-import { formatDayHeader, dateKey, setUse24HourClock } from './lib/utils';
+import { formatDayHeader, dateKey, setUse24HourClock, getWeekStart } from './lib/utils';
 import type { ViewType, CalendarEvent, AppConfig, CreateEventInput, UpdateEventInput } from '../shared/types';
 import { PeopleOverlay } from './components/PeopleOverlay';
 import { SearchDialog } from './components/SearchDialog';
@@ -46,11 +46,12 @@ export default function App() {
     toggleSettings, toggleHelp, closeTopmost,
   } = useModals();
 
-  const weekDays = appConfig?.weekViewDays || 5;
+  const weekDays = Math.max(2, Math.min(9, appConfig?.weekViewDays || 5));
+  const weekendWeekAhead = appConfig?.weekendWeekAhead ?? false;
   const { isOnline } = useConnectivity();
   const { overlayPeople, overlayEvents, initOverlayPeople, addOverlayPerson, removeOverlayPerson, toggleOverlayPerson } = useOverlay(currentDate, currentView, weekDays);
 
-  const { events: rawEvents, calendars, loading, refresh, fetchCalendars } = useCalendar(currentView, currentDate, weekDays as 5 | 7, isOnline);
+  const { events: rawEvents, calendars, loading, refresh, fetchCalendars } = useCalendar(currentView, currentDate, weekDays, isOnline, weekendWeekAhead);
   const syncState = useSync();
   const {
     invites: pendingInvites,
@@ -120,28 +121,28 @@ export default function App() {
       const d = new Date(prev);
       switch (currentView) {
         case 'day': d.setDate(d.getDate() + 1); break;
-        case 'week': d.setDate(d.getDate() + 7); break;
+        case 'week': d.setDate(d.getDate() + weekDays); break;
         case 'month': d.setMonth(d.getMonth() + 1); break;
         case 'agenda': d.setDate(d.getDate() + 7); break;
       }
       return d;
     });
     setSelectedEvent(null);
-  }, [currentView]);
+  }, [currentView, weekDays]);
 
   const navigatePrev = useCallback(() => {
     setCurrentDate(prev => {
       const d = new Date(prev);
       switch (currentView) {
         case 'day': d.setDate(d.getDate() - 1); break;
-        case 'week': d.setDate(d.getDate() - 7); break;
+        case 'week': d.setDate(d.getDate() - weekDays); break;
         case 'month': d.setMonth(d.getMonth() - 1); break;
         case 'agenda': d.setDate(d.getDate() - 7); break;
       }
       return d;
     });
     setSelectedEvent(null);
-  }, [currentView]);
+  }, [currentView, weekDays]);
 
   const goToToday = useCallback(() => { setCurrentDate(new Date()); setSelectedEvent(null); }, []);
 
@@ -284,6 +285,13 @@ export default function App() {
         setAppConfig(prev => prev ? { ...prev, weekViewDays: newDays } : prev);
       }
     },
+    onSetWeekDays: (days: number) => {
+      if (appConfig) {
+        window.dagaz.setConfig({ weekViewDays: days });
+        setAppConfig(prev => prev ? { ...prev, weekViewDays: days } : prev);
+        if (currentView !== 'week') setCurrentView('week');
+      }
+    },
     onSettings: toggleSettings,
     selectedEvent,
     currentView,
@@ -307,14 +315,12 @@ export default function App() {
       case 'day':
         return currentDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
       case 'week': {
-        const d = new Date(currentDate);
-        const monday = new Date(d);
-        monday.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-        const endDay = new Date(monday);
-        endDay.setDate(monday.getDate() + (weekDays - 1));
-        return monday.getMonth() === endDay.getMonth()
-          ? `${monday.toLocaleDateString('en-US', { month: 'long' })} ${monday.getDate()}–${endDay.getDate()}, ${monday.getFullYear()}`
-          : `${monday.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${endDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
+        const start = getWeekStart(currentDate, weekDays, weekendWeekAhead);
+        const endDay = new Date(start);
+        endDay.setDate(start.getDate() + (weekDays - 1));
+        return start.getMonth() === endDay.getMonth()
+          ? `${start.toLocaleDateString('en-US', { month: 'long' })} ${start.getDate()}–${endDay.getDate()}, ${start.getFullYear()}`
+          : `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${endDay.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`;
       }
       case 'month': return currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
       case 'agenda': return 'Agenda';
@@ -378,7 +384,7 @@ export default function App() {
             )}
             {([
               { key: 'day' as const, label: 'Day', shortcut: 'D' },
-              { key: 'week' as const, label: 'Week', shortcut: 'W' },
+              { key: 'week' as const, label: weekDays === 5 || weekDays === 7 ? 'Week' : `${weekDays} Days`, shortcut: 'W' },
               { key: 'month' as const, label: 'Month', shortcut: 'M' },
               { key: 'agenda' as const, label: 'Agenda', shortcut: 'A' },
             ]).map(v => (
@@ -447,7 +453,7 @@ export default function App() {
               <WeekView currentDate={currentDate} events={events} overlayEvents={overlayEvents} pendingInvites={pendingInvites}
                 selectedEvent={selectedEvent} onSelectEvent={selectEvent} onCreateEvent={(start, end) => openQuickCreate(start, end)}
                 onUpdateEvent={handleUpdateEvent} onRSVP={handleRSVP} onDeleteEvent={handleDeleteEvent}
-                weekDays={weekDays as 5 | 7} defaultEventDurationMinutes={appConfig?.defaultEventDurationMinutes} />
+                weekDays={weekDays} weekendWeekAhead={weekendWeekAhead} defaultEventDurationMinutes={appConfig?.defaultEventDurationMinutes} />
             )}
             {currentView === 'day' && (
               <DayView currentDate={currentDate} events={events} overlayEvents={overlayEvents} pendingInvites={pendingInvites}
@@ -527,10 +533,11 @@ function AgendaView({ events, loading, selectedEvent, onSelectEvent }: {
 function HelpOverlay({ onClose }: { onClose: () => void }) {
   const shortcuts = [
     ['T', 'Jump to today'], ['D', 'Day view'], ['W', '5-day work week'], ['Shift+W', 'Full 7-day week'],
-    ['M', 'Month view'], ['A', 'Agenda view'], ['C', 'Quick create event'], ['E', 'Edit selected event'],
-    ['Delete', 'Delete selected event'], ['Enter', 'Open event detail'], ['Esc', 'Close panel / deselect'],
-    ['N', 'Next period'], ['P', 'Previous period'], ['G', 'Go to date'], ['/', 'Search events'],
-    ['Cmd+D', 'Duplicate event'], ['R', 'RSVP menu'], ['J', 'Join meeting'], ['?', 'This help'],
+    ['2–9', 'N-day view'], ['M', 'Month view'], ['A', 'Agenda view'], ['C', 'Quick create event'],
+    ['E', 'Edit selected event'], ['Delete', 'Delete selected event'], ['Enter', 'Open event detail'],
+    ['Esc', 'Close panel / deselect'], ['N', 'Next period'], ['P', 'Previous period'],
+    ['G', 'Go to date'], ['/', 'Search events'], ['Cmd+D', 'Duplicate event'], ['R', 'RSVP menu'],
+    ['J', 'Join meeting'], ['?', 'This help'],
   ];
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onClose}>

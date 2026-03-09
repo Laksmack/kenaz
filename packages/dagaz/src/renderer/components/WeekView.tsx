@@ -20,14 +20,15 @@ interface Props {
   onUpdateEvent?: (event: CalendarEvent, newStart: Date, newEnd: Date) => void;
   onRSVP?: (eventId: string, response: 'accepted' | 'declined' | 'tentative') => void;
   onDeleteEvent?: (eventId: string) => void;
-  weekDays: 5 | 7;
+  weekDays: number;
+  weekendWeekAhead?: boolean;
   defaultEventDurationMinutes?: number;
 }
 
-export function WeekView({ currentDate, events, overlayEvents = [], pendingInvites = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP, onDeleteEvent, weekDays, defaultEventDurationMinutes = 60 }: Props) {
+export function WeekView({ currentDate, events, overlayEvents = [], pendingInvites = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP, onDeleteEvent, weekDays, weekendWeekAhead = false, defaultEventDurationMinutes = 60 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const today = useMemo(() => new Date(), []);
-  const weekDates = useMemo(() => getWeekDates(currentDate, weekDays), [currentDate, weekDays]);
+  const weekDates = useMemo(() => getWeekDates(currentDate, weekDays, weekendWeekAhead), [currentDate, weekDays, weekendWeekAhead]);
 
   // Drag-to-move / resize
   const handleDragEnd = useCallback((event: CalendarEvent, newStart: Date, newEnd: Date, dayIndex: number) => {

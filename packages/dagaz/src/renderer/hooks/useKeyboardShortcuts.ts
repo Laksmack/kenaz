@@ -18,6 +18,7 @@ interface ShortcutHandlers {
   onJoinMeeting: () => void;
   onShowHelp: () => void;
   onToggleWeekDays: () => void;
+  onSetWeekDays: (days: number) => void;
   onSettings: () => void;
   selectedEvent: CalendarEvent | null;
   currentView: ViewType;
@@ -28,8 +29,8 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
     onViewChange, onNavigateNext, onNavigatePrev, onGoToToday,
     onQuickCreate, onEditEvent, onDeleteEvent, onOpenDetail,
     onClosePanel, onSearch, onGoToDate, onDuplicate, onRSVP,
-    onJoinMeeting, onShowHelp, onToggleWeekDays, onSettings,
-    selectedEvent, currentView,
+    onJoinMeeting, onShowHelp, onToggleWeekDays, onSetWeekDays,
+    onSettings, selectedEvent, currentView,
   } = handlers;
 
   useEffect(() => {
@@ -145,6 +146,15 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
           e.preventDefault();
           onShowHelp();
           break;
+        default: {
+          // Number keys 2-9: switch to N-day view
+          const num = parseInt(e.key);
+          if (num >= 2 && num <= 9) {
+            e.preventDefault();
+            onSetWeekDays(num);
+          }
+          break;
+        }
       }
     };
 
@@ -154,7 +164,7 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
     onViewChange, onNavigateNext, onNavigatePrev, onGoToToday,
     onQuickCreate, onEditEvent, onDeleteEvent, onOpenDetail,
     onClosePanel, onSearch, onGoToDate, onDuplicate, onRSVP,
-    onJoinMeeting, onShowHelp, onToggleWeekDays, onSettings,
-    selectedEvent, currentView,
+    onJoinMeeting, onShowHelp, onToggleWeekDays, onSetWeekDays,
+    onSettings, selectedEvent, currentView,
   ]);
 }

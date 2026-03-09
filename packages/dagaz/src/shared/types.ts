@@ -291,7 +291,8 @@ export interface AppConfig {
   mcpEnabled: boolean;
   theme: 'dark' | 'light' | 'system';
   defaultView: ViewType;
-  weekViewDays: 5 | 7;
+  weekViewDays: number;
+  weekendWeekAhead: boolean;
   workingHoursStart: number;
   workingHoursEnd: number;
   defaultCalendarId: string | null;
@@ -317,6 +318,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   theme: 'dark',
   defaultView: 'week',
   weekViewDays: 5,
+  weekendWeekAhead: false,
   workingHoursStart: 7,
   workingHoursEnd: 19,
   defaultCalendarId: null,
