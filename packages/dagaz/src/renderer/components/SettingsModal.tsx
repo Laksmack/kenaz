@@ -79,15 +79,34 @@ export function SettingsModal({ onClose }: Props) {
           <section>
             <h3 className="text-xs font-medium text-text-primary mb-3">Calendar View</h3>
             <label className="flex items-center justify-between py-1.5">
-              <span className="text-xs text-text-secondary">Default week view</span>
+              <div>
+                <span className="text-xs text-text-secondary block">Default week view</span>
+                <span className="text-[10px] text-text-muted">Press 2–9 to quickly switch number of days</span>
+              </div>
               <select
                 value={config.weekViewDays}
-                onChange={e => updateConfig({ weekViewDays: parseInt(e.target.value) as 5 | 7 })}
+                onChange={e => updateConfig({ weekViewDays: parseInt(e.target.value) })}
                 className="bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none"
               >
+                <option value={2}>2 days</option>
+                <option value={3}>3 days</option>
+                <option value={4}>4 days</option>
                 <option value={5}>5-day (Mon–Fri)</option>
+                <option value={6}>6 days</option>
                 <option value={7}>7-day (Full week)</option>
+                <option value={8}>8 days</option>
+                <option value={9}>9 days</option>
               </select>
+            </label>
+            <label className="flex items-center justify-between py-1.5">
+              <div>
+                <span className="text-xs text-text-secondary block">Weekend: show week ahead</span>
+                <span className="text-[10px] text-text-muted">On Sat/Sun, start from today for planning</span>
+              </div>
+              <ToggleSwitch
+                checked={config.weekendWeekAhead ?? false}
+                onChange={v => updateConfig({ weekendWeekAhead: v })}
+              />
             </label>
             <label className="flex items-center justify-between py-1.5">
               <span className="text-xs text-text-secondary">24-hour clock</span>

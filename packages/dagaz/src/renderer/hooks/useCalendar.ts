@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { getWeekStart } from '../lib/utils';
 import type { CalendarEvent, Calendar, ViewType, SyncState } from '../../shared/types';
 
-export function useCalendar(view: ViewType, currentDate: Date, weekDays: 5 | 7, isOnline = true) {
+export function useCalendar(view: ViewType, currentDate: Date, weekDays: number, isOnline = true, weekendWeekAhead = false) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [calendars, setCalendars] = useState<Calendar[]>([]);
   const [loading, setLoading] = useState(false);
@@ -22,13 +23,10 @@ export function useCalendar(view: ViewType, currentDate: Date, weekDays: 5 | 7, 
         return { start: start.toISOString(), end: end.toISOString() };
       }
       case 'week': {
-        const dayOfWeek = d.getDay();
-        const monday = new Date(d);
-        monday.setDate(d.getDate() - ((dayOfWeek + 6) % 7));
-        monday.setHours(0, 0, 0, 0);
-        const endDate = new Date(monday);
-        endDate.setDate(monday.getDate() + weekDays);
-        return { start: monday.toISOString(), end: endDate.toISOString() };
+        const start = getWeekStart(d, weekDays, weekendWeekAhead);
+        const endDate = new Date(start);
+        endDate.setDate(start.getDate() + weekDays);
+        return { start: start.toISOString(), end: endDate.toISOString() };
       }
       case 'month': {
         const first = new Date(d.getFullYear(), d.getMonth(), 1);
@@ -49,7 +47,7 @@ export function useCalendar(view: ViewType, currentDate: Date, weekDays: 5 | 7, 
       default:
         return { start: d.toISOString(), end: d.toISOString() };
     }
-  }, [view, currentDate, weekDays]);
+  }, [view, currentDate, weekDays, weekendWeekAhead]);
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
