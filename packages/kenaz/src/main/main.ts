@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell, Notification, Menu, MenuItem, dialog, session } from 'electron';
 import path from 'path';
+import fs from 'fs/promises';
 import log from 'electron-log/main';
 
 // ── Persistent logging ───────────────────────────────────────
@@ -810,6 +811,38 @@ function registerIpcHandlers() {
     } catch (e) {
       console.error('[Kenaz] Print failed:', e);
       printWin.close();
+    }
+  });
+
+  // ── Save as PDF ──
+  ipcMain.handle(IPC.SAVE_EMAIL_PDF, async (_event, html: string, defaultFilename: string) => {
+    const pdfWin = new BrowserWindow({
+      show: false,
+      width: 800,
+      height: 1056,
+      webPreferences: { javascript: false },
+    });
+    try {
+      await pdfWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      await new Promise((r) => setTimeout(r, 500));
+      const pdfBuffer = await pdfWin.webContents.printToPDF({
+        pageSize: 'Letter',
+        printBackground: true,
+        margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 },
+      });
+      pdfWin.close();
+
+      const { canceled, filePath } = await dialog.showSaveDialog({
+        defaultPath: path.join(app.getPath('downloads'), defaultFilename),
+        filters: [{ name: 'PDF', extensions: ['pdf'] }],
+      });
+      if (canceled || !filePath) return;
+
+      await fs.writeFile(filePath, pdfBuffer);
+      shell.showItemInFolder(filePath);
+    } catch (e) {
+      console.error('[Kenaz] Save PDF failed:', e);
+      pdfWin.close();
     }
   });
 

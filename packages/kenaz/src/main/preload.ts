@@ -53,6 +53,7 @@ const IPC = {
   SNOOZE_LIST: 'snooze:list',
   MCP_STATUS: 'mcp:status',
   PRINT_EMAIL: 'print:email',
+  SAVE_EMAIL_PDF: 'print:save-pdf',
   ACCOUNTS_LIST: 'accounts:list',
   ACCOUNTS_ADD: 'accounts:add',
   ACCOUNTS_REMOVE: 'accounts:remove',
@@ -173,6 +174,8 @@ const api = {
 
   // Print
   printEmail: (html: string) => ipcRenderer.invoke(IPC.PRINT_EMAIL, html),
+  saveEmailPdf: (html: string, defaultFilename: string) =>
+    ipcRenderer.invoke(IPC.SAVE_EMAIL_PDF, html, defaultFilename),
 
   // MCP
   getMcpStatus: () => ipcRenderer.invoke(IPC.MCP_STATUS),

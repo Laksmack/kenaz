@@ -240,6 +240,7 @@ export const IPC = {
 
   // Print
   PRINT_EMAIL: 'print:email',
+  SAVE_EMAIL_PDF: 'print:save-pdf',
 
   // Accounts
   ACCOUNTS_LIST: 'accounts:list',
