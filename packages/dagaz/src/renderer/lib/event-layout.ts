@@ -1,4 +1,4 @@
-import type { CalendarEvent, OverlayEvent } from '../../shared/types';
+import type { CalendarEvent, OverlayEvent, PendingInvite } from '../../shared/types';
 
 export const HOUR_HEIGHT = 60;
 export const HOURS = Array.from({ length: 24 }, (_, i) => i);
@@ -28,6 +28,26 @@ export function getMinutesFromTime(start_time: string, end_time: string) {
 
 export function timeOverlaps(s1: string, e1: string, s2: string, e2: string): boolean {
   return new Date(s1).getTime() < new Date(e2).getTime() && new Date(s2).getTime() < new Date(e1).getTime();
+}
+
+/**
+ * Check if a pending invite likely represents the same meeting as a calendar event.
+ * Matches by title similarity + overlapping time window.
+ * Used to avoid false conflict warnings when an organizer updates a meeting
+ * (e.g. adding conferencing) — the "Updated Invitation" email should not
+ * conflict with the calendar event it describes.
+ */
+export function inviteMatchesEvent(invite: PendingInvite, event: CalendarEvent): boolean {
+  if (!invite.startTime || !invite.endTime) return false;
+  // Title must match (case-insensitive, trimmed)
+  if (invite.title.trim().toLowerCase() !== event.summary.trim().toLowerCase()) return false;
+  // Times must overlap (the invite IS this event)
+  return timeOverlaps(invite.startTime, invite.endTime, event.start_time, event.end_time);
+}
+
+/** Returns true if the event should be excluded from conflict checks */
+export function isExcludedFromConflicts(event: CalendarEvent): boolean {
+  return event.all_day || event.status === 'cancelled' || event.self_response === 'declined';
 }
 
 /**

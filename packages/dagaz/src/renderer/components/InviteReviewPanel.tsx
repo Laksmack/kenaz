@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import type { CalendarEvent, PendingInvite } from '../../shared/types';
 import { formatTime } from '../lib/utils';
+import { inviteMatchesEvent, isExcludedFromConflicts } from '../lib/event-layout';
 
 type RsvpResponse = 'accepted' | 'declined' | 'tentative';
 
@@ -24,8 +25,7 @@ function hasConflict(event: CalendarEvent, allEvents: CalendarEvent[]): boolean 
   const eStart = new Date(event.start_time).getTime();
   const eEnd = new Date(event.end_time).getTime();
   return allEvents.some(other => {
-    if (other.id === event.id || other.all_day || other.status === 'cancelled') return false;
-    if (other.self_response === 'declined') return false;
+    if (other.id === event.id || isExcludedFromConflicts(other)) return false;
     const oStart = new Date(other.start_time).getTime();
     const oEnd = new Date(other.end_time).getTime();
     return eStart < oEnd && oStart < eEnd;
@@ -37,7 +37,9 @@ function hasInviteConflict(invite: PendingInvite, events: CalendarEvent[]): bool
   const iStart = new Date(invite.startTime).getTime();
   const iEnd = new Date(invite.endTime).getTime();
   return events.some(e => {
-    if (e.all_day || e.status === 'cancelled') return false;
+    if (isExcludedFromConflicts(e)) return false;
+    // Skip events that represent the same meeting as this invite
+    if (inviteMatchesEvent(invite, e)) return false;
     const eStart = new Date(e.start_time).getTime();
     const eEnd = new Date(e.end_time).getTime();
     return iStart < eEnd && eStart < iEnd;

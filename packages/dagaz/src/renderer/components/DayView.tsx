@@ -6,7 +6,8 @@ import { useEventDrag, type DragMode } from '../hooks/useEventDrag';
 import { useNowIndicator } from '../hooks/useNowIndicator';
 import {
   HOUR_HEIGHT, HOURS, getMinutesFromTime, timeOverlaps,
-  computeLayouts, overlayToEvent, type LayoutItem,
+  computeLayouts, overlayToEvent, inviteMatchesEvent, isExcludedFromConflicts,
+  type LayoutItem,
 } from '../lib/event-layout';
 
 interface Props {
@@ -80,6 +81,9 @@ export function DayView({ currentDate, events, overlayEvents = [], pendingInvite
     for (const inv of dayPendingInvites) {
       if (!inv.startTime || !inv.endTime) continue;
       for (const ev of timedEvents) {
+        if (isExcludedFromConflicts(ev)) continue;
+        // Don't flag the event that this invite IS (same meeting, updated)
+        if (inviteMatchesEvent(inv, ev)) continue;
         if (timeOverlaps(inv.startTime, inv.endTime, ev.start_time, ev.end_time)) {
           ids.add(ev.id);
         }
@@ -215,6 +219,8 @@ export function DayView({ currentDate, events, overlayEvents = [], pendingInvite
             {dayPendingInvites.map(inv => {
               if (!inv.startTime || !inv.endTime) return null;
               const hasConflict = timedEvents.some(ev =>
+                !isExcludedFromConflicts(ev) &&
+                !inviteMatchesEvent(inv, ev) &&
                 timeOverlaps(inv.startTime!, inv.endTime!, ev.start_time, ev.end_time)
               );
               return (

@@ -6,7 +6,8 @@ import { useEventDrag, type DragMode } from '../hooks/useEventDrag';
 import { useNowIndicatorWeek } from '../hooks/useNowIndicator';
 import {
   HOUR_HEIGHT, HOURS, getMinutesFromTime, timeOverlaps,
-  computeLayouts, overlayToEvent, type LayoutItem, type EventLayout,
+  computeLayouts, overlayToEvent, inviteMatchesEvent, isExcludedFromConflicts,
+  type LayoutItem, type EventLayout,
 } from '../lib/event-layout';
 
 interface Props {
@@ -110,6 +111,9 @@ export function WeekView({ currentDate, events, overlayEvents = [], pendingInvit
       for (const inv of dayInvites) {
         if (!inv.startTime || !inv.endTime) continue;
         for (const ev of dayData.timed) {
+          if (isExcludedFromConflicts(ev)) continue;
+          // Don't flag the event that this invite IS (same meeting, updated)
+          if (inviteMatchesEvent(inv, ev)) continue;
           if (timeOverlaps(inv.startTime, inv.endTime, ev.start_time, ev.end_time)) {
             ids.add(ev.id);
           }
@@ -296,6 +300,8 @@ export function WeekView({ currentDate, events, overlayEvents = [], pendingInvit
                 {(invitesByDay.get(key) || []).map(inv => {
                   if (!inv.startTime || !inv.endTime) return null;
                   const hasConflict = timedEvents.some(ev =>
+                    !isExcludedFromConflicts(ev) &&
+                    !inviteMatchesEvent(inv, ev) &&
                     timeOverlaps(inv.startTime!, inv.endTime!, ev.start_time, ev.end_time)
                   );
                   return (
