@@ -1,6 +1,7 @@
 import express from 'express';
 import type { TaskStore } from './task-store';
 import type { ConfigStore } from './config';
+import type { Task } from '../shared/types';
 
 export function startApiServer(store: TaskStore, port: number, configStore?: ConfigStore) {
   const app = express();
@@ -303,7 +304,7 @@ export function startApiServer(store: TaskStore, port: number, configStore?: Con
   // ── Suggest Next Action ────────────────────────────────────
 
   let suggestCache: { result: any; timestamp: number } | null = null;
-  const SUGGEST_CACHE_MS = 30 * 60 * 1000;
+  const SUGGEST_CACHE_MS = 10 * 60 * 1000;
 
   app.get('/api/suggest-next', async (_req, res) => {
     try {
@@ -311,74 +312,158 @@ export function startApiServer(store: TaskStore, port: number, configStore?: Con
         return res.json(suggestCache.result);
       }
 
+      const now = new Date();
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
       const tasks = store.getToday();
       let events: any[] = [];
       let deals: any[] = [];
 
       try {
         const dagaz = await fetch('http://localhost:3143/api/today', { signal: AbortSignal.timeout(3000) });
-        if (dagaz.ok) { const d = await dagaz.json(); events = d.events || []; }
+        if (dagaz.ok) { const d = await dagaz.json() as any; events = d.events || []; }
       } catch { /* Dagaz not available */ }
 
       try {
         const cfg = configStore?.get();
-        const hsParams = new URLSearchParams();
-        if (cfg?.hubspot_owner_id) hsParams.set('owner', cfg.hubspot_owner_id);
-        if (cfg?.hubspot_pipelines?.length) hsParams.set('pipeline', cfg.hubspot_pipelines.join(','));
-        if (cfg?.hubspot_excluded_stages?.length) hsParams.set('exclude_stages', cfg.hubspot_excluded_stages.join(','));
-        const hsQs = hsParams.toString() ? `?${hsParams.toString()}` : '';
-        const hs = await fetch(`http://localhost:3141/api/hubspot/deals${hsQs}`, { signal: AbortSignal.timeout(3000) });
-        if (hs.ok) { const d = await hs.json(); deals = (d.deals || []).slice(0, 5); }
+        if (cfg?.hubspot_enabled) {
+          const hsParams = new URLSearchParams();
+          if (cfg.hubspot_owner_id) hsParams.set('owner', cfg.hubspot_owner_id);
+          if (cfg.hubspot_pipelines?.length) hsParams.set('pipeline', cfg.hubspot_pipelines.join(','));
+          if (cfg.hubspot_excluded_stages?.length) hsParams.set('exclude_stages', cfg.hubspot_excluded_stages.join(','));
+          const hsQs = hsParams.toString() ? `?${hsParams.toString()}` : '';
+          const hs = await fetch(`http://localhost:3141/api/hubspot/deals${hsQs}`, { signal: AbortSignal.timeout(3000) });
+          if (hs.ok) { const d = await hs.json() as any; deals = (d.deals || []); }
+        }
       } catch { /* Kenaz not available */ }
 
-      const apiKey = process.env.ANTHROPIC_API_KEY;
-      if (!apiKey) {
-        return res.json({ action: 'Configure ANTHROPIC_API_KEY to enable suggestions', rationale: '', source: 'task' });
-      }
-
-      const context = [
-        `Today's tasks (${tasks.length}):`,
-        ...tasks.slice(0, 10).map(t => `- [${t.due_date}] ${t.title} (priority ${t.priority})`),
-        '',
-        `Today's calendar events (${events.length}):`,
-        ...events.slice(0, 8).map((e: any) => `- ${e.start_time ? new Date(e.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'All day'}: ${e.summary}`),
-        '',
-        `Top deals needing attention (${deals.length}):`,
-        ...deals.map((d: any) => `- ${d.name} (${d.stage}) — last activity: ${d.lastActivityDate || 'unknown'}`),
-      ].join('\n');
-
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 200,
-          messages: [{
-            role: 'user',
-            content: `You are a productivity assistant. Given the user's current day context, suggest exactly ONE specific, actionable next step. Reply as JSON: {"action":"<max 20 words>","rationale":"<1 paragraph>","source":"task"|"email"|"deal"|"calendar"}\n\nContext:\n${context}`,
-          }],
-        }),
-      });
-
-      if (!response.ok) {
-        return res.json({ action: 'Review your overdue tasks', rationale: 'Could not reach AI suggestion service.', source: 'task' });
-      }
-
-      const body = await response.json();
-      const text = body.content?.[0]?.text || '';
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      const result = jsonMatch ? JSON.parse(jsonMatch[0]) : { action: text.slice(0, 80), rationale: '', source: 'task' };
-
+      const result = suggestFromHeuristics(now, todayStr, tasks, events, deals);
       suggestCache = { result, timestamp: Date.now() };
       res.json(result);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }
   });
+
+  function suggestFromHeuristics(
+    now: Date,
+    todayStr: string,
+    tasks: Task[],
+    events: any[],
+    deals: any[],
+  ): { action: string; rationale: string; source: string; task_id?: string; event_id?: string; deal_id?: string } {
+    const nowMs = now.getTime();
+
+    // 1. Upcoming meeting within 30 min → prep reminder
+    const soonEvents = events
+      .filter((e: any) => e.start_time)
+      .map((e: any) => ({ ...e, _startMs: new Date(e.start_time).getTime() }))
+      .filter((e: any) => e._startMs > nowMs && e._startMs - nowMs <= 30 * 60 * 1000)
+      .sort((a: any, b: any) => a._startMs - b._startMs);
+
+    if (soonEvents.length > 0) {
+      const ev = soonEvents[0];
+      const mins = Math.round((ev._startMs - nowMs) / 60000);
+      return {
+        action: `Prepare for "${ev.summary}" starting in ${mins} min`,
+        rationale: `You have a meeting coming up shortly. Review the agenda and any prep materials now so you're ready.`,
+        source: 'calendar',
+        event_id: ev.id,
+      };
+    }
+
+    // 2. Overdue high-priority tasks
+    const overdue = tasks
+      .filter(t => t.due_date && t.due_date < todayStr)
+      .sort((a, b) => b.priority - a.priority || (a.due_date! < b.due_date! ? -1 : 1));
+
+    if (overdue.length > 0) {
+      const t = overdue[0];
+      const daysOverdue = Math.floor((now.getTime() - new Date(t.due_date + 'T12:00:00').getTime()) / 86400000);
+      return {
+        action: `Handle overdue: "${t.title}"`,
+        rationale: `This task is ${daysOverdue} day${daysOverdue !== 1 ? 's' : ''} overdue${t.priority >= 2 ? ' and high priority' : ''}. ${overdue.length > 1 ? `You have ${overdue.length} overdue tasks total.` : ''}`,
+        source: 'task',
+        task_id: t.id,
+      };
+    }
+
+    // 3. Stale HubSpot deals (no activity in 7+ days, excluding early-stage)
+    const earlyStages = ['prospecting', 'outreach', 'qualification'];
+    const staleDeals = deals
+      .filter((d: any) => {
+        if (earlyStages.some(s => (d.stage || '').toLowerCase().includes(s))) return false;
+        if (!d.lastActivityDate) return true;
+        const daysSince = Math.floor((nowMs - new Date(d.lastActivityDate).getTime()) / 86400000);
+        return daysSince >= 7;
+      })
+      .map((d: any) => {
+        const daysSince = d.lastActivityDate
+          ? Math.floor((nowMs - new Date(d.lastActivityDate).getTime()) / 86400000)
+          : 999;
+        return { ...d, _daysSince: daysSince };
+      })
+      .sort((a: any, b: any) => b._daysSince - a._daysSince);
+
+    if (staleDeals.length > 0) {
+      const d = staleDeals[0];
+      return {
+        action: `Follow up on deal: "${d.name}"`,
+        rationale: `This ${d.stage || 'active'} deal hasn't had activity in ${d._daysSince} days and risks going cold. ${staleDeals.length > 1 ? `${staleDeals.length} deals total need attention.` : ''}`,
+        source: 'deal',
+        deal_id: d.id || d.dealId,
+      };
+    }
+
+    // 4. Highest-priority task due today
+    const dueToday = tasks
+      .filter(t => t.due_date === todayStr)
+      .sort((a, b) => b.priority - a.priority || a.sort_order - b.sort_order);
+
+    if (dueToday.length > 0) {
+      const t = dueToday[0];
+      const priorityLabel = t.priority >= 3 ? 'high priority ' : t.priority >= 2 ? 'medium priority ' : '';
+      return {
+        action: `Work on: "${t.title}"`,
+        rationale: `This is your top ${priorityLabel}task for today. ${dueToday.length > 1 ? `${dueToday.length} tasks due today total.` : ''}`,
+        source: 'task',
+        task_id: t.id,
+      };
+    }
+
+    // 5. Any remaining tasks (due today or earlier, already sorted by getToday)
+    if (tasks.length > 0) {
+      const t = tasks[0];
+      return {
+        action: `Work on: "${t.title}"`,
+        rationale: `This is next on your list. You have ${tasks.length} task${tasks.length !== 1 ? 's' : ''} on your plate today.`,
+        source: 'task',
+        task_id: t.id,
+      };
+    }
+
+    // 6. Upcoming event today to keep in mind
+    const laterEvents = events
+      .filter((e: any) => e.start_time && new Date(e.start_time).getTime() > nowMs)
+      .sort((a: any, b: any) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime());
+
+    if (laterEvents.length > 0) {
+      const ev = laterEvents[0];
+      const time = new Date(ev.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      return {
+        action: `Next up: "${ev.summary}" at ${time}`,
+        rationale: `No tasks due today. Your next calendar event is at ${time}.`,
+        source: 'calendar',
+        event_id: ev.id,
+      };
+    }
+
+    // 7. Clear day
+    return {
+      action: 'All clear — no tasks or events pending',
+      rationale: 'No tasks due, no overdue items, and no upcoming events. Great time to tackle inbox items or plan ahead.',
+      source: 'task',
+    };
+  }
 
   // ── Health ─────────────────────────────────────────────────
 

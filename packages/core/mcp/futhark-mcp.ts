@@ -104,7 +104,7 @@ function readFileAsAttachment(filePath: string): { filename: string; mimeType: s
 
 const server = new McpServer({
   name: 'futhark',
-  version: '1.6.0',
+  version: '1.10.1',
 });
 
 // ═══════════════════════════════════════════════════════════
@@ -1168,7 +1168,7 @@ server.tool(
 
 server.tool(
   'raido_suggest_next',
-  'Get an AI-generated suggested next action based on today\'s tasks, calendar events, and stale HubSpot deals. Requires ANTHROPIC_API_KEY in the Raidō environment.',
+  'Get a suggested next action based on today\'s tasks, calendar events, and stale HubSpot deals. Uses smart heuristics: flags imminent meetings, overdue tasks, cold deals, and highest-priority items. Returns action text, rationale, source type, and optional task/event/deal ID.',
   {},
   async () => {
     try {
