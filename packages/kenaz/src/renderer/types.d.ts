@@ -66,6 +66,8 @@ declare global {
 
       // Print
       printEmail: (html: string) => Promise<void>;
+      printPreviewExecute: (opts: { copies: number; pageSize: string }) => Promise<void>;
+      printPreviewCancel: () => Promise<void>;
 
       // MCP
       getMcpStatus: () => Promise<{ enabled: boolean; claudeDesktopConfig: any; serverPath: string }>;

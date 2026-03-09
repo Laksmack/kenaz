@@ -793,23 +793,84 @@ function registerIpcHandlers() {
     return res.json();
   });
 
-  // ── Print ──
+  // ── Print Preview ──
+  let previewWin: BrowserWindow | null = null;
+  let pendingPrintHtml: string | null = null;
+
   ipcMain.handle(IPC.PRINT_EMAIL, async (_event, html: string) => {
+    // Close existing preview if open
+    if (previewWin && !previewWin.isDestroyed()) {
+      previewWin.close();
+    }
+
+    pendingPrintHtml = html;
+
+    previewWin = new BrowserWindow({
+      width: 900,
+      height: 700,
+      minWidth: 600,
+      minHeight: 400,
+      title: 'Print Preview',
+      backgroundColor: '#e8e8e8',
+      titleBarStyle: 'default',
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+
+    const previewHtmlPath = path.join(__dirname, 'print-preview.html');
+    await previewWin.loadFile(previewHtmlPath);
+
+    // Inject the email content into the preview window
+    await previewWin.webContents.executeJavaScript(`
+      window.__printContent = ${JSON.stringify(html)};
+      if (typeof window.__loadPrintContent === 'function') {
+        window.__loadPrintContent();
+      }
+    `);
+
+    previewWin.on('closed', () => {
+      previewWin = null;
+      pendingPrintHtml = null;
+    });
+  });
+
+  ipcMain.handle(IPC.PRINT_PREVIEW_EXECUTE, async (_event, opts: { copies: number; pageSize: string }) => {
+    const html = pendingPrintHtml;
+    if (!html) return;
+
+    // Create hidden window for the actual print job
     const printWin = new BrowserWindow({
       show: false,
       width: 800,
       height: 1056,
       webPreferences: { javascript: false },
     });
+
     try {
       await printWin.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
       await new Promise((r) => setTimeout(r, 500));
-      printWin.webContents.print({ printBackground: true }, (_success, _reason) => {
+      printWin.webContents.print({
+        printBackground: true,
+        copies: opts.copies || 1,
+        pageSize: opts.pageSize === 'a4' ? 'A4' : 'Letter',
+      }, (_success, _reason) => {
         printWin.close();
+        if (previewWin && !previewWin.isDestroyed()) {
+          previewWin.close();
+        }
       });
     } catch (e) {
       console.error('[Kenaz] Print failed:', e);
       printWin.close();
+    }
+  });
+
+  ipcMain.handle(IPC.PRINT_PREVIEW_CANCEL, async () => {
+    if (previewWin && !previewWin.isDestroyed()) {
+      previewWin.close();
     }
   });
 
