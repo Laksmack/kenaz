@@ -53,8 +53,6 @@ const IPC = {
   SNOOZE_LIST: 'snooze:list',
   MCP_STATUS: 'mcp:status',
   PRINT_EMAIL: 'print:email',
-  PRINT_PREVIEW_EXECUTE: 'print:preview-execute',
-  PRINT_PREVIEW_CANCEL: 'print:preview-cancel',
   ACCOUNTS_LIST: 'accounts:list',
   ACCOUNTS_ADD: 'accounts:add',
   ACCOUNTS_REMOVE: 'accounts:remove',
@@ -175,9 +173,6 @@ const api = {
 
   // Print
   printEmail: (html: string) => ipcRenderer.invoke(IPC.PRINT_EMAIL, html),
-  printPreviewExecute: (opts: { copies: number; pageSize: string }) =>
-    ipcRenderer.invoke(IPC.PRINT_PREVIEW_EXECUTE, opts),
-  printPreviewCancel: () => ipcRenderer.invoke(IPC.PRINT_PREVIEW_CANCEL),
 
   // MCP
   getMcpStatus: () => ipcRenderer.invoke(IPC.MCP_STATUS),
