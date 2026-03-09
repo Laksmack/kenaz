@@ -270,7 +270,9 @@ export class SyncEngine {
               // ── Restore archived threads on new external reply ──
               // Gmail sometimes doesn't re-add INBOX when a new reply lands on
               // an archived thread. Explicitly restore it so the user never misses mail.
-              if (newMessageThreadIds.has(thread.id) && !this.cache.isSnoozed(thread.id)) {
+              // Skip if INBOX was explicitly removed in this history batch — the
+              // user (or a rule) just archived it; don't undo that action.
+              if (newMessageThreadIds.has(thread.id) && !this.cache.isSnoozed(thread.id) && !inboxRemovedThreadIds.has(thread.id)) {
                 const hasInbox = thread.labels.includes('INBOX');
                 const isTrashed = thread.labels.includes('TRASH') || thread.labels.includes('SPAM');
                 if (!hasInbox && !isTrashed) {
