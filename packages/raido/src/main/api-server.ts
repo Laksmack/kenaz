@@ -324,7 +324,8 @@ export function startApiServer(store: TaskStore, port: number, configStore?: Con
         const cfg = configStore?.get();
         const hsParams = new URLSearchParams();
         if (cfg?.hubspot_owner_id) hsParams.set('owner', cfg.hubspot_owner_id);
-        if (cfg?.hubspot_pipeline) hsParams.set('pipeline', cfg.hubspot_pipeline);
+        if (cfg?.hubspot_pipelines?.length) hsParams.set('pipeline', cfg.hubspot_pipelines.join(','));
+        if (cfg?.hubspot_excluded_stages?.length) hsParams.set('exclude_stages', cfg.hubspot_excluded_stages.join(','));
         const hsQs = hsParams.toString() ? `?${hsParams.toString()}` : '';
         const hs = await fetch(`http://localhost:3141/api/hubspot/deals${hsQs}`, { signal: AbortSignal.timeout(3000) });
         if (hs.ok) { const d = await hs.json(); deals = (d.deals || []).slice(0, 5); }

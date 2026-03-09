@@ -144,11 +144,51 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
   );
 }
 
+interface HubSpotPipeline {
+  id: string;
+  label: string;
+  stages: { id: string; label: string }[];
+}
+
 function HubSpotSettings({ config, onSave, saving, saved }: TabProps) {
   const [enabled, setEnabled] = useState(config.hubspot_enabled ?? false);
   const [portalId, setPortalId] = useState(config.hubspot_portal_id ?? '');
   const [ownerId, setOwnerId] = useState(config.hubspot_owner_id ?? '');
-  const [pipeline, setPipeline] = useState(config.hubspot_pipeline ?? 'default');
+  const [selectedPipelines, setSelectedPipelines] = useState<string[]>(config.hubspot_pipelines ?? []);
+  const [excludedStages, setExcludedStages] = useState<string[]>(config.hubspot_excluded_stages ?? []);
+
+  const [pipelines, setPipelines] = useState<HubSpotPipeline[]>([]);
+  const [fetchingPipelines, setFetchingPipelines] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
+
+  const fetchPipelines = useCallback(async () => {
+    setFetchingPipelines(true);
+    setFetchError(false);
+    try {
+      const data = await window.raido.crossAppFetch('http://localhost:3141/api/hubspot/pipelines');
+      setPipelines(data.pipelines || []);
+    } catch {
+      setFetchError(true);
+    } finally {
+      setFetchingPipelines(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (enabled) fetchPipelines();
+  }, [enabled, fetchPipelines]);
+
+  const togglePipeline = (id: string) => {
+    setSelectedPipelines(prev => prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]);
+  };
+
+  const toggleStageExclusion = (id: string) => {
+    setExcludedStages(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]);
+  };
+
+  const visibleStages = pipelines
+    .filter(p => selectedPipelines.length === 0 || selectedPipelines.includes(p.id))
+    .flatMap(p => p.stages.map(s => ({ ...s, pipelineLabel: p.label })));
 
   return (
     <div>
@@ -182,14 +222,66 @@ function HubSpotSettings({ config, onSave, saving, saved }: TabProps) {
               />
             </SettingsField>
 
-            <SettingsField label="Pipeline" description="Optional. Filter to a specific sales pipeline by its HubSpot ID. Leave blank to show deals from all pipelines.">
-              <input
-                value={pipeline}
-                onChange={(e) => setPipeline(e.target.value.trim())}
-                placeholder="Leave blank for all pipelines"
-                className="w-48 bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary"
-              />
+            {/* Pipelines — fetched from HubSpot */}
+            <SettingsField label="Pipelines" description="Select which pipelines to include. Leave all unchecked to show deals from every pipeline.">
+              {fetchingPipelines ? (
+                <div className="text-[10px] text-text-muted animate-pulse">Loading pipelines from HubSpot…</div>
+              ) : fetchError ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-accent-danger">Could not reach Kenaz — is it running?</span>
+                  <button onClick={fetchPipelines} className="text-[10px] text-accent-primary hover:underline">Retry</button>
+                </div>
+              ) : pipelines.length === 0 ? (
+                <div className="text-[10px] text-text-muted">No pipelines found</div>
+              ) : (
+                <div className="space-y-1.5">
+                  {pipelines.map(p => (
+                    <label key={p.id} className="flex items-center gap-2 cursor-pointer group">
+                      <input
+                        type="checkbox"
+                        checked={selectedPipelines.includes(p.id)}
+                        onChange={() => togglePipeline(p.id)}
+                        className="rounded border-border-subtle accent-accent-primary"
+                      />
+                      <span className="text-xs text-text-primary group-hover:text-accent-primary transition-colors">{p.label}</span>
+                      <span className="text-[9px] text-text-muted font-mono">{p.id}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
             </SettingsField>
+
+            {/* Stages — exclude list */}
+            {visibleStages.length > 0 && (
+              <SettingsField label="Stages" description="Uncheck stages you want to hide. Closed stages are always excluded automatically.">
+                <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
+                  {visibleStages.map(s => {
+                    const isClosed = /^closed/i.test(s.label);
+                    const isExcluded = excludedStages.includes(s.id);
+                    return (
+                      <label
+                        key={s.id}
+                        className={`flex items-center gap-2 cursor-pointer group ${isClosed ? 'opacity-40' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!isExcluded && !isClosed}
+                          disabled={isClosed}
+                          onChange={() => toggleStageExclusion(s.id)}
+                          className="rounded border-border-subtle accent-accent-primary"
+                        />
+                        <span className={`text-xs ${isClosed ? 'text-text-muted line-through' : 'text-text-primary group-hover:text-accent-primary'} transition-colors`}>
+                          {s.label}
+                        </span>
+                        {pipelines.length > 1 && (
+                          <span className="text-[9px] text-text-muted">{s.pipelineLabel}</span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              </SettingsField>
+            )}
 
             <div className="p-3 rounded-lg bg-bg-primary border border-border-subtle">
               <div className="text-[10px] text-text-muted space-y-1">
@@ -201,7 +293,12 @@ function HubSpotSettings({ config, onSave, saving, saved }: TabProps) {
             </div>
 
             <SaveButton
-              onClick={() => onSave({ hubspot_portal_id: portalId, hubspot_owner_id: ownerId, hubspot_pipeline: pipeline })}
+              onClick={() => onSave({
+                hubspot_portal_id: portalId,
+                hubspot_owner_id: ownerId,
+                hubspot_pipelines: selectedPipelines,
+                hubspot_excluded_stages: excludedStages,
+              })}
               saving={saving}
               saved={saved}
             />

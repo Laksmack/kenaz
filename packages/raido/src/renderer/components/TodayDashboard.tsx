@@ -53,7 +53,8 @@ interface TodayDashboardProps {
   hubspotEnabled?: boolean;
   hubspotPortalId?: string;
   hubspotOwnerId?: string;
-  hubspotPipeline?: string;
+  hubspotPipelines?: string[];
+  hubspotExcludedStages?: string[];
 }
 
 function hubspotDealUrl(portalId: string, dealId: string): string {
@@ -115,7 +116,8 @@ export function TodayDashboard({
   hubspotEnabled = false,
   hubspotPortalId = '',
   hubspotOwnerId = '',
-  hubspotPipeline = '',
+  hubspotPipelines = [],
+  hubspotExcludedStages = [],
 }: TodayDashboardProps) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -157,7 +159,8 @@ export function TodayDashboard({
     try {
       const params = new URLSearchParams();
       if (hubspotOwnerId) params.set('owner', hubspotOwnerId);
-      if (hubspotPipeline) params.set('pipeline', hubspotPipeline);
+      if (hubspotPipelines.length > 0) params.set('pipeline', hubspotPipelines.join(','));
+      if (hubspotExcludedStages.length > 0) params.set('exclude_stages', hubspotExcludedStages.join(','));
       const qs = params.toString() ? `?${params.toString()}` : '';
       const data = await window.raido.crossAppFetch(`http://localhost:3141/api/hubspot/deals${qs}`);
       const scored: ScoredDeal[] = (data.deals || []).map((d: HubSpotDeal) => {
@@ -172,7 +175,7 @@ export function TodayDashboard({
     } finally {
       setDealsLoading(false);
     }
-  }, [hubspotEnabled, hubspotOwnerId, hubspotPipeline]);
+  }, [hubspotEnabled, hubspotOwnerId, hubspotPipelines, hubspotExcludedStages]);
 
   const fetchSuggestion = useCallback(async () => {
     setSuggestionLoading(true);

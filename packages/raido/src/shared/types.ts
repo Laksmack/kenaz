@@ -134,7 +134,8 @@ export interface AppConfig {
   hubspot_enabled: boolean;
   hubspot_portal_id: string;
   hubspot_owner_id: string;
-  hubspot_pipeline: string;
+  hubspot_pipelines: string[];
+  hubspot_excluded_stages: string[];
 }
 
 export const DEFAULT_CONFIG: AppConfig = {
@@ -146,7 +147,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   hubspot_enabled: false,
   hubspot_portal_id: '',
   hubspot_owner_id: '',
-  hubspot_pipeline: '',
+  hubspot_pipelines: [],
+  hubspot_excluded_stages: [],
 };
 
 // ── Sidebar Views ───────────────────────────────────────────

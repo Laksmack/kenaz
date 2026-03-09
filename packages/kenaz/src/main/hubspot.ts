@@ -38,6 +38,18 @@ export class HubSpotService {
     return this.stageLabels[stageId] || stageId;
   }
 
+  async getPipelines(): Promise<{ id: string; label: string; stages: { id: string; label: string }[] }[]> {
+    const res = await this.fetch('/crm/v3/pipelines/deals');
+    if (!res.results) return [];
+    return res.results.map((p: any) => ({
+      id: p.id,
+      label: p.label,
+      stages: (p.stages || [])
+        .sort((a: any, b: any) => (a.displayOrder ?? 0) - (b.displayOrder ?? 0))
+        .map((s: any) => ({ id: s.id, label: s.label })),
+    }));
+  }
+
   private getToken(): string {
     return this.config.get().hubspotToken;
   }
@@ -272,7 +284,7 @@ export class HubSpotService {
     }
   }
 
-  async listActiveDeals(stage?: string, owner?: string, pipeline?: string): Promise<HubSpotDeal[]> {
+  async listActiveDeals(stage?: string, owner?: string, pipeline?: string, excludeStages?: string[]): Promise<HubSpotDeal[]> {
     try {
       await this.loadStageLabels();
 
@@ -281,10 +293,10 @@ export class HubSpotService {
           .filter(([, label]) => /^closed/i.test(label))
           .map(([id]) => id)
       );
+      const userExcludedStages = new Set(excludeStages || []);
 
       const filters: any[] = [];
       if (stage) {
-        // Try to reverse-lookup stage ID from label
         const stageId = Object.entries(this.stageLabels).find(
           ([, label]) => label.toLowerCase() === stage.toLowerCase()
         )?.[0] || stage;
@@ -294,7 +306,12 @@ export class HubSpotService {
         filters.push({ propertyName: 'hubspot_owner_id', operator: 'EQ', value: owner });
       }
       if (pipeline) {
-        filters.push({ propertyName: 'pipeline', operator: 'EQ', value: pipeline });
+        const pipelineIds = pipeline.split(',').map(p => p.trim()).filter(Boolean);
+        if (pipelineIds.length === 1) {
+          filters.push({ propertyName: 'pipeline', operator: 'EQ', value: pipelineIds[0] });
+        } else if (pipelineIds.length > 1) {
+          filters.push({ propertyName: 'pipeline', operator: 'IN', values: pipelineIds });
+        }
       }
 
       const body: any = {
@@ -316,9 +333,12 @@ export class HubSpotService {
 
       if (!res.results || res.results.length === 0) return [];
 
-      const activeResults = stage
-        ? res.results
-        : res.results.filter((d: any) => !closedStageIds.has(d.properties.dealstage || ''));
+      const activeResults = res.results.filter((d: any) => {
+        const stageId = d.properties.dealstage || '';
+        if (!stage && closedStageIds.has(stageId)) return false;
+        if (userExcludedStages.has(stageId)) return false;
+        return true;
+      });
 
       const dealIds = activeResults.map((d: any) => d.id);
       const companyMap = await this.fetchDealCompanies(dealIds);

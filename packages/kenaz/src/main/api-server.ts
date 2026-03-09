@@ -346,12 +346,24 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
     }
   });
 
+  app.get('/api/hubspot/pipelines', async (_req, res) => {
+    try {
+      const pipelines = await hs().getPipelines();
+      res.json({ pipelines });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get('/api/hubspot/deals', async (req, res) => {
     try {
       const stage = req.query.stage as string | undefined;
       const owner = req.query.owner as string | undefined;
       const pipeline = req.query.pipeline as string | undefined;
-      const deals = await hs().listActiveDeals(stage, owner, pipeline);
+      const excludeStages = req.query.exclude_stages
+        ? (req.query.exclude_stages as string).split(',').filter(Boolean)
+        : undefined;
+      const deals = await hs().listActiveDeals(stage, owner, pipeline, excludeStages);
       res.json({ deals });
     } catch (e: any) {
       res.status(500).json({ error: e.message });

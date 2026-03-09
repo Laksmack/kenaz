@@ -77,10 +77,11 @@ function hubspotDealUrl(portalId: string, dealId: string): string {
 interface PipelineViewProps {
   hubspotPortalId?: string;
   hubspotOwnerId?: string;
-  hubspotPipeline?: string;
+  hubspotPipelines?: string[];
+  hubspotExcludedStages?: string[];
 }
 
-export function PipelineView({ hubspotPortalId = '', hubspotOwnerId = '', hubspotPipeline = '' }: PipelineViewProps) {
+export function PipelineView({ hubspotPortalId = '', hubspotOwnerId = '', hubspotPipelines = [], hubspotExcludedStages = [] }: PipelineViewProps) {
   const [deals, setDeals] = useState<NormalizedDeal[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -96,7 +97,8 @@ export function PipelineView({ hubspotPortalId = '', hubspotOwnerId = '', hubspo
       const params = new URLSearchParams();
       if (stageFilter) params.set('stage', stageFilter);
       if (hubspotOwnerId) params.set('owner', hubspotOwnerId);
-      if (hubspotPipeline) params.set('pipeline', hubspotPipeline);
+      if (hubspotPipelines.length > 0) params.set('pipeline', hubspotPipelines.join(','));
+      if (hubspotExcludedStages.length > 0) params.set('exclude_stages', hubspotExcludedStages.join(','));
       const qs = params.toString() ? `?${params.toString()}` : '';
       const data = await window.raido.crossAppFetch(`http://localhost:3141/api/hubspot/deals${qs}`);
       const now = new Date();
@@ -119,7 +121,7 @@ export function PipelineView({ hubspotPortalId = '', hubspotOwnerId = '', hubspo
     } finally {
       setLoading(false);
     }
-  }, [daysBack, stageFilter, hubspotOwnerId, hubspotPipeline]);
+  }, [daysBack, stageFilter, hubspotOwnerId, hubspotPipelines, hubspotExcludedStages]);
 
   useEffect(() => {
     fetchDeals();

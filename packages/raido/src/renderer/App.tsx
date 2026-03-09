@@ -390,7 +390,8 @@ export default function App() {
                   hubspotEnabled={appConfig?.hubspot_enabled || false}
                   hubspotPortalId={appConfig?.hubspot_portal_id || ''}
                   hubspotOwnerId={appConfig?.hubspot_owner_id || ''}
-                  hubspotPipeline={appConfig?.hubspot_pipeline || ''}
+                  hubspotPipelines={appConfig?.hubspot_pipelines || []}
+                  hubspotExcludedStages={appConfig?.hubspot_excluded_stages || []}
                 />
                 <div
                   onMouseDown={handleResizeStart}
@@ -409,7 +410,8 @@ export default function App() {
             <PipelineView
               hubspotPortalId={appConfig?.hubspot_portal_id || ''}
               hubspotOwnerId={appConfig?.hubspot_owner_id || ''}
-              hubspotPipeline={appConfig?.hubspot_pipeline || ''}
+              hubspotPipelines={appConfig?.hubspot_pipelines || []}
+              hubspotExcludedStages={appConfig?.hubspot_excluded_stages || []}
             />
           ) : (
             <>
