@@ -953,16 +953,19 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
       doc.querySelectorAll(sel).forEach((el) => quotedElements.push(el as HTMLElement));
     }
 
-    // Also detect forwarded message separators
+    // Also detect forwarded message separators and "On … wrote:" patterns.
+    // Only check small elements — large containers include descendant text in
+    // textContent which would cause the entire message body to collapse.
     const allElements = doc.body.querySelectorAll('*');
     for (const el of allElements) {
-      const text = (el as HTMLElement).textContent || '';
+      const htmlEl = el as HTMLElement;
+      const text = htmlEl.textContent || '';
+      if (text.length > 600) continue;
       if (
         /^-{5,}\s*(Forwarded|Original)\s*message\s*-{5,}/i.test(text.trim()) ||
         /^On .+ wrote:$/m.test(text.trim())
       ) {
-        // Walk up to a block-level parent to collapse the whole section
-        let target = el as HTMLElement;
+        let target = htmlEl;
         if (target.parentElement && target.parentElement !== doc.body) {
           target = target.parentElement;
         }
