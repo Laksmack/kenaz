@@ -168,7 +168,7 @@ export function TodayDashboard({
         return { ...d, daysSinceActivity: days, recency: status };
       });
       scored.sort((a, b) => b.daysSinceActivity - a.daysSinceActivity);
-      setDeals(scored.slice(0, 5));
+      setDeals(scored.slice(0, 3));
     } catch {
       setDealsError(true);
       setDeals([]);
@@ -218,12 +218,21 @@ export function TodayDashboard({
     }
   };
 
+  const nextEvent = useMemo(() => {
+    const now = new Date();
+    return events.find((e) => {
+      if (e.all_day) return false;
+      if (!e.end_time) return false;
+      return new Date(e.end_time) > now;
+    }) ?? null;
+  }, [events]);
+
   return (
-    <div className="flex flex-col h-full overflow-y-auto scrollbar-hide">
-      {/* ── Zone A: Today's Timeline ────────────────────────── */}
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* ── Zone A: Next Meeting ─────────────────────────────── */}
       <div className="flex-shrink-0 border-b border-border-subtle">
         <div className="px-4 pt-3 pb-1 flex items-center justify-between">
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">Timeline</span>
+          <span className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">Next Meeting</span>
           <button
             onClick={fetchEvents}
             className="p-1 rounded hover:bg-bg-hover text-text-muted hover:text-text-secondary transition-colors"
@@ -235,20 +244,18 @@ export function TodayDashboard({
           </button>
         </div>
 
-        <div className="px-4 pb-3 space-y-1">
+        <div className="px-4 pb-3">
           {eventsLoading && events.length === 0 ? (
             <div className="text-xs text-text-muted py-2">Loading calendar...</div>
           ) : eventsError ? (
             <div className="text-xs text-text-muted py-2">Dagaz unavailable</div>
-          ) : events.length === 0 ? (
-            <div className="text-xs text-text-muted py-2">No meetings today</div>
-          ) : (
-            events.map((event) => {
-              const meetingLink = getMeetingLink(event);
-              const isSoon = event.start_time ? isWithinMinutes(event.start_time, 60) : false;
+          ) : !nextEvent ? (
+            <div className="text-xs text-text-muted py-2">No more meetings today</div>
+          ) : (() => {
+              const meetingLink = getMeetingLink(nextEvent);
+              const isSoon = nextEvent.start_time ? isWithinMinutes(nextEvent.start_time, 60) : false;
               return (
                 <div
-                  key={event.id}
                   className={cn(
                     'flex items-center gap-3 px-3 py-2 rounded-md transition-colors cursor-pointer hover:bg-bg-hover text-sm',
                     isSoon && 'ring-1 ring-inset'
@@ -261,7 +268,7 @@ export function TodayDashboard({
                       try {
                         await window.raido.crossAppFetch('http://localhost:3143/api/navigate', {
                           method: 'POST',
-                          body: JSON.stringify({ action: 'focus-event', eventId: event.id }),
+                          body: JSON.stringify({ action: 'focus-event', eventId: nextEvent.id }),
                         });
                       } catch { /* Dagaz not available */ }
                     }
@@ -269,13 +276,13 @@ export function TodayDashboard({
                   title={meetingLink ? 'Click to copy meeting link' : 'Click to open in Dagaz'}
                 >
                   <span className="text-xs text-text-muted tabular-nums w-24 flex-shrink-0">
-                    {event.all_day ? 'All day' : event.start_time && event.end_time
-                      ? `${formatTime(event.start_time)} – ${formatTime(event.end_time)}`
+                    {nextEvent.start_time && nextEvent.end_time
+                      ? `${formatTime(nextEvent.start_time)} – ${formatTime(nextEvent.end_time)}`
                       : ''}
                   </span>
-                  <span className="flex-1 truncate text-text-primary">{event.summary}</span>
-                  {event.location && (
-                    <span className="text-[10px] text-text-muted truncate max-w-[120px]">{event.location.split('\n')[0]}</span>
+                  <span className="flex-1 truncate text-text-primary">{nextEvent.summary}</span>
+                  {nextEvent.location && (
+                    <span className="text-[10px] text-text-muted truncate max-w-[120px]">{nextEvent.location.split('\n')[0]}</span>
                   )}
                   {meetingLink && (
                     <svg className="w-3.5 h-3.5 flex-shrink-0 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -287,18 +294,17 @@ export function TodayDashboard({
                   )}
                 </div>
               );
-            })
-          )}
+            })()}
         </div>
       </div>
 
       {/* ── Zone B: Tasks ───────────────────────────────────── */}
-      <div className="flex-1 min-h-0 border-b border-border-subtle">
-        <div className="px-4 pt-3 pb-1">
+      <div className="flex-1 min-h-0 flex flex-col border-b border-border-subtle">
+        <div className="px-4 pt-3 pb-1 flex-shrink-0">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">Tasks</span>
         </div>
 
-        <div className="overflow-y-auto" style={{ maxHeight: 'calc(100% - 2rem)' }}>
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-hide">
           {tasks.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8 text-text-muted">
               <div className="text-3xl mb-2">✨</div>
