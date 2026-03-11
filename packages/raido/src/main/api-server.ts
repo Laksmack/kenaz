@@ -7,6 +7,9 @@ export function startApiServer(store: TaskStore, port: number, configStore?: Con
   const app = express();
   app.use(express.json({ limit: '50mb' }));
 
+  let suggestCache: { result: any; timestamp: number } | null = null;
+  const SUGGEST_CACHE_MS = 10 * 60 * 1000;
+
   // ── Today ─────────────────────────────────────────────────
 
   app.get('/api/today', (req, res) => {
@@ -117,6 +120,7 @@ export function startApiServer(store: TaskStore, port: number, configStore?: Con
     try {
       const result = store.completeTask(req.params.id);
       if (!result.task) return res.status(404).json({ error: 'Task not found' });
+      suggestCache = null;
       res.json(result);
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -302,9 +306,6 @@ export function startApiServer(store: TaskStore, port: number, configStore?: Con
   });
 
   // ── Suggest Next Action ────────────────────────────────────
-
-  let suggestCache: { result: any; timestamp: number } | null = null;
-  const SUGGEST_CACHE_MS = 10 * 60 * 1000;
 
   app.get('/api/suggest-next', async (_req, res) => {
     try {

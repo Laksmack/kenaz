@@ -50,6 +50,7 @@ interface TodayDashboardProps {
   onUpdate: (id: string, updates: Partial<Task>) => void;
   suggestionPinned?: boolean;
   onToggleSuggestion?: (pinned: boolean) => void;
+  calendarEnabled?: boolean;
   hubspotEnabled?: boolean;
   hubspotPortalId?: string;
   hubspotOwnerId?: string;
@@ -113,6 +114,7 @@ export function TodayDashboard({
   onUpdate,
   suggestionPinned = false,
   onToggleSuggestion,
+  calendarEnabled = true,
   hubspotEnabled = false,
   hubspotPortalId = '',
   hubspotOwnerId = '',
@@ -190,9 +192,9 @@ export function TodayDashboard({
   }, []);
 
   useEffect(() => {
-    fetchEvents();
+    if (calendarEnabled) fetchEvents();
     fetchDeals();
-  }, [fetchEvents, fetchDeals]);
+  }, [calendarEnabled, fetchEvents, fetchDeals]);
 
   useEffect(() => {
     if (suggestionPinned) fetchSuggestion();
@@ -230,7 +232,7 @@ export function TodayDashboard({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* ── Zone A: Next Meeting ─────────────────────────────── */}
-      <div className="flex-shrink-0 border-b border-border-subtle">
+      {calendarEnabled && <div className="flex-shrink-0 border-b border-border-subtle">
         <div className="px-4 pt-3 pb-1 flex items-center justify-between">
           <span className="text-[10px] font-semibold uppercase tracking-widest text-text-muted">Next Meeting</span>
           <button
@@ -262,18 +264,14 @@ export function TodayDashboard({
                   )}
                   style={isSoon ? { ringColor: '#f59e0b', background: 'rgba(245, 158, 11, 0.05)' } : undefined}
                   onClick={async () => {
-                    if (meetingLink) {
-                      await navigator.clipboard.writeText(meetingLink);
-                    } else {
-                      try {
-                        await window.raido.crossAppFetch('http://localhost:3143/api/navigate', {
-                          method: 'POST',
-                          body: JSON.stringify({ action: 'focus-event', eventId: nextEvent.id }),
-                        });
-                      } catch { /* Dagaz not available */ }
-                    }
+                    try {
+                      await window.raido.crossAppFetch('http://localhost:3143/api/navigate', {
+                        method: 'POST',
+                        body: JSON.stringify({ action: 'focus-event', eventId: nextEvent.id }),
+                      });
+                    } catch { /* Dagaz not available */ }
                   }}
-                  title={meetingLink ? 'Click to copy meeting link' : 'Click to open in Dagaz'}
+                  title="Open in Dagaz"
                 >
                   <span className="text-xs text-text-muted tabular-nums w-24 flex-shrink-0">
                     {nextEvent.start_time && nextEvent.end_time
@@ -285,9 +283,18 @@ export function TodayDashboard({
                     <span className="text-[10px] text-text-muted truncate max-w-[120px]">{nextEvent.location.split('\n')[0]}</span>
                   )}
                   {meetingLink && (
-                    <svg className="w-3.5 h-3.5 flex-shrink-0 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
+                    <button
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        await navigator.clipboard.writeText(meetingLink);
+                      }}
+                      className="p-1 rounded hover:bg-bg-tertiary transition-colors flex-shrink-0"
+                      title="Copy meeting link"
+                    >
+                      <svg className="w-3.5 h-3.5 text-text-muted hover:text-accent-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                    </button>
                   )}
                   {isSoon && (
                     <span className="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded" style={{ color: '#f59e0b', background: 'rgba(245, 158, 11, 0.12)' }}>Soon</span>
@@ -296,7 +303,7 @@ export function TodayDashboard({
               );
             })()}
         </div>
-      </div>
+      </div>}
 
       {/* ── Zone B: Tasks ───────────────────────────────────── */}
       <div className="flex-1 min-h-0 flex flex-col border-b border-border-subtle">

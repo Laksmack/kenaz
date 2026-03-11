@@ -5,6 +5,7 @@ import { TaskDetail } from './components/TaskDetail';
 import { TodayDashboard } from './components/TodayDashboard';
 import { PipelineView } from './components/PipelineView';
 import { SettingsModal } from './components/SettingsModal';
+import { NewTaskModal } from './components/NewTaskModal';
 import { useTasks } from './hooks/useTasks';
 import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
 import type { Task, AppConfig, ViewType } from '../shared/types';
@@ -15,10 +16,8 @@ export default function App() {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
-  const [quickAddOpen, setQuickAddOpen] = useState(false);
-  const [quickAddTitle, setQuickAddTitle] = useState('');
+  const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const quickAddRef = useRef<HTMLInputElement>(null);
   const [listWidth, setListWidth] = useState(400);
   const resizing = useRef(false);
 
@@ -45,9 +44,8 @@ export default function App() {
     }
   }, [appConfig?.theme]);
 
-  const openQuickAdd = useCallback(() => {
-    setQuickAddOpen(true);
-    setTimeout(() => quickAddRef.current?.focus(), 50);
+  const openNewTask = useCallback(() => {
+    setNewTaskOpen(true);
   }, []);
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -101,10 +99,6 @@ export default function App() {
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
         if (e.key === 'Escape') {
           (target as HTMLInputElement).blur();
-          if (quickAddOpen) {
-            setQuickAddOpen(false);
-            setQuickAddTitle('');
-          }
         }
         return;
       }
@@ -140,11 +134,11 @@ export default function App() {
       switch (e.key.toLowerCase()) {
         case 'c':
           e.preventDefault();
-          openQuickAdd();
+          openNewTask();
           break;
         case 'n':
           e.preventDefault();
-          openQuickAdd();
+          openNewTask();
           break;
         case '/':
           e.preventDefault();
@@ -179,19 +173,16 @@ export default function App() {
         case '5': setCurrentView('pipeline'); break;
         case '6': setCurrentView('deferred'); break;
         case 'escape':
+          if (newTaskOpen) { setNewTaskOpen(false); break; }
           if (settingsOpen) { setSettingsOpen(false); break; }
           setSelectedTask(null);
-          if (quickAddOpen) {
-            setQuickAddOpen(false);
-            setQuickAddTitle('');
-          }
           break;
       }
     };
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedTask, tasks, quickAddOpen, settingsOpen, refresh, openQuickAdd, handleComplete]);
+  }, [selectedTask, tasks, newTaskOpen, settingsOpen, refresh, openNewTask, handleComplete]);
 
   const handleUpdate = useCallback(async (id: string, updates: Partial<Task>) => {
     await window.raido.updateTask(id, updates);
@@ -208,27 +199,17 @@ export default function App() {
     refresh();
   }, [refresh]);
 
-  const handleQuickAdd = useCallback(async () => {
-    if (!quickAddTitle.trim()) return;
-    let titleText = quickAddTitle.trim();
-
-    // Auto-prepend group prefix when viewing a group
-    if (currentView === 'group' && selectedGroup && !titleText.startsWith('[')) {
-      titleText = `[${selectedGroup}] ${titleText}`;
-    }
-
-    const data: any = { title: titleText };
-
+  const newTaskDefaults = useCallback(() => {
+    const defaults: any = {};
     if (currentView === 'today') {
       const d = new Date();
-      data.due_date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      defaults.due_date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     }
-
-    await window.raido.createTask(data);
-    setQuickAddTitle('');
-    setQuickAddOpen(false);
-    refresh();
-  }, [quickAddTitle, currentView, selectedGroup, refresh]);
+    if (currentView === 'group' && selectedGroup) {
+      defaults.groupPrefix = selectedGroup;
+    }
+    return defaults;
+  }, [currentView, selectedGroup]);
 
   const viewTitle = (() => {
     switch (currentView) {
@@ -313,7 +294,7 @@ export default function App() {
           {/* Raidō rune — far right, click to create task */}
           <div className="titlebar-no-drag ml-3 flex items-center">
             <button
-              onClick={openQuickAdd}
+              onClick={openNewTask}
               className="p-0.5 rounded-md hover:opacity-80 transition-opacity"
               title="New Task (C)"
             >
@@ -333,42 +314,18 @@ export default function App() {
           </div>
         </div>
 
-        {/* Quick add bar */}
-        {quickAddOpen && (
-          <div className="px-4 py-2 bg-bg-secondary border-b border-border-subtle animate-slide-up">
-            <div className="flex items-center gap-2">
-              <input
-                ref={quickAddRef}
-                type="text"
-                value={quickAddTitle}
-                onChange={(e) => setQuickAddTitle(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleQuickAdd();
-                  if (e.key === 'Escape') {
-                    setQuickAddOpen(false);
-                    setQuickAddTitle('');
-                  }
-                }}
-                placeholder={currentView === 'group' && selectedGroup
-                  ? `New task in [${selectedGroup}]...`
-                  : 'What needs to be done?'}
-                className="flex-1 bg-transparent border-none outline-none text-sm text-text-primary placeholder-text-muted"
-                autoFocus
-              />
-              <button
-                onClick={handleQuickAdd}
-                className="px-3 py-1 rounded-md text-xs font-medium text-white brand-gradient hover:opacity-90 transition-opacity"
-              >
-                Add
-              </button>
-              <button
-                onClick={() => { setQuickAddOpen(false); setQuickAddTitle(''); }}
-                className="px-2 py-1 rounded-md text-xs text-text-muted hover:text-text-primary transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
+        {/* New Task Modal */}
+        {newTaskOpen && (
+          <NewTaskModal
+            defaults={newTaskDefaults()}
+            onClose={() => setNewTaskOpen(false)}
+            onCreate={async (data) => {
+              const task = await window.raido.createTask(data);
+              setNewTaskOpen(false);
+              refresh();
+              if (task) setSelectedTask(task);
+            }}
+          />
         )}
 
         {/* Content area */}
@@ -382,6 +339,7 @@ export default function App() {
                   onSelect={setSelectedTask}
                   onComplete={handleComplete}
                   onUpdate={handleUpdate}
+                  calendarEnabled={appConfig?.calendar_enabled ?? true}
                   suggestionPinned={appConfig?.today_suggestion_pinned || false}
                   onToggleSuggestion={(pinned) => {
                     window.raido.setConfig({ today_suggestion_pinned: pinned } as any);

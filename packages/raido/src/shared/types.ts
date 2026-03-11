@@ -131,6 +131,7 @@ export interface AppConfig {
   mcpEnabled: boolean;
   theme: 'dark' | 'light' | 'system';
   today_suggestion_pinned: boolean;
+  calendar_enabled: boolean;
   hubspot_enabled: boolean;
   hubspot_portal_id: string;
   hubspot_owner_id: string;
@@ -144,6 +145,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   mcpEnabled: true,
   theme: 'dark',
   today_suggestion_pinned: false,
+  calendar_enabled: true,
   hubspot_enabled: false,
   hubspot_portal_id: '',
   hubspot_owner_id: '',

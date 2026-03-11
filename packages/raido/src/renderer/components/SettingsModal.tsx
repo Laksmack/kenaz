@@ -121,6 +121,7 @@ interface TabProps {
 
 function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(config.theme ?? 'dark');
+  const [calendarEnabled, setCalendarEnabled] = useState(config.calendar_enabled ?? true);
 
   return (
     <div>
@@ -136,6 +137,10 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
             <option value="light">Light</option>
             <option value="system">System</option>
           </select>
+        </SettingsField>
+
+        <SettingsField label="Next Meeting" description="Show the next calendar event from Dagaz in the Today dashboard. Requires Dagaz to be running.">
+          <ToggleSwitch checked={calendarEnabled} onChange={(v) => { setCalendarEnabled(v); onSave({ calendar_enabled: v }); }} />
         </SettingsField>
 
         <SaveButton onClick={() => onSave({ theme })} saving={saving} saved={saved} />
