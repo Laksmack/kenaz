@@ -340,6 +340,16 @@ export function ScratchView() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    findAndSelect(e.shiftKey ? -1 : 1);
+                  }
+                  if (e.key === 'Escape') {
+                    e.preventDefault();
+                    setSearchOpen(false);
+                  }
+                }}
                 placeholder={regexMode ? 'Find (regex)...' : 'Find...'}
                 className="bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary/40 min-w-[180px]"
               />
@@ -348,12 +358,31 @@ export function ScratchView() {
                   type="text"
                   value={replaceQuery}
                   onChange={(e) => setReplaceQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      replaceCurrent();
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setSearchOpen(false);
+                    }
+                  }}
                   placeholder="Replace... (use \\n for newline)"
                   className="bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary/40 min-w-[220px]"
                 />
               )}
               <button onClick={() => findAndSelect(-1)} className="px-2 py-1 rounded text-[10px] border border-border-subtle hover:bg-bg-hover">Prev</button>
               <button onClick={() => findAndSelect(1)} className="px-2 py-1 rounded text-[10px] border border-border-subtle hover:bg-bg-hover">Next</button>
+              <button
+                onClick={() => {
+                  setReplaceOpen((prev) => !prev);
+                  setSelectionOnly(false);
+                }}
+                className="px-2 py-1 rounded text-[10px] border border-border-subtle hover:bg-bg-hover"
+              >
+                {replaceOpen ? 'Hide Replace' : 'Replace...'}
+              </button>
               {replaceOpen && (
                 <>
                   <button onClick={replaceCurrent} className="px-2 py-1 rounded text-[10px] border border-border-subtle hover:bg-bg-hover">Replace</button>
