@@ -39,6 +39,10 @@ export default function App() {
   const [contextFolder, setContextFolder] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  const triggerScratchSearch = useCallback((mode: 'find' | 'replace' | 'regex' = 'find') => {
+    window.dispatchEvent(new CustomEvent('laguz:scratch-search', { detail: { mode } }));
+  }, []);
+
   // ── Tab State ────────────────────────────────────────────────
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
@@ -252,6 +256,30 @@ export default function App() {
         return;
       }
 
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
+        if (currentView === 'scratch') {
+          e.preventDefault();
+          triggerScratchSearch('replace');
+        }
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && e.altKey && e.key.toLowerCase() === 'f') {
+        if (currentView === 'scratch') {
+          e.preventDefault();
+          triggerScratchSearch('regex');
+        }
+        return;
+      }
+
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
+        if (currentView === 'scratch') {
+          e.preventDefault();
+          triggerScratchSearch('find');
+        }
+        return;
+      }
+
       if (isInput) {
         if (e.key === 'Escape') {
           (target as HTMLInputElement).blur();
@@ -297,7 +325,7 @@ export default function App() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [handleViewChange, settingsOpen, activeTabId, activeTab, closeTab, splitTabId, tabs]);
+  }, [handleViewChange, settingsOpen, activeTabId, activeTab, closeTab, splitTabId, tabs, currentView, triggerScratchSearch]);
 
   if (!config) {
     return (
@@ -345,6 +373,16 @@ export default function App() {
                 placeholder="Search vault..."
                 className="bg-bg-primary border border-border-subtle rounded-md px-3 py-1.5 text-xs text-text-primary placeholder-text-muted outline-none w-56 focus:border-accent-primary/40"
               />
+            ) : currentView === 'scratch' ? (
+              <button
+                onClick={() => triggerScratchSearch('find')}
+                className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
+                title="Find in scratch (Cmd+F)"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+              </button>
             ) : (
               <button
                 onClick={() => {
