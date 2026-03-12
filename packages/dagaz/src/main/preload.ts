@@ -34,7 +34,8 @@ const api = {
     ipcRenderer.invoke(IPC.EVENTS_LIST, start, end, calendarId),
   getEvent: (id: string): Promise<CalendarEvent> => ipcRenderer.invoke(IPC.EVENT_GET, id),
   createEvent: (data: CreateEventInput): Promise<CalendarEvent> => ipcRenderer.invoke(IPC.EVENT_CREATE, data),
-  updateEvent: (id: string, updates: UpdateEventInput): Promise<CalendarEvent> => ipcRenderer.invoke(IPC.EVENT_UPDATE, id, updates),
+  updateEvent: (id: string, updates: UpdateEventInput, scope?: 'single' | 'all'): Promise<CalendarEvent> =>
+    ipcRenderer.invoke(IPC.EVENT_UPDATE, id, updates, scope),
   deleteEvent: (id: string, scope?: 'single' | 'all'): Promise<void> => ipcRenderer.invoke(IPC.EVENT_DELETE, id, scope),
   rsvpEvent: (id: string, response: string, scope?: 'single' | 'all'): Promise<void> =>
     ipcRenderer.invoke(IPC.EVENT_RSVP, id, response, scope),

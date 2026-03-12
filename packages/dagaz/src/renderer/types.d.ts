@@ -31,7 +31,7 @@ interface DagazAPI {
   getEvents(start: string, end: string, calendarId?: string): Promise<CalendarEvent[]>;
   getEvent(id: string): Promise<CalendarEvent>;
   createEvent(data: CreateEventInput): Promise<CalendarEvent>;
-  updateEvent(id: string, updates: UpdateEventInput): Promise<CalendarEvent>;
+  updateEvent(id: string, updates: UpdateEventInput, scope?: 'single' | 'all'): Promise<CalendarEvent>;
   deleteEvent(id: string, scope?: 'single' | 'all'): Promise<void>;
   rsvpEvent(id: string, response: string, scope?: 'single' | 'all'): Promise<void>;
 

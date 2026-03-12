@@ -34,6 +34,7 @@ export default function App() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
+  const [updateConfirm, setUpdateConfirm] = useState<{ event: CalendarEvent; updates: UpdateEventInput } | null>(null);
 
   const { toast, showToast } = useToast();
   const { quickCreateOpen, quickCreateStart, quickCreateEnd, editingEvent, openQuickCreate, openEditEvent, closeQuickCreate } = useQuickCreate();
@@ -158,24 +159,41 @@ export default function App() {
     refresh({ full: false });
   }, [refresh]);
 
-  const handleUpdateEvent = useCallback(async (event: CalendarEvent, newStart: Date, newEnd: Date) => {
-    if (event.recurring_event_id) {
-      if (!window.confirm(`"${event.summary}" is a recurring event.\n\nOK = Change only this event\nCancel = Don't change`)) return;
+  const applyEventUpdate = useCallback(async (
+    event: CalendarEvent,
+    updates: UpdateEventInput,
+    scope: 'single' | 'all' = 'single',
+  ) => {
+    const updatedEvent = await window.dagaz.updateEvent(event.id, updates, scope);
+    const hasOtherAttendees = (event.attendees?.length ?? 0) > 1;
+    const name = updates.summary || event.summary || 'Event';
+    const recurrenceSuffix = event.recurring_event_id && scope === 'all' ? ' from this event forward' : '';
+    showToast(hasOtherAttendees
+      ? `"${name}" updated${recurrenceSuffix} — attendees notified`
+      : `"${name}" updated${recurrenceSuffix}`);
+    refresh({ full: false });
+    if (selectedEvent?.id === event.id) {
+      if (scope === 'single') {
+        const updated = await window.dagaz.getEvent(event.id);
+        if (updated) setSelectedEvent(updated);
+      } else {
+        setSelectedEvent(updatedEvent || null);
+      }
     }
+  }, [refresh, selectedEvent, showToast]);
+
+  const handleUpdateEvent = useCallback(async (event: CalendarEvent, newStart: Date, newEnd: Date) => {
     const hasOtherAttendees = (event.attendees?.length ?? 0) > 1;
     if (!(event.is_organizer || !hasOtherAttendees)) {
       if (!window.confirm(`You are not the organizer of "${event.summary}".\n\nPropose a new time? This will update the event and notify the organizer.`)) return;
     }
-    await window.dagaz.updateEvent(event.id, { start: newStart.toISOString(), end: newEnd.toISOString() });
-    showToast(hasOtherAttendees
-      ? `"${event.summary}" updated — invitations sent to ${(event.attendees?.length ?? 1) - 1} attendee${(event.attendees?.length ?? 2) > 2 ? 's' : ''}`
-      : `"${event.summary}" moved`);
-    refresh({ full: false });
-    if (selectedEvent?.id === event.id) {
-      const updated = await window.dagaz.getEvent(event.id);
-      if (updated) setSelectedEvent(updated);
+    const updates = { start: newStart.toISOString(), end: newEnd.toISOString() };
+    if (event.recurring_event_id) {
+      setUpdateConfirm({ event, updates });
+      return;
     }
-  }, [refresh, selectedEvent, showToast]);
+    await applyEventUpdate(event, updates, 'single');
+  }, [applyEventUpdate]);
 
   const handleDeleteEvent = useCallback(async (id: string, scope?: 'single' | 'all') => {
     const event = rawEvents.find(e => e.id === id) || selectedEvent;
@@ -214,22 +232,17 @@ export default function App() {
 
   const handleUpdateFromEdit = useCallback(async (id: string, updates: UpdateEventInput) => {
     const event = rawEvents.find(e => e.id === id) || selectedEvent;
-    if (event?.recurring_event_id) {
-      if (!window.confirm(`"${event.summary}" is a recurring event.\n\nOK = Change only this event\nCancel = Don't change`)) return;
-    }
     const hasOtherAttendees = (event?.attendees?.length ?? 0) > 1;
     if (!(event?.is_organizer || !hasOtherAttendees)) {
       if (!window.confirm(`You are not the organizer of "${event?.summary}".\n\nUpdate the event? This will notify the organizer.`)) return;
     }
-    await window.dagaz.updateEvent(id, updates);
-    const name = updates.summary || event?.summary || 'Event';
-    showToast(hasOtherAttendees ? `"${name}" updated — attendees notified` : `"${name}" updated`);
-    refresh({ full: false });
-    if (selectedEvent?.id === id) {
-      const updated = await window.dagaz.getEvent(id);
-      if (updated) setSelectedEvent(updated);
+    if (!event) return;
+    if (event.recurring_event_id) {
+      setUpdateConfirm({ event, updates });
+      return;
     }
-  }, [rawEvents, selectedEvent, refresh, showToast]);
+    await applyEventUpdate(event, updates, 'single');
+  }, [rawEvents, selectedEvent, applyEventUpdate]);
 
   const handleCalendarToggle = useCallback(async (id: string, visible: boolean) => {
     await window.dagaz.updateCalendar(id, { visible });
@@ -494,6 +507,17 @@ export default function App() {
       {showHelp && <HelpOverlay onClose={() => setShowHelp(false)} />}
       {deleteConfirm && <DeleteConfirmDialog confirm={deleteConfirm} onDelete={handleDeleteEvent} onCancel={dismissDeleteConfirm} />}
       {rsvpConfirm && <RsvpConfirmDialog confirm={rsvpConfirm} onRSVP={handleRSVP} onCancel={dismissRsvpConfirm} />}
+      {updateConfirm && (
+        <RecurringUpdateDialog
+          confirm={updateConfirm}
+          onApply={async (scope) => {
+            const pending = updateConfirm;
+            setUpdateConfirm(null);
+            await applyEventUpdate(pending.event, pending.updates, scope);
+          }}
+          onCancel={() => setUpdateConfirm(null)}
+        />
+      )}
       {toast && <Toast message={toast} />}
     </div>
   );
@@ -593,6 +617,29 @@ function RsvpConfirmDialog({ confirm, onRSVP, onCancel }: {
         <div className="px-5 pb-4 pt-3 flex flex-col gap-2">
           <button onClick={() => { onCancel(); onRSVP(confirm.id, confirm.response, 'single'); }} className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors">This event only</button>
           <button onClick={() => { onCancel(); onRSVP(confirm.id, confirm.response, 'all'); }} className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors">All events in series</button>
+          <button onClick={onCancel} className="w-full text-center px-3 py-1.5 text-xs text-text-muted hover:text-text-primary transition-colors mt-1">Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecurringUpdateDialog({ confirm, onApply, onCancel }: {
+  confirm: { event: CalendarEvent; updates: UpdateEventInput };
+  onApply: (scope: 'single' | 'all') => void | Promise<void>;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={onCancel}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative bg-bg-secondary border border-border-subtle rounded-xl shadow-2xl w-[360px] animate-slide-up" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="update-confirm-title">
+        <div className="px-5 pt-4 pb-2">
+          <h3 id="update-confirm-title" className="text-sm font-semibold text-text-primary">Update recurring event</h3>
+          <p className="text-xs text-text-secondary mt-1.5 leading-relaxed">"{confirm.event.summary}" is part of a series.</p>
+        </div>
+        <div className="px-5 pb-4 pt-3 flex flex-col gap-2">
+          <button onClick={() => onApply('single')} className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors">This event only</button>
+          <button onClick={() => onApply('all')} className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors">All (this and following)</button>
           <button onClick={onCancel} className="w-full text-center px-3 py-1.5 text-xs text-text-muted hover:text-text-primary transition-colors mt-1">Cancel</button>
         </div>
       </div>

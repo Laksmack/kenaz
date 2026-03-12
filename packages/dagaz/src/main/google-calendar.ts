@@ -312,9 +312,67 @@ export class GoogleCalendarService {
     return this.parseGoogleEvent(res.data, calendarId);
   }
 
-  async updateEvent(calendarId: string, eventId: string, updates: UpdateEventInput): Promise<Partial<CalendarEvent> & { google_id: string; calendar_id: string }> {
+  async updateEvent(
+    calendarId: string,
+    eventId: string,
+    updates: UpdateEventInput,
+    scope: 'single' | 'all' = 'single',
+  ): Promise<Partial<CalendarEvent> & { google_id: string; calendar_id: string }> {
     if (!this.calendar) throw new Error('Not authenticated');
 
+    // "all" means "this and following" for recurring instances.
+    if (scope === 'all') {
+      const instanceRes = await this.calendar.events.get({ calendarId, eventId });
+      const instance = instanceRes.data;
+      const parentId = instance.recurringEventId;
+      if (parentId) {
+        const parentRes = await this.calendar.events.get({ calendarId, eventId: parentId });
+        const parent = parentRes.data;
+        const boundary = this.getSplitBoundary(instance);
+
+        if (boundary && (parent.recurrence || []).length > 0) {
+          const countInRule = this.readRRuleCount(parent.recurrence || []);
+          const countBefore = countInRule !== null
+            ? await this.countInstancesBeforeBoundary(calendarId, parentId, boundary.boundaryIso)
+            : null;
+          const previousRecurrence = this.buildPreviousSeriesRecurrence(parent.recurrence || [], boundary.untilValue, countBefore);
+          const futureRecurrence = this.buildFutureSeriesRecurrence(parent.recurrence || [], countBefore);
+          const requestBody = this.buildFutureSeriesEvent(parent, instance, updates, futureRecurrence);
+
+          const inserted = await this.calendar.events.insert({
+            calendarId,
+            requestBody,
+            sendUpdates: requestBody.attendees?.length ? 'all' : 'none',
+          });
+
+          if (countBefore === 0) {
+            await this.calendar.events.delete({ calendarId, eventId: parentId, sendUpdates: 'none' });
+          } else {
+            await this.calendar.events.patch({
+              calendarId,
+              eventId: parentId,
+              requestBody: { recurrence: previousRecurrence },
+              sendUpdates: 'none',
+            });
+          }
+
+          return this.parseGoogleEvent(inserted.data, calendarId);
+        }
+      }
+    }
+
+    const requestBody = this.buildUpdateRequestBody(updates);
+    const res = await this.calendar.events.patch({
+      calendarId,
+      eventId,
+      requestBody,
+      sendUpdates: updates.attendees ? 'all' : 'none',
+    });
+
+    return this.parseGoogleEvent(res.data, calendarId);
+  }
+
+  private buildUpdateRequestBody(updates: UpdateEventInput): calendar_v3.Schema$Event {
     const requestBody: calendar_v3.Schema$Event = {};
     if (updates.summary !== undefined) requestBody.summary = updates.summary;
     if (updates.description !== undefined) requestBody.description = updates.description;
@@ -336,15 +394,154 @@ export class GoogleCalendarService {
 
     if (updates.transparency) requestBody.transparency = updates.transparency;
     if (updates.visibility) requestBody.visibility = updates.visibility;
+    return requestBody;
+  }
 
-    const res = await this.calendar.events.patch({
-      calendarId,
-      eventId,
-      requestBody,
-      sendUpdates: updates.attendees ? 'all' : 'none',
-    });
+  private getSplitBoundary(instance: calendar_v3.Schema$Event): { boundaryIso: string; untilValue: string } | null {
+    if (instance.originalStartTime?.date) {
+      const boundaryDate = instance.originalStartTime.date;
+      const boundary = new Date(`${boundaryDate}T00:00:00Z`);
+      boundary.setUTCDate(boundary.getUTCDate() - 1);
+      const untilValue = this.formatRRuleDate(boundary);
+      return { boundaryIso: `${boundaryDate}T00:00:00Z`, untilValue };
+    }
 
-    return this.parseGoogleEvent(res.data, calendarId);
+    const boundaryIso = instance.originalStartTime?.dateTime || instance.start?.dateTime;
+    if (!boundaryIso) return null;
+    const boundary = new Date(boundaryIso);
+    boundary.setUTCSeconds(boundary.getUTCSeconds() - 1);
+    const untilValue = this.formatRRuleDateTime(boundary);
+    return { boundaryIso, untilValue };
+  }
+
+  private formatRRuleDateTime(value: Date): string {
+    const yyyy = value.getUTCFullYear();
+    const mm = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(value.getUTCDate()).padStart(2, '0');
+    const hh = String(value.getUTCHours()).padStart(2, '0');
+    const min = String(value.getUTCMinutes()).padStart(2, '0');
+    const ss = String(value.getUTCSeconds()).padStart(2, '0');
+    return `${yyyy}${mm}${dd}T${hh}${min}${ss}Z`;
+  }
+
+  private formatRRuleDate(value: Date): string {
+    const yyyy = value.getUTCFullYear();
+    const mm = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(value.getUTCDate()).padStart(2, '0');
+    return `${yyyy}${mm}${dd}`;
+  }
+
+  private readRRuleCount(recurrence: string[]): number | null {
+    const rrule = recurrence.find(line => line.startsWith('RRULE:'));
+    if (!rrule) return null;
+    const m = rrule.match(/(?:^|;)COUNT=(\d+)(?:;|$)/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  private mutateRRule(rruleLine: string, updates: Record<string, string | null>): string {
+    const body = rruleLine.slice('RRULE:'.length);
+    const parts = body.split(';').filter(Boolean);
+    const kv = new Map<string, string>();
+    for (const part of parts) {
+      const [key, value] = part.split('=');
+      if (key && value !== undefined) kv.set(key, value);
+    }
+    for (const [key, value] of Object.entries(updates)) {
+      if (value === null) kv.delete(key);
+      else kv.set(key, value);
+    }
+    return `RRULE:${Array.from(kv.entries()).map(([key, value]) => `${key}=${value}`).join(';')}`;
+  }
+
+  private buildPreviousSeriesRecurrence(recurrence: string[], untilValue: string, countBefore: number | null): string[] {
+    const next = [...recurrence];
+    const idx = next.findIndex(line => line.startsWith('RRULE:'));
+    if (idx === -1) return next;
+    if (countBefore !== null) {
+      next[idx] = this.mutateRRule(next[idx], { COUNT: String(Math.max(1, countBefore)), UNTIL: null });
+    } else {
+      next[idx] = this.mutateRRule(next[idx], { COUNT: null, UNTIL: untilValue });
+    }
+    return next;
+  }
+
+  private buildFutureSeriesRecurrence(recurrence: string[], countBefore: number | null): string[] {
+    const next = [...recurrence];
+    if (countBefore === null) return next;
+    const idx = next.findIndex(line => line.startsWith('RRULE:'));
+    if (idx === -1) return next;
+    const originalCount = this.readRRuleCount(next);
+    if (originalCount === null) return next;
+    const remaining = Math.max(1, originalCount - countBefore);
+    next[idx] = this.mutateRRule(next[idx], { COUNT: String(remaining) });
+    return next;
+  }
+
+  private async countInstancesBeforeBoundary(calendarId: string, recurringEventId: string, boundaryIso: string): Promise<number> {
+    if (!this.calendar) throw new Error('Not authenticated');
+    let pageToken: string | undefined;
+    let count = 0;
+    do {
+      const res = await this.calendar.events.instances({
+        calendarId,
+        eventId: recurringEventId,
+        timeMax: boundaryIso,
+        showDeleted: false,
+        maxResults: 2500,
+        pageToken,
+      });
+      count += (res.data.items || []).length;
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken);
+    return count;
+  }
+
+  private buildFutureSeriesEvent(
+    parent: calendar_v3.Schema$Event,
+    instance: calendar_v3.Schema$Event,
+    updates: UpdateEventInput,
+    recurrence: string[],
+  ): calendar_v3.Schema$Event {
+    const allDay = updates.all_day ?? (!instance.start?.dateTime && !parent.start?.dateTime);
+    const event: calendar_v3.Schema$Event = {
+      summary: updates.summary ?? parent.summary ?? undefined,
+      description: updates.description ?? parent.description ?? undefined,
+      location: updates.location ?? parent.location ?? undefined,
+      transparency: updates.transparency ?? parent.transparency ?? undefined,
+      visibility: updates.visibility ?? parent.visibility ?? undefined,
+      recurrence,
+      colorId: parent.colorId || undefined,
+    };
+
+    if (allDay) {
+      event.start = { date: updates.start ? updates.start.split('T')[0] : (instance.start?.date || parent.start?.date || undefined) };
+      event.end = { date: updates.end ? updates.end.split('T')[0] : (instance.end?.date || parent.end?.date || undefined) };
+    } else {
+      const timeZone = updates.time_zone || instance.start?.timeZone || parent.start?.timeZone || undefined;
+      const start = updates.start || instance.start?.dateTime || parent.start?.dateTime;
+      const end = updates.end || instance.end?.dateTime || parent.end?.dateTime;
+      if (start) event.start = this.buildTimedSlot(start, timeZone);
+      if (end) event.end = this.buildTimedSlot(end, timeZone);
+    }
+
+    if (updates.attendees) {
+      event.attendees = updates.attendees.map(email => ({ email }));
+    } else if (parent.attendees && parent.attendees.length > 0) {
+      event.attendees = parent.attendees
+        .filter(a => !!a.email)
+        .map(a => ({ email: a.email!, displayName: a.displayName || undefined, optional: a.optional || undefined }));
+    }
+
+    if (updates.reminders) {
+      event.reminders = {
+        useDefault: false,
+        overrides: updates.reminders.map(r => ({ method: r.method, minutes: r.minutes })),
+      };
+    } else if (parent.reminders) {
+      event.reminders = parent.reminders;
+    }
+
+    return event;
   }
 
   async deleteEvent(calendarId: string, eventId: string): Promise<void> {

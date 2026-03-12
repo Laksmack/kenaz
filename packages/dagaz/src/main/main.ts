@@ -361,22 +361,26 @@ function registerIpcHandlers() {
     return event;
   });
 
-  ipcMain.handle(IPC.EVENT_UPDATE, async (_event, id: string, updates: UpdateEventInput) => {
+  ipcMain.handle(IPC.EVENT_UPDATE, async (_event, id: string, updates: UpdateEventInput, scope: 'single' | 'all' = 'single') => {
     const existing = cache.getEvent(id);
     if (!existing) return null;
 
     if (connectivity.isOnline && google.isAuthorized() && existing.google_id) {
       try {
-        const result = await google.updateEvent(existing.calendar_id, existing.google_id, updates);
-        cache.upsertEvent(result);
+        const result = await google.updateEvent(existing.calendar_id, existing.google_id, updates, scope);
+        const localId = cache.upsertEvent(result);
         if (result.attendees) {
-          cache.upsertAttendees(id, result.attendees.map(a => ({ ...a, event_id: id })));
+          cache.upsertAttendees(localId, result.attendees.map(a => ({ ...a, event_id: localId })));
         }
         notifyEventsChanged();
-        return cache.getEvent(id);
+        return cache.getEvent(scope === 'all' ? localId : id);
       } catch (e: any) {
         console.error('[Dagaz] Update failed, queueing:', e.message);
       }
+    }
+
+    if (scope === 'all' && existing.recurring_event_id) {
+      throw new Error('Updating "this and following" requires an online Google Calendar connection.');
     }
 
     cache.markEventPending(id, 'update', JSON.stringify(updates));
