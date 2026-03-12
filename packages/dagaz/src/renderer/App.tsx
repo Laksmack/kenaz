@@ -35,6 +35,7 @@ export default function App() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [updateConfirm, setUpdateConfirm] = useState<{ event: CalendarEvent; updates: UpdateEventInput } | null>(null);
+  const dagazTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const { toast, showToast } = useToast();
   const { quickCreateOpen, quickCreateStart, quickCreateEnd, editingEvent, openQuickCreate, openEditEvent, closeQuickCreate } = useQuickCreate();
@@ -164,9 +165,13 @@ export default function App() {
     updates: UpdateEventInput,
     scope: 'single' | 'all' = 'single',
   ) => {
-    const updatedEvent = await window.dagaz.updateEvent(event.id, updates, scope);
+    const timedUpdate = updates.start !== undefined || updates.end !== undefined;
+    const normalizedUpdates: UpdateEventInput = timedUpdate
+      ? { ...updates, time_zone: updates.time_zone || dagazTimeZone }
+      : updates;
+    const updatedEvent = await window.dagaz.updateEvent(event.id, normalizedUpdates, scope);
     const hasOtherAttendees = (event.attendees?.length ?? 0) > 1;
-    const name = updates.summary || event.summary || 'Event';
+    const name = normalizedUpdates.summary || event.summary || 'Event';
     const recurrenceSuffix = event.recurring_event_id && scope === 'all' ? ' from this event forward' : '';
     showToast(hasOtherAttendees
       ? `"${name}" updated${recurrenceSuffix} — attendees notified`
@@ -180,7 +185,7 @@ export default function App() {
         setSelectedEvent(updatedEvent || null);
       }
     }
-  }, [refresh, selectedEvent, showToast]);
+  }, [dagazTimeZone, refresh, selectedEvent, showToast]);
 
   const handleUpdateEvent = useCallback(async (event: CalendarEvent, newStart: Date, newEnd: Date) => {
     const hasOtherAttendees = (event.attendees?.length ?? 0) > 1;
