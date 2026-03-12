@@ -248,16 +248,39 @@ export class GoogleCalendarService {
   }
 
   /**
-   * When a named IANA timezone is provided, strip UTC offsets from the ISO datetime
-   * so Google interprets the time as local in that timezone. This is required for
-   * recurring events (Google needs a named tz for DST-aware recurrence) and avoids
-   * ambiguity when both an offset and timeZone are present.
+   * Build Google Calendar timed slots while preserving wall-clock intent.
+   * For explicit UTC/offset timestamps, convert into local clock time in the
+   * provided IANA timezone before sending `dateTime` + `timeZone`.
    */
   private buildTimedSlot(dateTime: string, timeZone?: string): { dateTime: string; timeZone?: string } {
     if (timeZone) {
-      // Strip trailing offset (e.g. -05:00, +00:00, Z) so Google uses timeZone field
-      const stripped = dateTime.replace(/([+-]\d{2}:\d{2}|Z)$/, '');
-      return { dateTime: stripped, timeZone };
+      const hasExplicitOffset = /([+-]\d{2}:\d{2}|Z)$/.test(dateTime);
+      // If an absolute timestamp is provided (e.g. drag/drop uses toISOString),
+      // convert it to wall-clock time in the target timezone before sending.
+      if (hasExplicitOffset) {
+        const asDate = new Date(dateTime);
+        if (!Number.isNaN(asDate.getTime())) {
+          const fmt = new Intl.DateTimeFormat('en-CA', {
+            timeZone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+          });
+          const parts = Object.fromEntries(
+            fmt.formatToParts(asDate)
+              .filter(p => p.type !== 'literal')
+              .map(p => [p.type, p.value]),
+          ) as Record<string, string>;
+          const local = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+          return { dateTime: local, timeZone };
+        }
+      }
+      // Already a local/floating datetime; keep wall-clock and attach timezone.
+      return { dateTime: dateTime.replace(/([+-]\d{2}:\d{2}|Z)$/, ''), timeZone };
     }
     return { dateTime };
   }
@@ -331,11 +354,8 @@ export class GoogleCalendarService {
         const boundary = this.getSplitBoundary(instance);
 
         if (boundary && (parent.recurrence || []).length > 0) {
-          const countInRule = this.readRRuleCount(parent.recurrence || []);
-          const countBefore = countInRule !== null
-            ? await this.countInstancesBeforeBoundary(calendarId, parentId, boundary.boundaryIso)
-            : null;
-          const previousRecurrence = this.buildPreviousSeriesRecurrence(parent.recurrence || [], boundary.untilValue, countBefore);
+          const countBefore = await this.countInstancesBeforeBoundary(calendarId, parentId, boundary.boundaryIso);
+          const previousRecurrence = this.buildPreviousSeriesRecurrence(parent.recurrence || [], countBefore);
           const futureRecurrence = this.buildFutureSeriesRecurrence(parent.recurrence || [], countBefore);
           const requestBody = this.buildFutureSeriesEvent(parent, instance, updates, futureRecurrence);
 
@@ -345,7 +365,7 @@ export class GoogleCalendarService {
             sendUpdates: requestBody.attendees?.length ? 'all' : 'none',
           });
 
-          if (countBefore === 0) {
+          if (countBefore <= 0) {
             await this.calendar.events.delete({ calendarId, eventId: parentId, sendUpdates: 'none' });
           } else {
             await this.calendar.events.patch({
@@ -397,38 +417,21 @@ export class GoogleCalendarService {
     return requestBody;
   }
 
-  private getSplitBoundary(instance: calendar_v3.Schema$Event): { boundaryIso: string; untilValue: string } | null {
+  private getSplitBoundary(instance: calendar_v3.Schema$Event): { boundaryIso: string } | null {
     if (instance.originalStartTime?.date) {
       const boundaryDate = instance.originalStartTime.date;
-      const boundary = new Date(`${boundaryDate}T00:00:00Z`);
-      boundary.setUTCDate(boundary.getUTCDate() - 1);
-      const untilValue = this.formatRRuleDate(boundary);
-      return { boundaryIso: `${boundaryDate}T00:00:00Z`, untilValue };
+      return { boundaryIso: `${boundaryDate}T00:00:00Z` };
     }
 
-    const boundaryIso = instance.originalStartTime?.dateTime || instance.start?.dateTime;
+    const original = instance.originalStartTime?.dateTime || instance.start?.dateTime;
+    if (!original) return null;
+    const d = new Date(original);
+    if (Number.isNaN(d.getTime())) return null;
+    // Ensure the selected occurrence is excluded from "before" counting.
+    d.setMilliseconds(d.getMilliseconds() - 1);
+    const boundaryIso = d.toISOString();
     if (!boundaryIso) return null;
-    const boundary = new Date(boundaryIso);
-    boundary.setUTCSeconds(boundary.getUTCSeconds() - 1);
-    const untilValue = this.formatRRuleDateTime(boundary);
-    return { boundaryIso, untilValue };
-  }
-
-  private formatRRuleDateTime(value: Date): string {
-    const yyyy = value.getUTCFullYear();
-    const mm = String(value.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(value.getUTCDate()).padStart(2, '0');
-    const hh = String(value.getUTCHours()).padStart(2, '0');
-    const min = String(value.getUTCMinutes()).padStart(2, '0');
-    const ss = String(value.getUTCSeconds()).padStart(2, '0');
-    return `${yyyy}${mm}${dd}T${hh}${min}${ss}Z`;
-  }
-
-  private formatRRuleDate(value: Date): string {
-    const yyyy = value.getUTCFullYear();
-    const mm = String(value.getUTCMonth() + 1).padStart(2, '0');
-    const dd = String(value.getUTCDate()).padStart(2, '0');
-    return `${yyyy}${mm}${dd}`;
+    return { boundaryIso };
   }
 
   private readRRuleCount(recurrence: string[]): number | null {
@@ -453,21 +456,16 @@ export class GoogleCalendarService {
     return `RRULE:${Array.from(kv.entries()).map(([key, value]) => `${key}=${value}`).join(';')}`;
   }
 
-  private buildPreviousSeriesRecurrence(recurrence: string[], untilValue: string, countBefore: number | null): string[] {
+  private buildPreviousSeriesRecurrence(recurrence: string[], countBefore: number): string[] {
     const next = [...recurrence];
     const idx = next.findIndex(line => line.startsWith('RRULE:'));
     if (idx === -1) return next;
-    if (countBefore !== null) {
-      next[idx] = this.mutateRRule(next[idx], { COUNT: String(Math.max(1, countBefore)), UNTIL: null });
-    } else {
-      next[idx] = this.mutateRRule(next[idx], { COUNT: null, UNTIL: untilValue });
-    }
+    next[idx] = this.mutateRRule(next[idx], { COUNT: String(Math.max(1, countBefore)), UNTIL: null });
     return next;
   }
 
-  private buildFutureSeriesRecurrence(recurrence: string[], countBefore: number | null): string[] {
+  private buildFutureSeriesRecurrence(recurrence: string[], countBefore: number): string[] {
     const next = [...recurrence];
-    if (countBefore === null) return next;
     const idx = next.findIndex(line => line.startsWith('RRULE:'));
     if (idx === -1) return next;
     const originalCount = this.readRRuleCount(next);
