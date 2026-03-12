@@ -22,3 +22,7 @@ build/
 
 # Turborepo
 .turbo/
+
+# Local agent/build artifacts
+.build-*.log
+.claude/
