@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { cn } from '../lib/utils';
 import { formatName } from '../lib/formatName';
 import type { ViewType, LaguzConfig, Section, SelectedItem, NoteSummary } from '../types';
@@ -113,8 +113,8 @@ function VaultFolderTree({ currentView, contextFolder, onFolderNavigate, onOpenF
   const [loadingFolders, setLoadingFolders] = useState<Set<string>>(new Set());
   const [treeOpen, setTreeOpen] = useState(false);
 
-  const loadTopLevel = useCallback(() => {
-    if (folders !== null) return;
+  const loadTopLevel = useCallback((force = false) => {
+    if (!force && folders !== null) return;
     window.laguz.getVaultFolders().then(f => {
       setFolders(f.filter(folder => !folder.name.startsWith('_')));
     }).catch(console.error);
@@ -124,6 +124,26 @@ function VaultFolderTree({ currentView, contextFolder, onFolderNavigate, onOpenF
     const next = !treeOpen;
     setTreeOpen(next);
     if (next) loadTopLevel();
+  }, [treeOpen, loadTopLevel]);
+
+  useEffect(() => {
+    if (!treeOpen) return;
+
+    loadTopLevel(true);
+    const interval = setInterval(() => loadTopLevel(true), 30_000);
+    const refreshNow = () => {
+      if (document.visibilityState === 'hidden') return;
+      loadTopLevel(true);
+    };
+
+    window.addEventListener('focus', refreshNow);
+    document.addEventListener('visibilitychange', refreshNow);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', refreshNow);
+      document.removeEventListener('visibilitychange', refreshNow);
+    };
   }, [treeOpen, loadTopLevel]);
 
   const toggleFolder = useCallback((folderPath: string, folderName: string) => {

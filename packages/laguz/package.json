@@ -1,6 +1,6 @@
 {
   "name": "@futhark/laguz",
-  "version": "1.8.8",
+  "version": "1.8.10",
   "description": "Laguz ᛚ — Notes and vault browser",
   "main": "dist/main/main/main.js",
   "private": true,
@@ -447,6 +447,18 @@
         "name": "PDF Document",
         "role": "Viewer",
         "mimeType": "application/pdf"
+      },
+      {
+        "ext": "docx",
+        "name": "Word Document",
+        "role": "Viewer",
+        "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      },
+      {
+        "ext": "doc",
+        "name": "Word Document",
+        "role": "Viewer",
+        "mimeType": "application/msword"
       }
     ],
     "asarUnpack": [],

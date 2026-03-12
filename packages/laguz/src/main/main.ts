@@ -603,7 +603,25 @@ app.on('open-file', (event, filePath) => {
   sendFileToRenderer(filePath);
 });
 
-// ── Default .md Viewer ────────────────────────────────────────
+// ── Default Viewer Registration (macOS) ───────────────────────
+
+const DEFAULT_VIEWER_EXTENSIONS = [
+  'md', 'markdown', 'mdx',
+  'txt', 'log', 'csv', 'tsv',
+  'json', 'jsonl', 'yaml', 'yml', 'toml', 'xml',
+  'html', 'htm', 'css', 'scss', 'less',
+  'js', 'mjs', 'jsx', 'ts', 'tsx',
+  'py', 'rb', 'rs', 'go', 'java', 'kt', 'swift',
+  'c', 'h', 'cpp', 'hpp', 'cs', 'php', 'sql',
+  'sh', 'bash', 'zsh', 'fish', 'lua',
+  'r', 'scala', 'clj', 'ex', 'exs', 'erl', 'hs', 'ml',
+  'dart', 'vue', 'svelte', 'graphql', 'proto',
+  'dockerfile', 'tf', 'ini', 'conf', 'cfg', 'env',
+  'tex', 'rst', 'org',
+  'pdf', 'doc', 'docx',
+];
+
+const DEFAULT_VIEWER_STATUS_EXTENSIONS = ['md', 'pdf', 'txt', 'yaml', 'lua', 'docx'];
 
 function getAppBundlePath(): string | null {
   if (process.platform !== 'darwin') return null;
@@ -612,32 +630,45 @@ function getAppBundlePath(): string | null {
   return match ? match[1] : null;
 }
 
-function isDefaultMdViewer(): boolean {
+function isDefaultForPreferredTypes(): boolean {
   if (process.platform !== 'darwin') return false;
   const appBundle = getAppBundlePath();
   if (!appBundle) return false;
+  const exts = DEFAULT_VIEWER_STATUS_EXTENSIONS.map(ext => `"${ext}"`).join(', ');
   try {
     const result = execSync(
-      `swift -e 'import AppKit; import UniformTypeIdentifiers; if let t = UTType(filenameExtension: "md"), let u = NSWorkspace.shared.urlForApplication(toOpen: t) { print(u.path) }'`,
+      `swift -e '
+import AppKit
+import UniformTypeIdentifiers
+let exts = [${exts}]
+for ext in exts {
+    if let t = UTType(filenameExtension: ext), let u = NSWorkspace.shared.urlForApplication(toOpen: t) {
+        print("\\(u.path)")
+    }
+}
+'`,
       { encoding: 'utf8', timeout: 10000 }
-    ).trim();
-    return result === appBundle;
+    ).trim().split('\n').map((s) => s.trim()).filter(Boolean);
+    return result.length > 0 && result.every((bundlePath) => bundlePath === appBundle);
   } catch { return false; }
 }
 
-function setDefaultMdViewer(): boolean {
+function setDefaultPreferredViewer(): boolean {
   if (process.platform !== 'darwin') return false;
   const appBundle = getAppBundlePath();
   if (!appBundle) return false;
+  const escapedBundlePath = appBundle.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const exts = DEFAULT_VIEWER_EXTENSIONS.map(ext => `"${ext}"`).join(', ');
   try {
     execSync(
       `swift -e '
 import AppKit
 import UniformTypeIdentifiers
-let app = URL(fileURLWithPath: "${appBundle}")
-let types: [UTType] = [.init(filenameExtension: "md")!, .init(filenameExtension: "markdown")!].compactMap { $0 }
+let app = URL(fileURLWithPath: "${escapedBundlePath}")
+let exts = [${exts}]
 let group = DispatchGroup()
-for t in types {
+for ext in exts {
+    guard let t = UTType(filenameExtension: ext) else { continue }
     group.enter()
     NSWorkspace.shared.setDefaultApplication(at: app, toOpenContentType: t) { _ in group.leave() }
 }
@@ -647,16 +678,32 @@ group.wait()
     );
     return true;
   } catch (e: any) {
-    console.error('[Laguz] Failed to set default .md viewer:', e.message);
+    console.error('[Laguz] Failed to set default viewer for preferred file types:', e.message);
     return false;
   }
 }
 
 // ── App Menu ──────────────────────────────────────────────────
 
+function getDefaultViewerMenuItem(): Electron.MenuItemConstructorOptions {
+  const supported = process.platform === 'darwin';
+  const isDefault = supported ? isDefaultForPreferredTypes() : false;
+  return {
+    label: isDefault
+      ? 'Default Viewer for PDF & Text Files ✓'
+      : 'Make Default Viewer for PDF & Text Files',
+    enabled: supported && !isDefault,
+    click: () => {
+      if (!supported) return;
+      if (setDefaultPreferredViewer()) {
+        buildAppMenu();
+      }
+    },
+  };
+}
+
 function buildAppMenu() {
   const isMac = process.platform === 'darwin';
-  const isDefault = isDefaultMdViewer();
 
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(isMac ? [{
@@ -666,15 +713,7 @@ function buildAppMenu() {
         { type: 'separator' as const },
         ...getUpdateMenuItems(),
         { type: 'separator' as const },
-        {
-          label: isDefault ? 'Default .md Viewer \u2713' : 'Make Default .md Viewer',
-          enabled: !isDefault,
-          click: () => {
-            if (setDefaultMdViewer()) {
-              buildAppMenu();
-            }
-          },
-        },
+        getDefaultViewerMenuItem(),
         { type: 'separator' as const },
         { role: 'services' as const },
         { type: 'separator' as const },
@@ -685,7 +724,15 @@ function buildAppMenu() {
         { role: 'quit' as const },
       ],
     }] : []),
-    { role: 'fileMenu' },
+    {
+      label: 'File',
+      submenu: [
+        getDefaultViewerMenuItem(),
+        { type: 'separator' as const },
+        { role: 'close' as const },
+        ...(!isMac ? [{ type: 'separator' as const }, { role: 'quit' as const }] : []),
+      ],
+    },
     { role: 'editMenu' },
     { role: 'viewMenu' },
     { role: 'windowMenu' },

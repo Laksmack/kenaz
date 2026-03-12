@@ -5,7 +5,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { defaultKeymap, indentWithTab, history, historyKeymap } from '@codemirror/commands';
 import { syntaxHighlighting, HighlightStyle, foldEffect, foldedRanges, codeFolding, foldKeymap, foldService, LanguageDescription } from '@codemirror/language';
 import { languages } from '@codemirror/language-data';
-import { search, searchKeymap, highlightSelectionMatches } from '@codemirror/search';
+import { search, searchKeymap, highlightSelectionMatches, openSearchPanel, getSearchQuery, SearchQuery, setSearchQuery } from '@codemirror/search';
 import { tags } from '@lezer/highlight';
 import { marked } from 'marked';
 import { useNote, useFile } from '../hooks/useNotes';
@@ -569,6 +569,58 @@ function NoteEditor({ content, notePath, onContentChange, onDone, isMd = true, s
     saveTimerRef.current = setTimeout(() => save(newContent), 500);
   }, [save]);
 
+  const openFindPanel = useCallback(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.focus();
+    openSearchPanel(view);
+  }, []);
+
+  const openReplacePanel = useCallback(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.focus();
+    openSearchPanel(view);
+    queueMicrotask(() => {
+      const toggle = view.dom.querySelector('.cm-search .cm-button') as HTMLButtonElement | null;
+      if (toggle?.getAttribute('aria-pressed') !== 'true') {
+        toggle?.click();
+      }
+      const replaceInput = view.dom.querySelector('.cm-search input[name="replace"]') as HTMLInputElement | null;
+      replaceInput?.focus();
+    });
+  }, []);
+
+  const openRegexReplacePanel = useCallback(() => {
+    const view = viewRef.current;
+    if (!view) return;
+    view.focus();
+    openSearchPanel(view);
+    const query = getSearchQuery(view.state);
+    view.dispatch({
+      effects: setSearchQuery.of(new SearchQuery({
+        search: query.search,
+        replace: query.replace,
+        caseSensitive: query.caseSensitive,
+        wholeWord: query.wholeWord,
+        literal: query.literal,
+        regexp: true,
+      })),
+    });
+    queueMicrotask(() => {
+      const toggle = view.dom.querySelector('.cm-search .cm-button') as HTMLButtonElement | null;
+      if (toggle?.getAttribute('aria-pressed') !== 'true') {
+        toggle?.click();
+      }
+      const regexToggle = view.dom.querySelector('.cm-search input[name="regexp"]') as HTMLInputElement | null;
+      if (regexToggle && !regexToggle.checked) {
+        regexToggle.click();
+      }
+      const searchInput = view.dom.querySelector('.cm-search input[name="search"]') as HTMLInputElement | null;
+      searchInput?.focus();
+    });
+  }, []);
+
   useEffect(() => {
     if (!containerRef.current) return;
     let destroyed = false;
@@ -609,6 +661,17 @@ function NoteEditor({ content, notePath, onContentChange, onDone, isMd = true, s
       },
     ]);
 
+    const findKeymap = keymap.of([
+      {
+        key: 'Mod-Shift-f',
+        run: () => { openReplacePanel(); return true; },
+      },
+      {
+        key: 'Mod-Alt-f',
+        run: () => { openRegexReplacePanel(); return true; },
+      },
+    ]);
+
     const wantLineNums = showLineNumbers === 'on' || (showLineNumbers === 'auto' && !isMd);
 
     const baseExtensions: Extension[] = [
@@ -620,6 +683,7 @@ function NoteEditor({ content, notePath, onContentChange, onDone, isMd = true, s
       highlightSelectionMatches(),
       ...(wantLineNums ? [lineNumbers()] : []),
       Prec.high(saveKeymap),
+      Prec.high(findKeymap),
       keymap.of([...defaultKeymap, ...historyKeymap, ...foldKeymap, ...searchKeymap, indentWithTab]),
       updateListener,
       EditorView.lineWrapping,
@@ -682,7 +746,7 @@ function NoteEditor({ content, notePath, onContentChange, onDone, isMd = true, s
       viewRef.current?.destroy();
       viewRef.current = null;
     };
-  }, [notePath]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [notePath, openReplacePanel, openRegexReplacePanel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     onRegisterInsert?.((text: string) => {
@@ -707,6 +771,27 @@ function NoteEditor({ content, notePath, onContentChange, onDone, isMd = true, s
         <span>{docStats.words} words</span>
         <span>{docStats.chars} chars</span>
         <div className="flex-1" />
+        <button
+          onClick={openFindPanel}
+          className="px-2 py-0.5 rounded text-[10px] border border-border-subtle text-text-muted hover:text-text-primary hover:border-accent-primary/40 transition-colors"
+          title="Find (Cmd/Ctrl+F)"
+        >
+          Find
+        </button>
+        <button
+          onClick={openReplacePanel}
+          className="px-2 py-0.5 rounded text-[10px] border border-border-subtle text-text-muted hover:text-text-primary hover:border-accent-primary/40 transition-colors"
+          title="Replace (Cmd/Ctrl+Shift+F). Tip: select a block first, then use Replace All."
+        >
+          Replace
+        </button>
+        <button
+          onClick={openRegexReplacePanel}
+          className="px-2 py-0.5 rounded text-[10px] border border-border-subtle text-text-muted hover:text-text-primary hover:border-accent-primary/40 transition-colors"
+          title="Regex replace (Cmd/Ctrl+Alt+F)"
+        >
+          Regex
+        </button>
         <span>{langLabel}</span>
         <span>UTF-8</span>
         <span className={saveStatus === 'saving' ? 'text-accent-primary' : saveStatus === 'modified' ? 'text-amber-400' : 'text-text-muted'}>
