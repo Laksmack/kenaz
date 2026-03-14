@@ -44,6 +44,12 @@ export default function App() {
     }
   }, [appConfig?.theme]);
 
+  useEffect(() => {
+    if (!loading && tasks.length > 0 && !selectedTask && currentView !== 'pipeline') {
+      setSelectedTask(tasks[0]);
+    }
+  }, [loading, tasks, selectedTask, currentView]);
+
   const openNewTask = useCallback(() => {
     setNewTaskOpen(true);
   }, []);
