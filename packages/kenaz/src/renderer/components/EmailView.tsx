@@ -994,20 +994,25 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
     // (bridgeIframeKeys) handles forwarding shortcuts to the parent, and
     // blurring broke Cmd+C (copy) by moving focus away from the selection.
 
-    // Forward keyboard events from iframe to parent so shortcuts still work
-    // This is a safety net in case the iframe somehow has focus
-    doc.addEventListener('keydown', (e: KeyboardEvent) => {
-      const parentEvent = new KeyboardEvent('keydown', {
-        key: e.key,
-        code: e.code,
-        altKey: e.altKey,
-        ctrlKey: e.ctrlKey,
-        metaKey: e.metaKey,
-        shiftKey: e.shiftKey,
-        bubbles: true,
+    // Mark as bridged so the timeout-based bridgeIframeKeys in EmailView
+    // doesn't add a second listener (double-fire breaks snooze mode etc.)
+    if (!(doc as any).__kenazBridged) {
+      (doc as any).__kenazBridged = true;
+      doc.addEventListener('keydown', (e: KeyboardEvent) => {
+        if ((e.metaKey || e.ctrlKey) && ['c', 'a', 'v', 'x'].includes(e.key.toLowerCase())) {
+          return;
+        }
+        window.dispatchEvent(new KeyboardEvent('keydown', {
+          key: e.key,
+          code: e.code,
+          altKey: e.altKey,
+          ctrlKey: e.ctrlKey,
+          metaKey: e.metaKey,
+          shiftKey: e.shiftKey,
+          bubbles: true,
+        }));
       });
-      window.dispatchEvent(parentEvent);
-    });
+    }
 
     // Auto-resize iframe to content
     const resize = () => {

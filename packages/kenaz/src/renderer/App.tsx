@@ -1000,7 +1000,7 @@ export default function App() {
     onSnoozeMode: setSnoozeMode,
     onRefresh: refresh,
     onSettings: () => setSettingsOpen(!settingsOpen),
-    enabled: !composeOpen && !advancedSearchOpen || settingsOpen,
+    enabled: !composeOpen && !advancedSearchOpen && !settingsOpen,
   });
 
   // Auth screen
