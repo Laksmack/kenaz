@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import type { CalendarEvent, PendingInvite } from '../../shared/types';
 import { formatTime } from '../lib/utils';
-import { inviteMatchesEvent, isExcludedFromConflicts } from '../lib/event-layout';
+import { inviteMatchesEvent, isExcludedFromConflicts, toComparableUtcMs } from '../lib/event-layout';
 
 type RsvpResponse = 'accepted' | 'declined' | 'tentative';
+const CONFLICT_BUFFER_MS = 60 * 60 * 1000;
 
 interface Props {
   events: CalendarEvent[];
@@ -22,27 +23,31 @@ interface Props {
 
 function hasConflict(event: CalendarEvent, allEvents: CalendarEvent[]): boolean {
   if (event.all_day) return false;
-  const eStart = new Date(event.start_time).getTime();
-  const eEnd = new Date(event.end_time).getTime();
+  const eStart = toComparableUtcMs(event.start_time, event.time_zone);
+  const eEnd = toComparableUtcMs(event.end_time, event.time_zone);
+  if (Number.isNaN(eStart) || Number.isNaN(eEnd)) return false;
   return allEvents.some(other => {
     if (other.id === event.id || isExcludedFromConflicts(other)) return false;
-    const oStart = new Date(other.start_time).getTime();
-    const oEnd = new Date(other.end_time).getTime();
-    return eStart < oEnd && oStart < eEnd;
+    const oStart = toComparableUtcMs(other.start_time, other.time_zone);
+    const oEnd = toComparableUtcMs(other.end_time, other.time_zone);
+    if (Number.isNaN(oStart) || Number.isNaN(oEnd)) return false;
+    return eStart < (oEnd + CONFLICT_BUFFER_MS) && oStart < (eEnd + CONFLICT_BUFFER_MS);
   });
 }
 
 function hasInviteConflict(invite: PendingInvite, events: CalendarEvent[]): boolean {
   if (!invite.startTime || !invite.endTime) return false;
-  const iStart = new Date(invite.startTime).getTime();
-  const iEnd = new Date(invite.endTime).getTime();
+  const iStart = toComparableUtcMs(invite.startTime, null);
+  const iEnd = toComparableUtcMs(invite.endTime, null);
+  if (Number.isNaN(iStart) || Number.isNaN(iEnd)) return false;
   return events.some(e => {
     if (isExcludedFromConflicts(e)) return false;
     // Skip events that represent the same meeting as this invite
     if (inviteMatchesEvent(invite, e)) return false;
-    const eStart = new Date(e.start_time).getTime();
-    const eEnd = new Date(e.end_time).getTime();
-    return iStart < eEnd && eStart < iEnd;
+    const eStart = toComparableUtcMs(e.start_time, e.time_zone);
+    const eEnd = toComparableUtcMs(e.end_time, e.time_zone);
+    if (Number.isNaN(eStart) || Number.isNaN(eEnd)) return false;
+    return iStart < (eEnd + CONFLICT_BUFFER_MS) && eStart < (iEnd + CONFLICT_BUFFER_MS);
   });
 }
 
@@ -192,7 +197,10 @@ export function InviteReviewPanel({
               {/* Title */}
               <div
                 className="text-sm font-medium text-text-primary cursor-pointer hover:text-accent-primary transition-colors leading-snug"
-                onClick={() => onSelectEvent(event)}
+                onClick={() => {
+                  onDateSelect(new Date(event.start_time));
+                  onSelectEvent(event);
+                }}
                 title={event.summary}
               >
                 {event.summary}

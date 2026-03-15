@@ -30,6 +30,67 @@ export function timeOverlaps(s1: string, e1: string, s2: string, e2: string): bo
   return new Date(s1).getTime() < new Date(e2).getTime() && new Date(s2).getTime() < new Date(e1).getTime();
 }
 
+const FLOATING_DATE_TIME_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/;
+const HAS_EXPLICIT_OFFSET_RE = /(Z|[+-]\d{2}:\d{2})$/;
+
+function zonedWallClockToUtcMs(value: string, timeZone: string): number {
+  const match = value.match(FLOATING_DATE_TIME_RE);
+  if (!match) return Number.NaN;
+  const [, y, mo, d, h, mi, s] = match;
+  const year = Number(y);
+  const month = Number(mo);
+  const day = Number(d);
+  const hour = Number(h);
+  const minute = Number(mi);
+  const second = Number(s || '0');
+  const desiredUtc = Date.UTC(year, month - 1, day, hour, minute, second);
+
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+
+  let guess = desiredUtc;
+  for (let i = 0; i < 3; i++) {
+    const parts = Object.fromEntries(
+      fmt.formatToParts(new Date(guess))
+        .filter(p => p.type !== 'literal')
+        .map(p => [p.type, p.value]),
+    ) as Record<string, string>;
+    const representedUtc = Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      Number(parts.hour),
+      Number(parts.minute),
+      Number(parts.second),
+    );
+    const delta = desiredUtc - representedUtc;
+    if (delta === 0) return guess;
+    guess += delta;
+  }
+  return guess;
+}
+
+/**
+ * Parse event timestamps to a comparable UTC epoch.
+ * - If the timestamp already includes an offset/Z, native parsing is correct.
+ * - If it's floating (no offset) and a timezone is provided, interpret it in that timezone.
+ */
+export function toComparableUtcMs(value: string, timeZone?: string | null): number {
+  if (!value) return Number.NaN;
+  if (HAS_EXPLICIT_OFFSET_RE.test(value) || !timeZone) return new Date(value).getTime();
+  const zoned = zonedWallClockToUtcMs(value, timeZone);
+  if (!Number.isNaN(zoned)) return zoned;
+  return new Date(value).getTime();
+}
+
 /**
  * Check if a pending invite likely represents the same meeting as a calendar event.
  * Matches by title similarity + overlapping time window.

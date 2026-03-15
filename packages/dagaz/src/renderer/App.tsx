@@ -66,6 +66,7 @@ export default function App() {
     isLoading: needsActionLoading,
     refresh: refreshNeedsAction,
   } = useNeedsAction();
+  const [responseConflictEvents, setResponseConflictEvents] = useState<CalendarEvent[]>([]);
 
   const events = useMemo(() => {
     if (!appConfig?.hideDeclinedEvents) return rawEvents;
@@ -152,6 +153,12 @@ export default function App() {
     setCurrentDate(date);
     if (currentView === 'month') setCurrentView('day');
   }, [currentView]);
+
+  const handleReviewDateSelect = useCallback((date: Date) => {
+    setCurrentDate(date);
+    setCurrentView('day');
+    setSelectedEvent(null);
+  }, []);
 
   // ── Event Actions ─────────────────────────────────────────
 
@@ -259,6 +266,57 @@ export default function App() {
     setSelectedEvent(event);
     if (event) setShowInvitesPanel(false);
   }, [setShowInvitesPanel]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const rawRanges: Array<{ start: number; end: number }> = [];
+    for (const event of needsActionEvents) {
+      const start = new Date(event.start_time).getTime();
+      const end = new Date(event.end_time).getTime();
+      if (Number.isNaN(start) || Number.isNaN(end) || end <= start) continue;
+      rawRanges.push({ start, end });
+    }
+    for (const invite of pendingInvites) {
+      if (!invite.startTime || !invite.endTime) continue;
+      const start = new Date(invite.startTime).getTime();
+      const end = new Date(invite.endTime).getTime();
+      if (Number.isNaN(start) || Number.isNaN(end) || end <= start) continue;
+      rawRanges.push({ start, end });
+    }
+
+    if (rawRanges.length === 0) {
+      setResponseConflictEvents(events);
+      return;
+    }
+
+    rawRanges.sort((a, b) => a.start - b.start);
+    const mergedRanges: Array<{ start: number; end: number }> = [];
+    for (const range of rawRanges) {
+      const last = mergedRanges[mergedRanges.length - 1];
+      if (!last || range.start > last.end) mergedRanges.push({ ...range });
+      else last.end = Math.max(last.end, range.end);
+    }
+
+    const loadConflictEvents = async () => {
+      try {
+        const batches = await Promise.all(
+          mergedRanges.map((range) => window.dagaz.getEvents(new Date(range.start).toISOString(), new Date(range.end).toISOString())),
+        );
+        const merged = new Map<string, CalendarEvent>();
+        for (const batch of batches) {
+          for (const event of batch || []) merged.set(event.id, event);
+        }
+        if (!cancelled) setResponseConflictEvents(Array.from(merged.values()));
+      } catch (e) {
+        console.error('[App] Failed to fetch conflict events for invite review:', e);
+        if (!cancelled) setResponseConflictEvents(events);
+      }
+    };
+
+    loadConflictEvents();
+    return () => { cancelled = true; };
+  }, [needsActionEvents, pendingInvites, events]);
 
   const handleJoinMeeting = useCallback(() => {
     if (!selectedEvent) return;
@@ -491,8 +549,8 @@ export default function App() {
             <EventDetail event={selectedEvent} onClose={() => { setSelectedEvent(null); if (needsActionEvents.length > 0 || pendingInvites.length > 0) setShowInvitesPanel(true); }}
               onDelete={handleDeleteEvent} onRSVP={handleRSVP} onEdit={openEditEvent} />
           ) : (showInvitesPanel || needsActionEvents.length > 0 || pendingInvites.length > 0) && (
-            <InviteReviewPanel events={needsActionEvents} allEvents={events} isLoading={needsActionLoading}
-              onRefresh={refreshNeedsAction} onRsvp={handleRSVP} onSelectEvent={selectEvent} onDateSelect={handleDateSelect}
+            <InviteReviewPanel events={needsActionEvents} allEvents={responseConflictEvents} isLoading={needsActionLoading}
+              onRefresh={refreshNeedsAction} onRsvp={handleRSVP} onSelectEvent={selectEvent} onDateSelect={handleReviewDateSelect}
               pendingInvites={pendingInvites} pendingInvitesLoading={pendingInvitesLoading}
               onRefreshInvites={refreshPendingInvites} onDismissInvite={dismissPendingInvite} onRsvpInvite={handleInviteRsvp} />
           )}
