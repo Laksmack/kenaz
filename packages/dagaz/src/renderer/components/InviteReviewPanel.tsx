@@ -4,7 +4,6 @@ import { formatTime } from '../lib/utils';
 import { inviteMatchesEvent, isExcludedFromConflicts, toComparableUtcMs } from '../lib/event-layout';
 
 type RsvpResponse = 'accepted' | 'declined' | 'tentative';
-const CONFLICT_BUFFER_MS = 60 * 60 * 1000;
 
 interface Props {
   events: CalendarEvent[];
@@ -31,7 +30,7 @@ function hasConflict(event: CalendarEvent, allEvents: CalendarEvent[]): boolean 
     const oStart = toComparableUtcMs(other.start_time, other.time_zone);
     const oEnd = toComparableUtcMs(other.end_time, other.time_zone);
     if (Number.isNaN(oStart) || Number.isNaN(oEnd)) return false;
-    return eStart < (oEnd + CONFLICT_BUFFER_MS) && oStart < (eEnd + CONFLICT_BUFFER_MS);
+    return eStart < oEnd && oStart < eEnd;
   });
 }
 
@@ -47,7 +46,7 @@ function hasInviteConflict(invite: PendingInvite, events: CalendarEvent[]): bool
     const eStart = toComparableUtcMs(e.start_time, e.time_zone);
     const eEnd = toComparableUtcMs(e.end_time, e.time_zone);
     if (Number.isNaN(eStart) || Number.isNaN(eEnd)) return false;
-    return iStart < (eEnd + CONFLICT_BUFFER_MS) && eStart < (iEnd + CONFLICT_BUFFER_MS);
+    return iStart < eEnd && eStart < iEnd;
   });
 }
 
