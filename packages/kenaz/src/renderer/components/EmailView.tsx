@@ -179,51 +179,6 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
     if (printMenuOpen) onTogglePrintMenu?.();
   }, [thread?.id]);
 
-  // Keyboard event bridge: forward key events from iframes to the main window
-  // so shortcuts work even when an iframe has focus, without blocking text selection/copy.
-  useEffect(() => {
-    const bridgeIframeKeys = () => {
-      const iframes = document.querySelectorAll('iframe');
-      iframes.forEach((iframe) => {
-        try {
-          const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-          if (!iframeDoc || (iframeDoc as any).__kenazBridged) return;
-          (iframeDoc as any).__kenazBridged = true;
-
-          iframeDoc.addEventListener('keydown', (e: KeyboardEvent) => {
-            // Let Cmd+C / Cmd+A / Cmd+V pass through natively inside the iframe
-            if ((e.metaKey || e.ctrlKey) && ['c', 'a', 'v', 'x'].includes(e.key.toLowerCase())) {
-              return;
-            }
-            // Forward all other key events to the main window for shortcut handling
-            window.dispatchEvent(new KeyboardEvent('keydown', {
-              key: e.key,
-              code: e.code,
-              metaKey: e.metaKey,
-              ctrlKey: e.ctrlKey,
-              altKey: e.altKey,
-              shiftKey: e.shiftKey,
-              bubbles: true,
-            }));
-          });
-        } catch {
-          // Cross-origin iframe — can't access, skip
-        }
-      });
-    };
-
-    // Bridge after a delay (iframes need time to load)
-    const timer1 = setTimeout(bridgeIframeKeys, 500);
-    const timer2 = setTimeout(bridgeIframeKeys, 1500);
-    const timer3 = setTimeout(bridgeIframeKeys, 3000);
-
-    return () => {
-      clearTimeout(timer1);
-      clearTimeout(timer2);
-      clearTimeout(timer3);
-    };
-  }, [thread]);
-
   if (!thread) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -994,25 +949,25 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
     // (bridgeIframeKeys) handles forwarding shortcuts to the parent, and
     // blurring broke Cmd+C (copy) by moving focus away from the selection.
 
-    // Mark as bridged so the timeout-based bridgeIframeKeys in EmailView
-    // doesn't add a second listener (double-fire breaks snooze mode etc.)
-    if (!(doc as any).__kenazBridged) {
-      (doc as any).__kenazBridged = true;
-      doc.addEventListener('keydown', (e: KeyboardEvent) => {
-        if ((e.metaKey || e.ctrlKey) && ['c', 'a', 'v', 'x'].includes(e.key.toLowerCase())) {
-          return;
-        }
-        window.dispatchEvent(new KeyboardEvent('keydown', {
-          key: e.key,
-          code: e.code,
-          altKey: e.altKey,
-          ctrlKey: e.ctrlKey,
-          metaKey: e.metaKey,
-          shiftKey: e.shiftKey,
-          bubbles: true,
-        }));
-      });
-    }
+    // Always bridge iframe key presses back to the main window. This avoids
+    // stale "__kenazBridged" states after doc.write cycles where listeners can
+    // be dropped while flags remain.
+    const bridgeKeydown = (e: KeyboardEvent) => {
+      // Keep native clipboard/select shortcuts inside the iframe.
+      if ((e.metaKey || e.ctrlKey) && ['c', 'a', 'v', 'x'].includes(e.key.toLowerCase())) {
+        return;
+      }
+      window.dispatchEvent(new KeyboardEvent('keydown', {
+        key: e.key,
+        code: e.code,
+        altKey: e.altKey,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        shiftKey: e.shiftKey,
+        bubbles: true,
+      }));
+    };
+    doc.addEventListener('keydown', bridgeKeydown);
 
     // Auto-resize iframe to content
     const resize = () => {
@@ -1052,6 +1007,7 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
       clearTimeout(t2);
       clearTimeout(t3);
       if (resizeObserver) resizeObserver.disconnect();
+      doc.removeEventListener('keydown', bridgeKeydown);
     };
   }, [message.body, showQuoted, currentTheme]);
 
