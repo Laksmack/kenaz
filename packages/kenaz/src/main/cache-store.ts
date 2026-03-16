@@ -110,6 +110,13 @@ export class CacheStore {
         original_labels TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_snoozed_until ON snoozed_threads(snooze_until);
+
+      CREATE TABLE IF NOT EXISTS recent_done_threads (
+        thread_id TEXT PRIMARY KEY,
+        done_at TEXT NOT NULL,
+        suppress_until TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_recent_done_suppress_until ON recent_done_threads(suppress_until);
     `);
 
     // Migrate: add nudge_type column to threads if it doesn't exist
@@ -630,6 +637,39 @@ export class CacheStore {
       'SELECT 1 FROM snoozed_threads WHERE thread_id = ?'
     ).get(threadId);
     return !!row;
+  }
+
+  // ── Recent "Done" suppression ───────────────────────────
+
+  /**
+   * Mark a thread as recently "done" (archived) to suppress sync bounce-back.
+   */
+  markThreadDone(threadId: string, suppressMs: number = 5 * 60 * 1000): void {
+    const now = new Date();
+    const suppressUntil = new Date(now.getTime() + suppressMs);
+    this.db.prepare(`
+      INSERT OR REPLACE INTO recent_done_threads (thread_id, done_at, suppress_until)
+      VALUES (?, ?, ?)
+    `).run(threadId, now.toISOString(), suppressUntil.toISOString());
+  }
+
+  /**
+   * True when a thread is in the recent "done" suppression window.
+   */
+  isThreadRecentlyDone(threadId: string): boolean {
+    const now = new Date().toISOString();
+    const row = this.db.prepare(
+      `SELECT 1 FROM recent_done_threads WHERE thread_id = ? AND suppress_until > ?`
+    ).get(threadId, now);
+    return !!row;
+  }
+
+  /**
+   * Remove expired suppression entries.
+   */
+  pruneRecentDone(): void {
+    const now = new Date().toISOString();
+    this.db.prepare(`DELETE FROM recent_done_threads WHERE suppress_until <= ?`).run(now);
   }
 
   // ── Sync metadata ───────────────────────────────────────

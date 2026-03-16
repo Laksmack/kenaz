@@ -435,6 +435,8 @@ function registerIpcHandlers() {
 
   ipcMain.handle(IPC.GMAIL_ARCHIVE, async (_event, threadId: string) => {
     const { gmail, cache } = active();
+    // Suppress short-term bounce-back from history/sync races.
+    cache.markThreadDone(threadId);
     cache.updateThreadLabels(threadId, [], ['INBOX']);
 
     if (!connectivity.isOnline) {

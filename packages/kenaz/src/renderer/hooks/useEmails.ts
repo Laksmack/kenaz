@@ -19,6 +19,7 @@ function buildQuery(currentView: ViewType, searchQuery: string, views: View[]): 
 }
 
 const PAGE_SIZE = 50;
+const RECENT_DONE_SUPPRESS_MS = 5 * 60 * 1000;
 
 export type InboxSort = 'newest' | 'oldest';
 
@@ -36,6 +37,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
 
   // Per-view cache for instant switching
   const cacheRef = useRef<Record<string, EmailThread[]>>({});
+  const recentDoneRef = useRef<Map<string, number>>(new Map());
 
   // Derive query string directly (no useCallback indirection)
   const query = buildQuery(currentView, searchQuery, views);
@@ -58,6 +60,22 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     return effectiveSort === 'oldest' ? [...list].reverse() : list;
   }, [effectiveSort, currentView, userEmail]);
 
+  const filterRecentlyDone = useCallback((list: EmailThread[]) => {
+    // Only suppress in inbox-style views where "done" removes the thread.
+    if (currentView !== 'inbox' && currentView !== 'all' && currentView !== 'search') {
+      return list;
+    }
+    const now = Date.now();
+    for (const [id, until] of recentDoneRef.current.entries()) {
+      if (until <= now) recentDoneRef.current.delete(id);
+    }
+    if (recentDoneRef.current.size === 0) return list;
+    return list.filter((t) => {
+      const until = recentDoneRef.current.get(t.id);
+      return !until || until <= now;
+    });
+  }, [currentView]);
+
   const fetchThreads = useCallback(async () => {
     if (!enabled) return;
     setLoading(true);
@@ -66,7 +84,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
       const result = await window.kenaz.fetchThreads(query, PAGE_SIZE);
       nextPageTokenRef.current = result.nextPageToken;
       setHasMore(!!result.nextPageToken);
-      const sorted = applySort(result.threads);
+      const sorted = applySort(filterRecentlyDone(result.threads));
       cacheRef.current[query] = sorted;
       setThreads(sorted);
     } catch (e) {
@@ -86,10 +104,11 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
       setThreads((prev) => {
         const existingIds = new Set(prev.map((t) => t.id));
         const newThreads = result.threads.filter((t: EmailThread) => !existingIds.has(t.id));
+        const filteredNewThreads = filterRecentlyDone(newThreads);
         // Gmail pages go further back in time; for oldest-first those go to the top
         const merged = effectiveSort === 'oldest'
-          ? [...newThreads.reverse(), ...prev]
-          : [...prev, ...newThreads];
+          ? [...filteredNewThreads.reverse(), ...prev]
+          : [...prev, ...filteredNewThreads];
         cacheRef.current[query] = merged;
         return merged;
       });
@@ -106,7 +125,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     // Show cached version instantly if available
     const cached = cacheRef.current[query];
     if (cached) {
-      setThreads(cached);
+      setThreads(filterRecentlyDone(cached));
     }
     // Always fetch fresh data in the background
     fetchThreads();
@@ -127,6 +146,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
   }, [enabled, fetchThreads]);
 
   const archiveThread = useCallback(async (threadId: string) => {
+    recentDoneRef.current.set(threadId, Date.now() + RECENT_DONE_SUPPRESS_MS);
     // Optimistic: remove from list immediately, then fire API call
     setThreads((prev) => prev.filter((t) => t.id !== threadId));
     try {

@@ -108,6 +108,7 @@ export class SyncEngine {
    */
   private async incrementalSync(startHistoryId: string): Promise<void> {
     try {
+      this.cache.pruneRecentDone();
       const { history, historyId } = await this.gmail.getHistory(startHistoryId);
 
       if (history.length === 0) {
@@ -273,6 +274,10 @@ export class SyncEngine {
               // Skip if INBOX was explicitly removed in this history batch — the
               // user (or a rule) just archived it; don't undo that action.
               if (newMessageThreadIds.has(thread.id) && !this.cache.isSnoozed(thread.id) && !inboxRemovedThreadIds.has(thread.id)) {
+                if (this.cache.isThreadRecentlyDone(thread.id)) {
+                  console.log(`[SyncEngine] Suppressing restore for recently-done thread ${thread.id.slice(0, 8)}`);
+                  continue;
+                }
                 const hasInbox = thread.labels.includes('INBOX');
                 const isTrashed = thread.labels.includes('TRASH') || thread.labels.includes('SPAM');
                 if (!hasInbox && !isTrashed) {
