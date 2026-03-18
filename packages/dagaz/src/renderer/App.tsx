@@ -481,6 +481,14 @@ export default function App() {
             {syncState.status === 'offline' && (
               <span className="text-[10px] text-text-muted bg-bg-tertiary px-1.5 py-0.5 rounded">Offline</span>
             )}
+            {syncState.createFailureCount > 0 && (
+              <span
+                className="text-[10px] text-red-300 bg-red-500/10 px-1.5 py-0.5 rounded"
+                title={`${syncState.createFailureCount} recent create sync failure(s)`}
+              >
+                Sync warning
+              </span>
+            )}
             {syncState.pendingCount > 0 && (
               <button
                 onClick={() => window.dagaz.clearSyncQueue()}

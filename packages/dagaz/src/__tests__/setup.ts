@@ -14,7 +14,7 @@ Object.defineProperty(window, 'dagaz', {
     deleteEvent: vi.fn().mockResolvedValue(undefined),
     rsvpEvent: vi.fn().mockResolvedValue(undefined),
     triggerSync: vi.fn().mockResolvedValue(undefined),
-    getSyncStatus: vi.fn().mockResolvedValue({ status: 'synced', lastSync: null, pendingCount: 0 }),
+    getSyncStatus: vi.fn().mockResolvedValue({ status: 'synced', lastSync: null, pendingCount: 0, createFailureCount: 0 }),
     clearSyncQueue: vi.fn().mockResolvedValue(undefined),
     onSyncChanged: vi.fn().mockReturnValue(() => {}),
     onEventsChanged: vi.fn().mockReturnValue(() => {}),

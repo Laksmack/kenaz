@@ -109,6 +109,7 @@ export interface SyncState {
   status: SyncStatus;
   lastSync: string | null;
   pendingCount: number;
+  createFailureCount: number;
 }
 
 // ── Create/Update Input Types ───────────────────────────────

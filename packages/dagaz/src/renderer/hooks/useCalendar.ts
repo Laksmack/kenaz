@@ -128,6 +128,7 @@ export function useSync() {
     status: 'synced',
     lastSync: null,
     pendingCount: 0,
+    createFailureCount: 0,
   });
 
   useEffect(() => {

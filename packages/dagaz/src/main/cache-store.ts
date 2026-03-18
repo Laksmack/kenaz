@@ -376,10 +376,16 @@ export class CacheStore {
     `).run(googleId, etag, localId);
   }
 
-  markEventPending(id: string, action: 'update' | 'delete', payload?: string): void {
+  markEventPending(id: string, action: 'create' | 'update' | 'delete', payload?: string): void {
     this.db.prepare(`
       UPDATE events SET pending_action = ?, pending_payload = ?, updated_at = datetime('now') WHERE id = ?
     `).run(action, payload || null, id);
+  }
+
+  clearEventPending(id: string): void {
+    this.db.prepare(`
+      UPDATE events SET pending_action = NULL, pending_payload = NULL, updated_at = datetime('now') WHERE id = ?
+    `).run(id);
   }
 
   deleteEvent(id: string): void {

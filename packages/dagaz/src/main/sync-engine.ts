@@ -22,6 +22,7 @@ export class SyncEngine {
   private isRunning: boolean = false;
   private lastSync: string | null = null;
   private onBattery: boolean = false;
+  private pendingCreateFailures = new Map<string, number>();
 
   constructor(google: GoogleCalendarService, cache: CacheStore, connectivity: ConnectivityMonitor) {
     this.google = google;
@@ -82,9 +83,10 @@ export class SyncEngine {
   }
 
   private scheduleIncrementalSync(): void {
-    this.syncInterval = setTimeout(() => {
+    this.syncInterval = setTimeout(async () => {
       if (this.connectivity.isOnline) {
-        this.incrementalSync().catch(e => console.error('[Dagaz Sync] Incremental sync failed:', e));
+        await this.incrementalSync().catch(e => console.error('[Dagaz Sync] Incremental sync failed:', e));
+        await this.processQueue().catch(e => console.error('[Dagaz Sync] Incremental queue processing failed:', e));
       }
       if (this.isRunning) this.scheduleIncrementalSync();
     }, this.incrementalInterval);
@@ -120,6 +122,14 @@ export class SyncEngine {
 
   getPendingCount(): number {
     return this.cache.getSyncQueueCount();
+  }
+
+  getCreateFailureCount(): number {
+    let total = 0;
+    for (const attempts of this.pendingCreateFailures.values()) {
+      total += attempts;
+    }
+    return total;
   }
 
   // ── Full Sync ─────────────────────────────────────────────
@@ -372,6 +382,7 @@ export class SyncEngine {
     }
 
     // Also process events with pending_action
+    const MAX_CREATE_ATTEMPTS = 5;
     const pendingEvents = this.cache.getPendingEvents();
     for (const event of pendingEvents) {
       try {
@@ -379,6 +390,7 @@ export class SyncEngine {
           const payload = JSON.parse(event.pending_payload);
           const result = await this.google.createEvent(event.calendar_id, payload);
           this.cache.markEventSynced(event.id, result.google_id, result.etag || null);
+          this.pendingCreateFailures.delete(event.id);
           succeeded++;
         } else if (event.pending_action === 'delete' && event.google_id) {
           try {
@@ -394,11 +406,30 @@ export class SyncEngine {
           succeeded++;
         }
       } catch (e: any) {
-        console.error(`[Dagaz Sync] Pending event ${event.id} failed:`, e.message);
+        if (event.pending_action === 'create') {
+          const attempts = (this.pendingCreateFailures.get(event.id) || 0) + 1;
+          this.pendingCreateFailures.set(event.id, attempts);
+          if (attempts >= MAX_CREATE_ATTEMPTS) {
+            this.cache.clearEventPending(event.id);
+            this.pendingCreateFailures.delete(event.id);
+            console.error(
+              `[Dagaz Sync] Dropping local-only create after ${MAX_CREATE_ATTEMPTS} failed attempts: ` +
+              `id=${event.id}, summary="${event.summary || '(no summary)'}", last_error=${e.message}`,
+            );
+          } else {
+            console.error(
+              `[Dagaz Sync] Pending create ${event.id} failed (attempt ${attempts}/${MAX_CREATE_ATTEMPTS}):`,
+              e.message,
+            );
+          }
+        } else {
+          console.error(`[Dagaz Sync] Pending event ${event.id} failed:`, e.message);
+        }
         failed++;
       }
     }
 
+    this.notifyRenderer();
     return { succeeded, failed };
   }
 
@@ -411,6 +442,7 @@ export class SyncEngine {
           status: this._status,
           lastSync: this.lastSync,
           pendingCount: this.getPendingCount(),
+          createFailureCount: this.getCreateFailureCount(),
         });
       }
     } catch (e) {

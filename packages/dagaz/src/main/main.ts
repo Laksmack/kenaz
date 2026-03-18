@@ -383,7 +383,20 @@ function registerIpcHandlers() {
       throw new Error('Updating "this and following" requires an online Google Calendar connection.');
     }
 
-    cache.markEventPending(id, 'update', JSON.stringify(updates));
+    if (!existing.google_id && existing.pending_action === 'create') {
+      let mergedPayload: Record<string, any> = { ...updates };
+      if (existing.pending_payload) {
+        try {
+          const existingPayload = JSON.parse(existing.pending_payload) as Record<string, any>;
+          mergedPayload = { ...existingPayload, ...updates };
+        } catch (parseErr) {
+          console.warn(`[Dagaz] Failed to parse pending create payload for ${id}, overwriting with updates`, parseErr);
+        }
+      }
+      cache.markEventPending(id, 'create', JSON.stringify(mergedPayload));
+    } else {
+      cache.markEventPending(id, 'update', JSON.stringify(updates));
+    }
     // Persist attendees locally so they appear in the UI immediately
     if (updates.attendees) {
       cache.upsertAttendees(id, updates.attendees.map(email => ({
@@ -484,6 +497,7 @@ function registerIpcHandlers() {
     status: sync.getStatus(),
     lastSync: sync.getLastSync(),
     pendingCount: sync.getPendingCount(),
+    createFailureCount: sync.getCreateFailureCount(),
   }));
 
   ipcMain.handle(IPC.SYNC_TRIGGER, async (_event, { full } = { full: false }) => {
@@ -504,6 +518,7 @@ function registerIpcHandlers() {
           status: sync.getStatus(),
           lastSync: sync.getLastSync(),
           pendingCount: 0,
+          createFailureCount: sync.getCreateFailureCount(),
         });
       }
     } catch (e) {

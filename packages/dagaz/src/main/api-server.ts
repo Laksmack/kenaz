@@ -208,6 +208,17 @@ export function startApiServer(
         if (result.attendees) {
           cache.upsertAttendees(event.id, result.attendees.map(a => ({ ...a, event_id: event.id })));
         }
+      } else if (!event.google_id && event.pending_action === 'create') {
+        let mergedPayload: Record<string, any> = { ...updates };
+        if (event.pending_payload) {
+          try {
+            const existingPayload = JSON.parse(event.pending_payload) as Record<string, any>;
+            mergedPayload = { ...existingPayload, ...updates };
+          } catch (parseErr) {
+            console.warn(`[Dagaz API] Failed to parse pending create payload for ${event.id}, overwriting with updates`, parseErr);
+          }
+        }
+        cache.markEventPending(event.id, 'create', JSON.stringify(mergedPayload));
       } else {
         // Update locally and queue for sync
         cache.markEventPending(event.id, 'update', JSON.stringify(updates));
@@ -338,6 +349,7 @@ export function startApiServer(
       status: sync.getStatus(),
       lastSync: sync.getLastSync(),
       pendingCount: sync.getPendingCount(),
+      createFailureCount: sync.getCreateFailureCount(),
     });
   });
 
