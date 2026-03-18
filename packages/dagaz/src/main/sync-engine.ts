@@ -333,7 +333,13 @@ export class SyncEngine {
 
         switch (item.action) {
           case 'create': {
-            const result = await this.google.createEvent(item.calendar_id, payload);
+            const normalizedPayload = !payload.all_day && !payload.time_zone
+              ? {
+                  ...payload,
+                  time_zone: this.cache.getCalendar(item.calendar_id)?.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+                }
+              : payload;
+            const result = await this.google.createEvent(item.calendar_id, normalizedPayload);
             this.cache.markEventSynced(item.event_id, result.google_id, result.etag || null);
             break;
           }
@@ -388,7 +394,16 @@ export class SyncEngine {
       try {
         if (event.pending_action === 'create' && event.pending_payload) {
           const payload = JSON.parse(event.pending_payload);
-          const result = await this.google.createEvent(event.calendar_id, payload);
+          const normalizedPayload = !payload.all_day && !payload.time_zone
+            ? {
+                ...payload,
+                time_zone: event.time_zone || this.cache.getCalendar(event.calendar_id)?.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+              }
+            : payload;
+          if (normalizedPayload !== payload) {
+            this.cache.markEventPending(event.id, 'create', JSON.stringify(normalizedPayload));
+          }
+          const result = await this.google.createEvent(event.calendar_id, normalizedPayload);
           this.cache.markEventSynced(event.id, result.google_id, result.etag || null);
           this.pendingCreateFailures.delete(event.id);
           succeeded++;

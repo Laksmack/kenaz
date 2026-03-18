@@ -342,9 +342,15 @@ function registerIpcHandlers() {
 
   ipcMain.handle(IPC.EVENT_CREATE, async (_event, data: CreateEventInput) => {
     const calendarId = data.calendar_id || cache.getPrimaryCalendarId() || 'primary';
+    const normalizedData: CreateEventInput = !data.all_day && !data.time_zone
+      ? {
+          ...data,
+          time_zone: cache.getCalendar(calendarId)?.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }
+      : data;
     if (connectivity.isOnline && google.isAuthorized()) {
       try {
-        const result = await google.createEvent(calendarId, data);
+        const result = await google.createEvent(calendarId, normalizedData);
         const localId = cache.upsertEvent(result);
         if (result.attendees) {
           cache.upsertAttendees(localId, result.attendees.map(a => ({ ...a, event_id: localId })));
@@ -355,8 +361,8 @@ function registerIpcHandlers() {
         console.error('[Dagaz] Create failed, saving locally:', e.message);
       }
     }
-    const event = cache.createLocalEvent(data);
-    cache.enqueueSync(event.id, calendarId, 'create', data);
+    const event = cache.createLocalEvent(normalizedData);
+    cache.enqueueSync(event.id, calendarId, 'create', normalizedData);
     notifyEventsChanged();
     return event;
   });

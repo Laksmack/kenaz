@@ -175,8 +175,15 @@ export function startApiServer(
         }
       }
 
+      const createInput: CreateEventInput = !parsed.all_day && !parsed.time_zone
+        ? {
+            ...parsed,
+            time_zone: cache.getCalendar(calendarId)?.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone,
+          }
+        : parsed;
+
       if (connectivity.isOnline && google.isAuthorized()) {
-        const result = await google.createEvent(calendarId, parsed);
+        const result = await google.createEvent(calendarId, createInput);
         const localId = cache.upsertEvent(result);
         if (result.attendees) {
           cache.upsertAttendees(localId, result.attendees.map(a => ({ ...a, event_id: localId })));
@@ -184,8 +191,8 @@ export function startApiServer(
         const event = cache.getEvent(localId);
         res.json(event);
       } else {
-        const event = cache.createLocalEvent(parsed);
-        cache.enqueueSync(event.id, calendarId, 'create', parsed);
+        const event = cache.createLocalEvent(createInput);
+        cache.enqueueSync(event.id, calendarId, 'create', createInput);
         res.json(event);
       }
     } catch (e: any) {
