@@ -284,9 +284,15 @@ export default function App() {
         const lastMsg = selectedThread.messages[selectedThread.messages.length - 1];
         const hasBodies = lastMsg && lastMsg.body;
         if (hasBodies) {
-          // Detect new messages in thread (e.g. someone replied)
-          if (match.messages.length !== selectedThread.messages.length ||
-              match.snippet !== selectedThread.snippet) {
+          // Detect true thread activity (new message or newest message changed).
+          // Snippet-only changes can happen for reminder/snooze edge cases and
+          // should not show the "new activity" banner.
+          const selectedLast = selectedThread.messages[selectedThread.messages.length - 1];
+          const matchLast = match.messages[match.messages.length - 1];
+          const hasThreadActivity =
+            match.messages.length !== selectedThread.messages.length ||
+            (matchLast?.id && selectedLast?.id && matchLast.id !== selectedLast.id);
+          if (hasThreadActivity) {
             console.log(`[SELECT] thread "${match.subject?.slice(0,30)}" has update (${selectedThread.messages.length} → ${match.messages.length} msgs)`);
             setThreadUpdateAvailable(true);
           }
@@ -799,22 +805,44 @@ export default function App() {
       .map((line) => `> ${line}`)
       .join('\n');
 
-    // Reply All: collect all recipients, excluding self
-    const me = userEmail.toLowerCase();
+    // Reply All: collect all recipients, excluding self.
+    // We normalize Gmail aliases (+tag / dots) so we don't include ourselves.
+    const normalizeEmail = (email: string) => {
+      const trimmed = email.trim().toLowerCase();
+      const [local, domain] = trimmed.split('@');
+      if (!local || !domain) return trimmed;
+      if (domain === 'gmail.com' || domain === 'googlemail.com') {
+        const canonicalLocal = local.split('+')[0].replace(/\./g, '');
+        return `${canonicalLocal}@gmail.com`;
+      }
+      return trimmed;
+    };
+    const selfEmails = [userEmail, activeAccount]
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    const selfSet = new Set<string>();
+    for (const email of selfEmails) {
+      selfSet.add(email);
+      selfSet.add(normalizeEmail(email));
+    }
+    const isSelfAddress = (email: string) => {
+      const normalized = normalizeEmail(email);
+      return selfSet.has(email.trim().toLowerCase()) || selfSet.has(normalized);
+    };
     const allTo = new Set<string>();
     const allCc = new Set<string>();
 
     // The original sender goes in To (unless it's us)
-    if (lastMsg.from.email.toLowerCase() !== me) {
+    if (!isSelfAddress(lastMsg.from.email)) {
       allTo.add(lastMsg.from.email);
     }
     // Other To recipients (excluding self) go in To
     for (const t of lastMsg.to) {
-      if (t.email.toLowerCase() !== me) allTo.add(t.email);
+      if (!isSelfAddress(t.email)) allTo.add(t.email);
     }
     // CC recipients (excluding self) stay in CC
     for (const c of lastMsg.cc) {
-      if (c.email.toLowerCase() !== me) allCc.add(c.email);
+      if (!isSelfAddress(c.email)) allCc.add(c.email);
     }
 
     // Build HTML quoted content for rich editor
@@ -832,7 +860,7 @@ export default function App() {
       bodyMarkdown: `\n\nOn ${dateStr}, ${senderStr} wrote:\n${quotedBody}`,
       bodyHtml: quotedHtml,
     });
-  }, [selectedThread, handleCompose, userEmail]);
+  }, [selectedThread, handleCompose, userEmail, activeAccount]);
 
   const handleForward = useCallback(async () => {
     if (!selectedThread) return;

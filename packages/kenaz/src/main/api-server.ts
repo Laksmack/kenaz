@@ -34,6 +34,16 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
   const vs = () => resolver?.viewStore() ?? viewStore;
   const rs = () => resolver?.ruleStore() ?? ruleStore;
   const cs = () => resolver?.cacheStore() ?? cacheStore;
+  const notifyThreadsUpdated = () => {
+    try {
+      const win = getMainWindow?.();
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('threads:updated', { source: 'api' });
+      }
+    } catch (e) {
+      console.error('[API] Failed to notify renderer:', e);
+    }
+  };
 
   // ── Gmail: Core ────────────────────────────────────────────
 
@@ -177,6 +187,8 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
     try {
       const { add, remove } = req.body;
       await g().modifyLabels(req.params.id, add || null, remove || null);
+      cs()?.updateThreadLabels(req.params.id, add ? [add] : [], remove ? [remove] : []);
+      notifyThreadsUpdated();
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -185,8 +197,10 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
 
   app.post('/api/archive/:id', async (req, res) => {
     try {
+      cs()?.markThreadDone(req.params.id);
       cs()?.updateThreadLabels(req.params.id, [], ['INBOX']);
       await g().archiveThread(req.params.id);
+      notifyThreadsUpdated();
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -196,6 +210,8 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
   app.delete('/api/thread/:id', async (req, res) => {
     try {
       await g().trashThread(req.params.id);
+      cs()?.deleteThread(req.params.id);
+      notifyThreadsUpdated();
       res.json({ success: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
@@ -208,8 +224,12 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
       if (!Array.isArray(threadIds)) {
         return res.status(400).json({ error: 'threadIds must be an array' });
       }
-      for (const id of threadIds) cs()?.updateThreadLabels(id, [], ['INBOX']);
+      for (const id of threadIds) {
+        cs()?.markThreadDone(id);
+        cs()?.updateThreadLabels(id, [], ['INBOX']);
+      }
       await Promise.all(threadIds.map((id: string) => g().archiveThread(id)));
+      notifyThreadsUpdated();
       res.json({ success: true, archived: threadIds.length });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
