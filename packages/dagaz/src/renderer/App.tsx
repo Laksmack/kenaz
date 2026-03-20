@@ -22,6 +22,7 @@ import { useConnectivity } from './hooks/useConnectivity';
 import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
 import { ErrorBoundary } from '@futhark/core/components/ErrorBoundary';
 import { formatDayHeader, dateKey, setUse24HourClock, getWeekStart } from './lib/utils';
+import { buildConflictRanges, mergeConflictEvents } from './lib/response-conflict-events';
 import type { ViewType, CalendarEvent, AppConfig, CreateEventInput, UpdateEventInput } from '../shared/types';
 import { PeopleOverlay } from './components/PeopleOverlay';
 import { SearchDialog } from './components/SearchDialog';
@@ -269,45 +270,22 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    const CONFLICT_FETCH_BUFFER_MS = 6 * 60 * 60 * 1000; // Include nearby overlaps and TZ edge cases
 
-    const rawRanges: Array<{ start: number; end: number }> = [];
-    for (const event of needsActionEvents) {
-      const start = new Date(event.start_time).getTime();
-      const end = new Date(event.end_time).getTime();
-      if (Number.isNaN(start) || Number.isNaN(end) || end <= start) continue;
-      rawRanges.push({ start, end });
-    }
-    for (const invite of pendingInvites) {
-      if (!invite.startTime || !invite.endTime) continue;
-      const start = new Date(invite.startTime).getTime();
-      const end = new Date(invite.endTime).getTime();
-      if (Number.isNaN(start) || Number.isNaN(end) || end <= start) continue;
-      rawRanges.push({ start, end });
-    }
-
-    if (rawRanges.length === 0) {
+    const conflictRanges = buildConflictRanges(needsActionEvents, pendingInvites, CONFLICT_FETCH_BUFFER_MS);
+    if (conflictRanges.length === 0) {
       setResponseConflictEvents(events);
       return;
-    }
-
-    rawRanges.sort((a, b) => a.start - b.start);
-    const mergedRanges: Array<{ start: number; end: number }> = [];
-    for (const range of rawRanges) {
-      const last = mergedRanges[mergedRanges.length - 1];
-      if (!last || range.start > last.end) mergedRanges.push({ ...range });
-      else last.end = Math.max(last.end, range.end);
     }
 
     const loadConflictEvents = async () => {
       try {
         const batches = await Promise.all(
-          mergedRanges.map((range) => window.dagaz.getEvents(new Date(range.start).toISOString(), new Date(range.end).toISOString())),
+          conflictRanges.map((range) =>
+            window.dagaz.getEvents(new Date(range.start).toISOString(), new Date(range.end).toISOString())
+          ),
         );
-        const merged = new Map<string, CalendarEvent>();
-        for (const batch of batches) {
-          for (const event of batch || []) merged.set(event.id, event);
-        }
-        if (!cancelled) setResponseConflictEvents(Array.from(merged.values()));
+        if (!cancelled) setResponseConflictEvents(mergeConflictEvents(events, batches));
       } catch (e) {
         console.error('[App] Failed to fetch conflict events for invite review:', e);
         if (!cancelled) setResponseConflictEvents(events);

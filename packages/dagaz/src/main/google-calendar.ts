@@ -722,22 +722,51 @@ export class GoogleCalendarService {
 }
 
 const MEETING_PROVIDERS: Array<{ pattern: RegExp; name: string }> = [
-  { pattern: /https?:\/\/teams\.microsoft\.com\/[^\s<)"']+/i, name: 'Microsoft Teams' },
-  { pattern: /https?:\/\/[\w.-]*zoom\.us\/j\/[^\s<)"']+/i, name: 'Zoom' },
-  { pattern: /https?:\/\/[\w.-]*webex\.com\/[^\s<)"']+/i, name: 'Webex' },
+  { pattern: /^https?:\/\/teams\.microsoft\.com\//i, name: 'Microsoft Teams' },
+  { pattern: /^https?:\/\/[\w.-]*zoom\.us\/j\//i, name: 'Zoom' },
+  { pattern: /^https?:\/\/[\w.-]*webex\.com\//i, name: 'Webex' },
 ];
+const URL_CANDIDATE_RE = /https?:\/\/[^\s<>"']+/gi;
+
+function normalizeExtractedUrl(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^[<([{]+/, '')
+    .replace(/[>)\]}.,;:!?]+$/, '');
+}
+
+function pickProviderUrl(providerName: string, urls: string[]): string | null {
+  const matching = urls.filter((u) => {
+    const provider = MEETING_PROVIDERS.find((p) => p.name === providerName);
+    return provider ? provider.pattern.test(u) : false;
+  });
+  if (matching.length === 0) return null;
+
+  // Teams invites often include multiple URLs; prefer the actual meeting join URL.
+  if (providerName === 'Microsoft Teams') {
+    const join = matching.find((u) => /\/l\/meetup-join\//i.test(u));
+    if (join) return join;
+  }
+  return matching[0];
+}
 
 function extractConferenceFromText(
   description: string,
   location: string,
 ): ConferenceData | null {
   const text = `${location}\n${description}`;
-  for (const { pattern, name } of MEETING_PROVIDERS) {
-    const match = text.match(pattern);
-    if (match) {
+  const uniqueUrls = Array.from(new Set(
+    Array.from(text.matchAll(URL_CANDIDATE_RE))
+      .map((m) => normalizeExtractedUrl(m[0]))
+      .filter(Boolean)
+  ));
+
+  for (const { name } of MEETING_PROVIDERS) {
+    const uri = pickProviderUrl(name, uniqueUrls);
+    if (uri) {
       return {
         conferenceSolution: { name },
-        entryPoints: [{ entryPointType: 'video', uri: match[0] }],
+        entryPoints: [{ entryPointType: 'video', uri }],
       };
     }
   }
