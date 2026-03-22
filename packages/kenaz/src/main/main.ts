@@ -893,14 +893,19 @@ function setupOfflineFlush() {
   connectivity.on('online', async () => {
     console.log('[Kenaz] Online — flushing pending actions and outbox...');
 
-    const svc = accountManager.getActiveServices();
-    if (!svc) return;
-    try {
-      await svc.syncEngine.flushPendingActions();
-      await svc.syncEngine.flushOutbox();
-      await svc.syncEngine.sync();
-    } catch (e: any) {
-      console.error('[Kenaz] Reconnect flush failed:', e?.message || e);
+    const activeEmail = accountManager.getActiveEmail();
+    if (!activeEmail) return;
+
+    for (const [email, svc] of accountManager.getAllBundles()) {
+      try {
+        await svc.syncEngine.flushPendingActions();
+        await svc.syncEngine.flushOutbox();
+        if (email === activeEmail) {
+          await svc.syncEngine.sync();
+        }
+      } catch (e: any) {
+        console.error(`[Kenaz] Reconnect flush failed for ${email}:`, e?.message || e);
+      }
     }
   });
 }

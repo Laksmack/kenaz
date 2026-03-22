@@ -110,6 +110,13 @@ export class AccountManager {
   }
 
   /**
+   * Returns all initialized account service bundles.
+   */
+  getAllBundles(): Map<string, AccountServices> {
+    return this.bundles;
+  }
+
+  /**
    * Get the service bundle for a specific account.
    */
   getServicesFor(email: string): AccountServices | null {

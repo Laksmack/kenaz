@@ -38,6 +38,11 @@ export class SyncEngine {
     this.started = true;
     console.log('[SyncEngine] Starting...');
 
+    if (this.connectivity.isOnline) {
+      await this.flushPendingActions();
+      await this.flushOutbox();
+    }
+
     // Initial sync
     await this.sync();
 
