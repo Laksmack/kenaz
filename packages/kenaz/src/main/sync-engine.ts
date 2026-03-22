@@ -27,12 +27,6 @@ export class SyncEngine {
     this.cache = cache;
     this.connectivity = connectivity;
     this.config = config;
-
-    // Listen for connectivity changes
-    this.connectivity.on('online', () => {
-      console.log('[SyncEngine] Back online — starting sync');
-      this.sync();
-    });
   }
 
   setMainWindow(win: BrowserWindow | null): void {
@@ -66,6 +60,69 @@ export class SyncEngine {
     if (this.populateTimer) {
       clearTimeout(this.populateTimer);
       this.populateTimer = null;
+    }
+  }
+
+  /**
+   * Flush pending offline label/archive/read actions to Gmail.
+   * Failed actions are marked for retry on the next reconnect.
+   */
+  async flushPendingActions(): Promise<void> {
+    const actions = this.cache.getPendingActions();
+    if (actions.length === 0) return;
+
+    console.log(`[SyncEngine] Flushing ${actions.length} pending action(s)`);
+
+    for (const action of actions) {
+      try {
+        switch (action.type) {
+          case 'archive':
+            await this.gmail.archiveThread(action.threadId);
+            break;
+          case 'label':
+            await this.gmail.modifyLabels(action.threadId, action.payload?.add ?? null, action.payload?.remove ?? null);
+            break;
+          case 'mark_read':
+            await this.gmail.markAsRead(action.threadId);
+            break;
+          default:
+            console.warn(`[SyncEngine] Unknown pending action type "${action.type}" (id=${action.id})`);
+            this.cache.markActionFailed(action.id);
+            continue;
+        }
+        this.cache.removePendingAction(action.id);
+      } catch (e: any) {
+        console.error(`[SyncEngine] Failed to flush pending action ${action.id}:`, e?.message || e);
+        this.cache.markActionFailed(action.id);
+      }
+    }
+  }
+
+  /**
+   * Flush queued/failed outbox items to Gmail.
+   */
+  async flushOutbox(): Promise<void> {
+    const outboxItems = this.cache.getOutboxItems();
+    if (outboxItems.length === 0) return;
+
+    console.log(`[SyncEngine] Flushing ${outboxItems.length} outbox item(s)`);
+
+    let sentCount = 0;
+    for (const item of outboxItems) {
+      if (item.status !== 'queued' && item.status !== 'failed') continue;
+      try {
+        this.cache.markOutboxSending(item.id);
+        await this.gmail.sendEmail(item.payload);
+        this.cache.markOutboxSent(item.id);
+        sentCount++;
+      } catch (e: any) {
+        console.error(`[SyncEngine] Failed to send outbox item ${item.id}:`, e?.message || e);
+        this.cache.markOutboxFailed(item.id, e?.message || 'Unknown send failure');
+      }
+    }
+
+    if (sentCount > 0) {
+      this.notifyThreadsUpdated();
     }
   }
 

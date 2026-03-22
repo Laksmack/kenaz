@@ -1,4 +1,4 @@
-import { net, BrowserWindow } from 'electron';
+import { net, BrowserWindow, powerMonitor } from 'electron';
 import { EventEmitter } from 'events';
 import type { GmailService } from './gmail';
 
@@ -15,6 +15,9 @@ export class ConnectivityMonitor extends EventEmitter {
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingState: boolean | null = null;
   private mainWindow: BrowserWindow | null = null;
+  private readonly onResume = () => {
+    void this.checkNow();
+  };
 
   get isOnline(): boolean {
     return this._isOnline;
@@ -37,6 +40,7 @@ export class ConnectivityMonitor extends EventEmitter {
     // We'll rely on polling instead for reliability
 
     this.startPolling();
+    powerMonitor.on('resume', this.onResume);
   }
 
   stop(): void {
@@ -48,6 +52,7 @@ export class ConnectivityMonitor extends EventEmitter {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
     }
+    powerMonitor.removeListener('resume', this.onResume);
   }
 
   /**

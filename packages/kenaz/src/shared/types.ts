@@ -164,6 +164,7 @@ export const IPC = {
   GMAIL_AUTH: 'gmail:auth',
   GMAIL_AUTH_STATUS: 'gmail:auth-status',
   GMAIL_FETCH_THREADS: 'gmail:fetch-threads',
+  GMAIL_REFRESH_FROM_CACHE: 'gmail:refresh-from-cache',
   GMAIL_FETCH_THREAD: 'gmail:fetch-thread',
   GMAIL_SEARCH: 'gmail:search',
   GMAIL_SEND: 'gmail:send',

@@ -307,6 +307,23 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle(IPC.GMAIL_REFRESH_FROM_CACHE, async (_event, query: string, maxResults: number = 50) => {
+    const { cache, config } = active();
+    const appConfig = config.get();
+
+    if (!appConfig.cacheEnabled) {
+      return { threads: [], nextPageToken: undefined, fromCache: true };
+    }
+
+    try {
+      const threads = cache.getThreadsByQuery(query, maxResults);
+      return { threads, nextPageToken: undefined, fromCache: true };
+    } catch (e) {
+      console.error('[Cache] Failed to refresh from cache:', e);
+      return { threads: [], nextPageToken: undefined, fromCache: true };
+    }
+  });
+
   ipcMain.handle(IPC.GMAIL_FETCH_THREAD, async (_event, threadId: string) => {
     const { gmail, cache, config } = active();
     const appConfig = config.get();
@@ -878,49 +895,13 @@ function setupOfflineFlush() {
 
     const svc = accountManager.getActiveServices();
     if (!svc) return;
-    const { gmail, cache } = svc;
-
-    const actions = cache.getPendingActions();
-    for (const action of actions) {
-      try {
-        switch (action.type) {
-          case 'archive':
-            await gmail.archiveThread(action.threadId);
-            break;
-          case 'label':
-            await gmail.modifyLabels(action.threadId, action.payload.add, action.payload.remove);
-            break;
-          case 'mark_read':
-            await gmail.markAsRead(action.threadId);
-            break;
-        }
-        cache.markActionSynced(action.id);
-      } catch (e: any) {
-        console.error(`[Kenaz] Failed to flush action ${action.id}:`, e.message);
-        cache.markActionFailed(action.id);
-      }
+    try {
+      await svc.syncEngine.flushPendingActions();
+      await svc.syncEngine.flushOutbox();
+      await svc.syncEngine.sync();
+    } catch (e: any) {
+      console.error('[Kenaz] Reconnect flush failed:', e?.message || e);
     }
-
-    const outboxItems = cache.getOutboxItems();
-    for (const item of outboxItems) {
-      if (item.status !== 'queued' && item.status !== 'failed') continue;
-      try {
-        cache.markOutboxSending(item.id);
-        await gmail.sendEmail(item.payload);
-        cache.markOutboxSent(item.id);
-        console.log(`[Kenaz] Outbox item ${item.id} sent successfully`);
-
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          const to = item.payload.to.split(',')[0].trim();
-          mainWindow.webContents.send('outbox:sent', { id: item.id, to });
-        }
-      } catch (e: any) {
-        console.error(`[Kenaz] Failed to send outbox item ${item.id}:`, e.message);
-        cache.markOutboxFailed(item.id, e.message);
-      }
-    }
-
-    svc.syncEngine.sync();
   });
 }
 

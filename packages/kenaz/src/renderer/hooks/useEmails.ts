@@ -94,6 +94,20 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     }
   }, [query, enabled, applySort]);
 
+  const refreshFromCache = useCallback(async () => {
+    if (!enabled) return;
+    try {
+      const result = await window.kenaz.fetchThreadsFromCache(query, PAGE_SIZE);
+      nextPageTokenRef.current = undefined;
+      setHasMore(false);
+      const sorted = applySort(filterRecentlyDone(result.threads));
+      cacheRef.current[query] = sorted;
+      setThreads(sorted);
+    } catch (e) {
+      console.error('Failed to refresh threads from cache:', e);
+    }
+  }, [query, enabled, applySort, filterRecentlyDone]);
+
   const loadMore = useCallback(async () => {
     if (!enabled || !nextPageTokenRef.current || loadingMore) return;
     setLoadingMore(true);
@@ -136,14 +150,18 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     const cleanupThreads = window.kenaz.onThreadsUpdated(() => {
       // Sync engine updated the cache — refresh current view
       if (enabled) {
-        fetchThreads();
+        if (currentView === 'search') {
+          fetchThreads();
+        } else {
+          refreshFromCache();
+        }
       }
     });
 
     return () => {
       cleanupThreads();
     };
-  }, [enabled, fetchThreads]);
+  }, [enabled, currentView, fetchThreads, refreshFromCache]);
 
   const archiveThread = useCallback(async (threadId: string) => {
     recentDoneRef.current.set(threadId, Date.now() + RECENT_DONE_SUPPRESS_MS);

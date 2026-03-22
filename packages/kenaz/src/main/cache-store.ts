@@ -707,7 +707,7 @@ export class CacheStore {
 
   getPendingActions(): Array<{ id: number; type: string; threadId: string; payload: any; createdAt: string }> {
     const rows = this.db.prepare(
-      "SELECT * FROM pending_actions WHERE status = 'pending' ORDER BY id ASC"
+      "SELECT * FROM pending_actions WHERE status IN ('pending', 'failed') ORDER BY id ASC"
     ).all() as any[];
     return rows.map(r => ({
       id: r.id,
@@ -731,7 +731,7 @@ export class CacheStore {
   }
 
   getPendingActionCount(): number {
-    const row = this.db.prepare("SELECT COUNT(*) as cnt FROM pending_actions WHERE status = 'pending'").get() as any;
+    const row = this.db.prepare("SELECT COUNT(*) as cnt FROM pending_actions WHERE status IN ('pending', 'failed')").get() as any;
     return row.cnt;
   }
 
@@ -741,7 +741,7 @@ export class CacheStore {
    */
   getThreadsWithPendingActions(): Set<string> {
     const rows = this.db.prepare(
-      "SELECT DISTINCT thread_id FROM pending_actions WHERE status = 'pending'"
+      "SELECT DISTINCT thread_id FROM pending_actions WHERE status IN ('pending', 'failed')"
     ).all() as any[];
     return new Set(rows.map(r => r.thread_id));
   }

@@ -4,6 +4,7 @@ declare global {
       gmailAuth: () => Promise<any>;
       gmailAuthStatus: () => Promise<boolean>;
       fetchThreads: (query: string, maxResults?: number, pageToken?: string) => Promise<{ threads: any[]; nextPageToken?: string }>;
+      fetchThreadsFromCache: (query: string, maxResults?: number) => Promise<{ threads: any[]; nextPageToken?: string; fromCache: boolean }>;
       fetchThread: (threadId: string) => Promise<any>;
       search: (query: string) => Promise<any>;
       sendEmail: (payload: any) => Promise<any>;

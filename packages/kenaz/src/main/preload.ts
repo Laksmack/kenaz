@@ -5,6 +5,7 @@ const IPC = {
   GMAIL_AUTH: 'gmail:auth',
   GMAIL_AUTH_STATUS: 'gmail:auth-status',
   GMAIL_FETCH_THREADS: 'gmail:fetch-threads',
+  GMAIL_REFRESH_FROM_CACHE: 'gmail:refresh-from-cache',
   GMAIL_FETCH_THREAD: 'gmail:fetch-thread',
   GMAIL_SEARCH: 'gmail:search',
   GMAIL_SEND: 'gmail:send',
@@ -69,6 +70,8 @@ const api = {
   // Gmail Operations
   fetchThreads: (query: string, maxResults?: number, pageToken?: string) =>
     ipcRenderer.invoke(IPC.GMAIL_FETCH_THREADS, query, maxResults, pageToken),
+  fetchThreadsFromCache: (query: string, maxResults?: number) =>
+    ipcRenderer.invoke(IPC.GMAIL_REFRESH_FROM_CACHE, query, maxResults),
   fetchThread: (threadId: string) =>
     ipcRenderer.invoke(IPC.GMAIL_FETCH_THREAD, threadId),
   search: (query: string) =>
