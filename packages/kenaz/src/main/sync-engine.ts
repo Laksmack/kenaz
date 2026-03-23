@@ -174,7 +174,12 @@ export class SyncEngine {
       const { history, historyId } = await this.gmail.getHistory(startHistoryId);
 
       if (history.length === 0) {
-        // No changes — just update history ID
+        // No history delta, but still reconcile INBOX to prune stale cached labels.
+        const pruned = await this.reconcileInbox();
+        if (pruned > 0) {
+          this.notifyThreadsUpdated();
+        }
+        // Update history ID after successful reconciliation pass.
         this.cache.setLastHistoryId(historyId);
         return;
       }
@@ -273,6 +278,7 @@ export class SyncEngine {
       }
 
       // Re-fetch affected threads and update cache
+      let shouldNotify = false;
       if (affectedThreadIds.size > 0) {
         const threadIds = Array.from(affectedThreadIds);
         console.log(`[SyncEngine] Refreshing ${threadIds.length} affected threads`);
@@ -386,7 +392,15 @@ export class SyncEngine {
           }
         }
 
-        // Notify renderer
+        shouldNotify = true;
+      }
+
+      // Safety reconciliation: history deltas can miss old label transitions.
+      const pruned = await this.reconcileInbox();
+      if (pruned > 0) {
+        shouldNotify = true;
+      }
+      if (shouldNotify) {
         this.notifyThreadsUpdated();
       }
 
@@ -402,6 +416,25 @@ export class SyncEngine {
       } else {
         throw e;
       }
+    }
+  }
+
+  /**
+   * Reconcile cached INBOX labels against the live Gmail inbox IDs.
+   * Returns the number of cached threads that had stale INBOX stripped.
+   */
+  private async reconcileInbox(): Promise<number> {
+    try {
+      const result = await this.gmail.fetchThreads('in:inbox', 100);
+      const liveIds = new Set(result.threads.map((t) => t.id));
+      const pruned = this.cache.reconcileLabel('INBOX', liveIds);
+      if (pruned > 0) {
+        console.log(`[SyncEngine] Reconciled INBOX after incremental sync: removed ${pruned} stale thread(s)`);
+      }
+      return pruned;
+    } catch (e: any) {
+      console.warn('[SyncEngine] INBOX reconciliation failed:', e?.message || e);
+      return 0;
     }
   }
 
