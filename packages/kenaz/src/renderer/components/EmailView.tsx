@@ -476,17 +476,43 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
 function ThreadMessages({ thread, onArchive }: { thread: EmailThread; onArchive: () => void }) {
   // Newest message first
   const reversed = [...thread.messages].reverse();
-  const newestId = reversed[0]?.id;
+  const newestId = thread.messages[thread.messages.length - 1]?.id;
+  const messageIds = thread.messages.map((m) => m.id);
+  const messageIdsKey = messageIds.join('|');
 
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set([newestId]));
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(
+    newestId ? new Set([newestId]) : new Set()
+  );
   const [showAll, setShowAll] = useState(false);
 
   // Reset expanded state when thread changes
   useEffect(() => {
     const newest = thread.messages[thread.messages.length - 1]?.id;
-    setExpandedIds(new Set([newest]));
+    setExpandedIds(newest ? new Set([newest]) : new Set());
     setShowAll(false);
   }, [thread.id]);
+
+  // Keep expansion state valid when same thread refreshes with new/loaded messages.
+  // This prevents the "all collapsed" state after metadata-only -> full-thread updates.
+  useEffect(() => {
+    setExpandedIds((prev) => {
+      if (messageIds.length === 0) return prev.size === 0 ? prev : new Set();
+
+      if (showAll) {
+        const alreadyAll = prev.size === messageIds.length && messageIds.every((id) => prev.has(id));
+        return alreadyAll ? prev : new Set(messageIds);
+      }
+
+      const filtered = [...prev].filter((id) => messageIds.includes(id));
+      if (filtered.length > 0) {
+        const unchanged = filtered.length === prev.size;
+        return unchanged ? prev : new Set(filtered);
+      }
+
+      if (!newestId) return prev;
+      return prev.size === 1 && prev.has(newestId) ? prev : new Set([newestId]);
+    });
+  }, [messageIdsKey, newestId, showAll]);
 
   const toggleMessage = useCallback((id: string) => {
     setExpandedIds((prev) => {
