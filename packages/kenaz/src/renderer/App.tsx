@@ -289,11 +289,17 @@ export default function App() {
           // should not show the "new activity" banner.
           const selectedLast = selectedThread.messages[selectedThread.messages.length - 1];
           const matchLast = match.messages[match.messages.length - 1];
-          const hasThreadActivity =
-            match.messages.length !== selectedThread.messages.length ||
-            (matchLast?.id && selectedLast?.id && matchLast.id !== selectedLast.id);
+          // match comes from the thread list which carries metadata only (messages: []).
+          // A count of 0 means messages weren't loaded — not that they disappeared.
+          // Comparing 0 !== N would always be true, firing the banner on every sync.
+          // When list has no message entries, fall back to lastDate as a reliable proxy:
+          // a new message always advances lastDate; a label/read change does not.
+          const hasThreadActivity = match.messages.length > 0
+            ? (match.messages.length !== selectedThread.messages.length ||
+               (matchLast?.id && selectedLast?.id && matchLast.id !== selectedLast.id))
+            : match.lastDate > selectedThread.lastDate;
           if (hasThreadActivity) {
-            console.log(`[SELECT] thread "${match.subject?.slice(0,30)}" has update (${selectedThread.messages.length} → ${match.messages.length} msgs)`);
+            console.log(`[SELECT] thread "${match.subject?.slice(0,30)}" has update (lastDate: ${selectedThread.lastDate} → ${match.lastDate}, msgs: ${selectedThread.messages.length} → ${match.messages.length})`);
             setThreadUpdateAvailable(true);
           }
           // Merge updated metadata (labels, isUnread) but keep full messages
