@@ -164,6 +164,8 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
   const [archiveOnReply, setArchiveOnReply] = useState(config.archiveOnReply ?? false);
   const [inboxSort, setInboxSort] = useState<'newest' | 'oldest'>(config.inboxSort ?? 'newest');
   const [composeMode, setComposeMode] = useState<'html' | 'markdown'>(config.composeMode ?? 'html');
+  const [autoDraftEnabled, setAutoDraftEnabled] = useState(config.autoDraftEnabled ?? false);
+  const [autoDraftIntervalSeconds, setAutoDraftIntervalSeconds] = useState(config.autoDraftIntervalSeconds ?? 120);
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(config.theme ?? 'dark');
 
   return (
@@ -222,6 +224,27 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
           </select>
         </SettingsField>
 
+        <SettingsField label="Auto-save drafts while composing" description="When enabled, Kenaz periodically saves a draft in the background.">
+          <ToggleSwitch checked={autoDraftEnabled} onChange={setAutoDraftEnabled} />
+        </SettingsField>
+
+        {autoDraftEnabled && (
+          <SettingsField label="Auto-save interval (seconds)" description="How often drafts are auto-saved while editing.">
+            <input
+              type="number"
+              min={30}
+              max={600}
+              value={autoDraftIntervalSeconds}
+              onChange={(e) => {
+                const raw = Number(e.target.value) || 120;
+                const clamped = Math.min(600, Math.max(30, raw));
+                setAutoDraftIntervalSeconds(clamped);
+              }}
+              className="w-40 bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary font-mono"
+            />
+          </SettingsField>
+        )}
+
         <SettingsField label="Theme" description="Choose the app color theme. System will follow your macOS appearance. Restart required after changes.">
           <select
             value={theme}
@@ -239,6 +262,8 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
           defaultView,
           archiveOnReply,
           composeMode,
+          autoDraftEnabled,
+          autoDraftIntervalSeconds: Math.min(600, Math.max(30, autoDraftIntervalSeconds || 120)),
           theme,
         })} saving={saving} saved={saved} />
       </div>

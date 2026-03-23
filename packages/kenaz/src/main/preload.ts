@@ -27,6 +27,7 @@ const IPC = {
   HUBSPOT_SEARCH_DEALS: 'hubspot:search-deals',
   HUBSPOT_ASSOCIATE_DEAL: 'hubspot:associate-deal',
   GMAIL_CREATE_DRAFT: 'gmail:create-draft',
+  GMAIL_UPDATE_DRAFT: 'gmail:update-draft',
   GMAIL_LIST_DRAFTS: 'gmail:list-drafts',
   GMAIL_GET_DRAFT: 'gmail:get-draft',
   GMAIL_DELETE_DRAFT: 'gmail:delete-draft',
@@ -92,6 +93,8 @@ const api = {
   // Drafts
   createDraft: (payload: any) =>
     ipcRenderer.invoke(IPC.GMAIL_CREATE_DRAFT, payload),
+  updateDraft: (draftId: string, payload: any) =>
+    ipcRenderer.invoke(IPC.GMAIL_UPDATE_DRAFT, draftId, payload),
   listDrafts: () =>
     ipcRenderer.invoke(IPC.GMAIL_LIST_DRAFTS),
   getDraft: (draftId: string) =>

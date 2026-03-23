@@ -148,6 +148,15 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
     }
   });
 
+  app.put('/api/draft/:id', async (req, res) => {
+    try {
+      const draftId = await g().updateDraft(req.params.id, req.body);
+      res.json({ draftId });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.delete('/api/draft/:id', async (req, res) => {
     try {
       await g().deleteDraft(req.params.id);

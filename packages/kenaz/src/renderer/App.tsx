@@ -1170,6 +1170,8 @@ export default function App() {
               onSent={handleSent}
               autoBccEnabled={appConfig?.autoBccEnabled}
               composeMode={appConfig?.composeMode || 'html'}
+              autoDraftEnabled={appConfig?.autoDraftEnabled}
+              autoDraftIntervalSeconds={appConfig?.autoDraftIntervalSeconds}
             />
           ) : (
             <EmailView

@@ -12,6 +12,7 @@ declare global {
       modifyLabels: (threadId: string, add: string | null, remove: string | null) => Promise<void>;
       markAsRead: (threadId: string) => Promise<void>;
       createDraft: (payload: any) => Promise<string>;
+      updateDraft: (draftId: string, payload: any) => Promise<string>;
       listDrafts: () => Promise<any[]>;
       getDraft: (draftId: string) => Promise<any>;
       deleteDraft: (draftId: string) => Promise<void>;

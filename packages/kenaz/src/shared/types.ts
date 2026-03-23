@@ -192,6 +192,7 @@ export const IPC = {
 
   // Drafts
   GMAIL_CREATE_DRAFT: 'gmail:create-draft',
+  GMAIL_UPDATE_DRAFT: 'gmail:update-draft',
   GMAIL_LIST_DRAFTS: 'gmail:list-drafts',
   GMAIL_GET_DRAFT: 'gmail:get-draft',
   GMAIL_DELETE_DRAFT: 'gmail:delete-draft',
@@ -282,6 +283,8 @@ export interface AccountConfig {
   autoBccExcludedDomains: string[];
   archiveOnReply: boolean;
   composeMode: 'html' | 'markdown';
+  autoDraftEnabled: boolean;
+  autoDraftIntervalSeconds: number;
   inboxSort: 'newest' | 'oldest';
   excludedCalendarIds: string[];
 }
@@ -329,6 +332,8 @@ export const DEFAULT_ACCOUNT_CONFIG: AccountConfig = {
   autoBccExcludedDomains: [],
   archiveOnReply: false,
   composeMode: 'html',
+  autoDraftEnabled: false,
+  autoDraftIntervalSeconds: 120,
   inboxSort: 'newest',
   excludedCalendarIds: [],
 };

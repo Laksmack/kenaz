@@ -538,6 +538,10 @@ function registerIpcHandlers() {
     return active().gmail.createDraft(payload);
   });
 
+  ipcMain.handle(IPC.GMAIL_UPDATE_DRAFT, async (_event, draftId: string, payload: any) => {
+    return active().gmail.updateDraft(draftId, payload);
+  });
+
   ipcMain.handle(IPC.GMAIL_LIST_DRAFTS, async () => {
     return active().gmail.listDrafts();
   });

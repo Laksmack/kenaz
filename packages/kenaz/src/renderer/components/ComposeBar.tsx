@@ -281,9 +281,19 @@ interface Props {
   onSent: (payload: SendEmailPayload, draftId?: string) => void;
   autoBccEnabled?: boolean;
   composeMode?: 'html' | 'markdown';
+  autoDraftEnabled?: boolean;
+  autoDraftIntervalSeconds?: number;
 }
 
-export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = false, composeMode = 'html' }: Props) {
+export function ComposeBar({
+  initialData,
+  onClose,
+  onSent,
+  autoBccEnabled = false,
+  composeMode = 'html',
+  autoDraftEnabled = false,
+  autoDraftIntervalSeconds = 120,
+}: Props) {
   const [to, setTo] = useState<string[]>(() => initialData?.to ? parseEmails(initialData.to) : []);
   const [cc, setCc] = useState<string[]>(() => initialData?.cc ? parseEmails(initialData.cc) : []);
   const [bcc, setBcc] = useState<string[]>(() => initialData?.bcc ? parseEmails(initialData.bcc) : []);
@@ -299,6 +309,7 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
   const [error, setError] = useState<string | null>(null);
   const [useAutoBcc, setUseAutoBcc] = useState(true);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [showCloseConfirm, setShowCloseConfirm] = useState(false);
   const [attachments, setAttachments] = useState<EmailAttachment[]>(initialData?.attachments || []);
   const [dragging, setDragging] = useState(false);
   const sentRef = useRef(false); // track if we sent successfully
@@ -306,6 +317,7 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
   const toRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCountRef = useRef(0);
+  const autosaveDraftIdRef = useRef<string | undefined>(initialData?.draftId);
 
   // Snapshot the initial state so we can detect real changes
   const initialSnapshot = useRef({
@@ -346,6 +358,34 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
       attachments.length > 0
     );
   })();
+
+  const buildDraftPayload = useCallback(() => {
+    const draftBody = composeMode === 'html' ? bodyHtml : bodyMarkdown;
+    return {
+      to: to.length > 0 ? to.join(', ') : undefined,
+      cc: cc.length > 0 ? cc.join(', ') : undefined,
+      bcc: bcc.length > 0 ? bcc.join(', ') : undefined,
+      subject: subject || undefined,
+      body_markdown: composeMode === 'markdown' ? (draftBody || undefined) : undefined,
+      body_html: composeMode === 'html' ? (draftBody || undefined) : undefined,
+      reply_to_thread_id: initialData?.replyToThreadId,
+      reply_to_message_id: initialData?.replyToMessageId,
+      attachments: attachments.length > 0 ? attachments : undefined,
+    };
+  }, [to, cc, bcc, subject, composeMode, bodyHtml, bodyMarkdown, initialData, attachments]);
+
+  const persistDraft = useCallback(async (): Promise<string | undefined> => {
+    const payload = buildDraftPayload();
+    const currentDraftId = autosaveDraftIdRef.current || initialData?.draftId;
+    let draftId = currentDraftId;
+    if (currentDraftId) {
+      draftId = await window.kenaz.updateDraft(currentDraftId, payload);
+    } else {
+      draftId = await window.kenaz.createDraft(payload);
+    }
+    autosaveDraftIdRef.current = draftId;
+    return draftId;
+  }, [buildDraftPayload, initialData]);
 
   // Add files as attachments (via drag & drop or file picker)
   const addFiles = useCallback(async (filePaths: string[]) => {
@@ -434,84 +474,63 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
     };
 
     sentRef.current = true;
-    onSent(payload, initialData?.draftId);
+    onSent(payload, autosaveDraftIdRef.current || initialData?.draftId);
   }, [to, cc, bcc, subject, bodyMarkdown, bodyHtml, composeMode, initialData, onSent, autoBccEnabled, useAutoBcc, attachments]);
 
   const handleSaveDraft = useCallback(async () => {
     setSavingDraft(true);
     try {
-      const draftBody = composeMode === 'html' ? bodyHtml : bodyMarkdown;
-      await window.kenaz.createDraft({
-        to: to.length > 0 ? to.join(', ') : undefined,
-        cc: cc.length > 0 ? cc.join(', ') : undefined,
-        bcc: bcc.length > 0 ? bcc.join(', ') : undefined,
-        subject: subject || undefined,
-        body_markdown: draftBody || undefined,
-        reply_to_thread_id: initialData?.replyToThreadId,
-        attachments: attachments.length > 0 ? attachments : undefined,
-      });
-      if (initialData?.draftId) {
-        try { await window.kenaz.deleteDraft(initialData.draftId); } catch (e) {
-          console.error('[Compose] Failed to delete old draft:', e);
-        }
-      }
+      await persistDraft();
     } catch (e) {
       console.error('Failed to save draft:', e);
     } finally {
       setSavingDraft(false);
       onClose();
     }
-  }, [to, cc, bcc, subject, bodyMarkdown, bodyHtml, composeMode, initialData, onClose]);
+  }, [persistDraft, onClose]);
 
   const handleDiscard = useCallback(async () => {
-    // Delete the draft if this was a draft
-    if (initialData?.draftId) {
-      try { await window.kenaz.deleteDraft(initialData.draftId); } catch (e) {
-        console.error('Failed to delete draft:', e);
+    const idsToDelete = new Set<string>();
+    if (initialData?.draftId) idsToDelete.add(initialData.draftId);
+    if (autosaveDraftIdRef.current) idsToDelete.add(autosaveDraftIdRef.current);
+
+    for (const draftId of idsToDelete) {
+      try {
+        await window.kenaz.deleteDraft(draftId);
+      } catch (e) {
+        console.error(`Failed to delete draft ${draftId}:`, e);
       }
     }
+
+    autosaveDraftIdRef.current = undefined;
     onClose();
   }, [initialData, onClose]);
 
-  // Periodic autosave: save draft every 30s while there are unsaved changes
-  const autosaveDraftIdRef = useRef<string | undefined>(initialData?.draftId);
+  // Periodic autosave: only when enabled in settings.
   useEffect(() => {
-    if (!hasChanges || sentRef.current) return;
+    if (!autoDraftEnabled || !hasChanges || sentRef.current) return;
+
+    const intervalMs = Math.min(600, Math.max(30, autoDraftIntervalSeconds || 120)) * 1000;
 
     const timer = setTimeout(async () => {
       try {
-        const draftBody = composeMode === 'html' ? bodyHtml : bodyMarkdown;
-        const result = await window.kenaz.createDraft({
-          to: to.length > 0 ? to.join(', ') : undefined,
-          cc: cc.length > 0 ? cc.join(', ') : undefined,
-          bcc: bcc.length > 0 ? bcc.join(', ') : undefined,
-          subject: subject || undefined,
-          body_markdown: draftBody || undefined,
-          reply_to_thread_id: initialData?.replyToThreadId,
-          attachments: attachments.length > 0 ? attachments : undefined,
-        });
-        if (autosaveDraftIdRef.current && autosaveDraftIdRef.current !== result?.id) {
-          try { await window.kenaz.deleteDraft(autosaveDraftIdRef.current); } catch (e) {
-            console.error('[Compose] Failed to delete previous autosave draft:', e);
-          }
-        }
-        if (result?.id) autosaveDraftIdRef.current = result.id;
+        await persistDraft();
         console.log('[Compose] Autosaved draft');
       } catch (e) {
         console.error('[Compose] Autosave failed:', e);
       }
-    }, 30_000);
+    }, intervalMs);
 
     return () => clearTimeout(timer);
-  }, [hasChanges, to, cc, bcc, subject, bodyMarkdown, bodyHtml, composeMode, initialData, attachments]);
+  }, [autoDraftEnabled, autoDraftIntervalSeconds, hasChanges, persistDraft]);
 
-  // Escape key → save draft if changes, otherwise just close
+  // Escape key: close immediately when unchanged; otherwise ask to Save/Discard.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         if (hasChanges && !sentRef.current) {
-          handleSaveDraft();
+          setShowCloseConfirm(true);
         } else {
           onClose();
         }
@@ -519,7 +538,7 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasChanges, handleSaveDraft, onClose]);
+  }, [hasChanges, onClose]);
 
   const formatSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -588,6 +607,28 @@ export function ComposeBar({ initialData, onClose, onSent, autoBccEnabled = fals
 
       {error && (
         <div className="px-4 py-1.5 bg-accent-danger/10 text-accent-danger text-xs flex-shrink-0">{error}</div>
+      )}
+
+      {showCloseConfirm && (
+        <div className="px-4 py-2 bg-bg-primary border-b border-border-subtle flex items-center justify-between gap-3 flex-shrink-0">
+          <span className="text-xs text-text-secondary">You have unsaved changes. Save draft before closing?</span>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleSaveDraft}
+              disabled={savingDraft}
+              className="px-3 py-1 bg-accent-primary hover:bg-accent-primary/80 disabled:opacity-50 text-white text-xs rounded font-medium transition-colors"
+            >
+              Save Draft
+            </button>
+            <button
+              onClick={handleDiscard}
+              disabled={savingDraft}
+              className="px-3 py-1 bg-bg-hover hover:bg-red-500/20 hover:text-red-400 disabled:opacity-50 text-text-muted text-xs rounded font-medium transition-colors"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Fields */}

@@ -1087,22 +1087,19 @@ export class GmailService {
 
   // ── Drafts ──────────────────────────────────────────────────
 
-  async createDraft(payload: Partial<SendEmailPayload>): Promise<string> {
+  private async buildDraftRaw(payload: Partial<SendEmailPayload>): Promise<string> {
     if (!this.gmail) throw new Error('Not authenticated');
 
     const appConfig = this.config.get();
-
-    // Build From header with display name if configured
     const fromHeader = appConfig.displayName
       ? `From: ${mimeEncodeHeader(appConfig.displayName)} <${this.userEmail}>`
       : `From: ${this.userEmail}`;
 
-    // Fetch In-Reply-To / References headers for proper threading
     let inReplyTo: string | null = null;
     let references: string | null = null;
     if (payload.reply_to_message_id) {
       try {
-        const origMsg = await this.gmail!.users.messages.get({
+        const origMsg = await this.gmail.users.messages.get({
           userId: 'me',
           id: payload.reply_to_message_id,
           format: 'metadata',
@@ -1122,16 +1119,13 @@ export class GmailService {
       }
     }
 
-    // Detect if body content looks like HTML
-    const bodyContent = payload.body_markdown || '';
-    const isHtml = /<[a-z][\s\S]*>/i.test(bodyContent);
+    // Draft payload may carry either raw HTML or markdown/plain text.
+    const bodyContent = payload.body_html || payload.body_markdown || '';
+    const isHtml = !!payload.body_html || /<[a-z][\s\S]*>/i.test(bodyContent);
 
     let rawMessage: string;
-
     if (payload.attachments && payload.attachments.length > 0) {
-      // Multipart MIME with attachments
       const boundary = `kenaz_draft_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-
       const topHeaders = [
         fromHeader,
         payload.to ? `To: ${payload.to}` : null,
@@ -1145,15 +1139,12 @@ export class GmailService {
       ].filter(Boolean);
 
       const mimeBody: string[] = [];
-
-      // Body part
       mimeBody.push(`--${boundary}`);
       mimeBody.push(isHtml ? 'Content-Type: text/html; charset=utf-8' : 'Content-Type: text/plain; charset=utf-8');
       mimeBody.push('Content-Transfer-Encoding: 7bit');
       mimeBody.push('');
       mimeBody.push(bodyContent);
 
-      // Attachment parts
       for (const att of payload.attachments) {
         const wrappedBase64 = att.base64.replace(/(.{76})/g, '$1\r\n');
         mimeBody.push(`--${boundary}`);
@@ -1167,7 +1158,6 @@ export class GmailService {
       mimeBody.push(`--${boundary}--`);
       rawMessage = [...topHeaders, '', ...mimeBody].join('\r\n');
     } else {
-      // Simple message without attachments
       const draftHeaders = [
         fromHeader,
         payload.to ? `To: ${payload.to}` : null,
@@ -1182,44 +1172,42 @@ export class GmailService {
       rawMessage = [...draftHeaders, '', bodyContent].join('\r\n');
     }
 
-    const messageBuffer = Buffer.from(rawMessage);
-    const MESSAGE_SIZE_THRESHOLD = 4 * 1024 * 1024;
+    return Buffer.from(rawMessage)
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  }
 
-    let res;
-    if (messageBuffer.length > MESSAGE_SIZE_THRESHOLD) {
-      // Large draft: use media upload
-      const { Readable } = await import('stream');
-      res = await this.gmail.users.drafts.create({
-        userId: 'me',
-        requestBody: {
-          message: {
-            threadId: payload.reply_to_thread_id || undefined,
-          },
+  async createDraft(payload: Partial<SendEmailPayload>): Promise<string> {
+    if (!this.gmail) throw new Error('Not authenticated');
+    const encodedMessage = await this.buildDraftRaw(payload);
+    const res = await this.gmail.users.drafts.create({
+      userId: 'me',
+      requestBody: {
+        message: {
+          raw: encodedMessage,
+          threadId: payload.reply_to_thread_id || undefined,
         },
-        media: {
-          mimeType: 'message/rfc822',
-          body: Readable.from(messageBuffer),
-        },
-      });
-    } else {
-      const encodedMessage = messageBuffer
-        .toString('base64')
-        .replace(/\+/g, '-')
-        .replace(/\//g, '_')
-        .replace(/=+$/, '');
-
-      res = await this.gmail.users.drafts.create({
-        userId: 'me',
-        requestBody: {
-          message: {
-            raw: encodedMessage,
-            threadId: payload.reply_to_thread_id || undefined,
-          },
-        },
-      });
-    }
-
+      },
+    });
     return res.data.id || '';
+  }
+
+  async updateDraft(draftId: string, payload: Partial<SendEmailPayload>): Promise<string> {
+    if (!this.gmail) throw new Error('Not authenticated');
+    const encodedMessage = await this.buildDraftRaw(payload);
+    const res = await this.gmail.users.drafts.update({
+      userId: 'me',
+      id: draftId,
+      requestBody: {
+        message: {
+          raw: encodedMessage,
+          threadId: payload.reply_to_thread_id || undefined,
+        },
+      },
+    });
+    return res.data.id || draftId;
   }
 
   async listDrafts(): Promise<Array<{ id: string; threadId: string; subject: string; to: string; snippet: string; date: string }>> {
