@@ -109,8 +109,15 @@ export function PendingInvitesPanel({ invites, isLoading, onRefresh, onDismiss, 
                 className="px-2 py-1.5 rounded-md hover:bg-bg-hover transition-colors group"
               >
                 <div className="flex items-start gap-1.5">
-                  <span className="text-[10px] flex-shrink-0 mt-px">📨</span>
+                  <span className="text-[10px] flex-shrink-0 mt-px">
+                    {invite.kind === 'proposed_time' ? '🕐' : '📨'}
+                  </span>
                   <div className="min-w-0 flex-1">
+                    {invite.kind === 'proposed_time' && (
+                      <div className="text-[9px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'rgb(245 158 11)' }}>
+                        New time proposed
+                      </div>
+                    )}
                     <div
                       className="text-xs text-text-primary truncate cursor-pointer hover:text-accent-primary transition-colors"
                       onClick={() => invite.startTime && onDateSelect(new Date(invite.startTime))}
@@ -119,7 +126,8 @@ export function PendingInvitesPanel({ invites, isLoading, onRefresh, onDismiss, 
                       {invite.title}
                     </div>
                     <div className="flex items-center gap-1 mt-0.5">
-                      <span className="text-[10px] text-text-muted truncate">
+                      <span className={`text-[10px] truncate ${invite.kind === 'proposed_time' ? 'font-medium' : 'text-text-muted'}`}
+                        style={invite.kind === 'proposed_time' ? { color: 'rgb(245 158 11 / 0.9)' } : undefined}>
                         {formatInviteDate(invite.startTime)}
                       </span>
                       {invite.conflict && (
@@ -129,20 +137,36 @@ export function PendingInvitesPanel({ invites, isLoading, onRefresh, onDismiss, 
                     <div className="text-[10px] text-text-muted truncate" title={invite.organizerEmail}>
                       {invite.organizer}
                     </div>
-                    {/* RSVP stub buttons */}
+                    {/* Action buttons */}
                     <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => handleRsvp(invite, 'accepted')}
-                        className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors"
-                      >Accept</button>
-                      <button
-                        onClick={() => handleRsvp(invite, 'tentative')}
-                        className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 transition-colors"
-                      >Maybe</button>
-                      <button
-                        onClick={() => handleRsvp(invite, 'declined')}
-                        className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
-                      >Decline</button>
+                      {invite.kind === 'proposed_time' ? (
+                        <>
+                          <button
+                            onClick={() => handleRsvp(invite, 'accepted')}
+                            className="px-1.5 py-0.5 rounded text-[9px] font-medium transition-colors"
+                            style={{ background: 'rgb(245 158 11 / 0.2)', color: 'rgb(245 158 11)' }}
+                          >Accept new time</button>
+                          <button
+                            onClick={() => onDismiss(invite.threadId)}
+                            className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-bg-tertiary text-text-muted hover:text-text-secondary transition-colors"
+                          >Dismiss</button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleRsvp(invite, 'accepted')}
+                            className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-green-500/20 text-green-400 hover:bg-green-500/30 transition-colors"
+                          >Accept</button>
+                          <button
+                            onClick={() => handleRsvp(invite, 'tentative')}
+                            className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 transition-colors"
+                          >Maybe</button>
+                          <button
+                            onClick={() => handleRsvp(invite, 'declined')}
+                            className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors"
+                          >Decline</button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>

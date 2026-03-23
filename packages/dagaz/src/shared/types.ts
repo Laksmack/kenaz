@@ -282,6 +282,7 @@ export interface PendingInvite {
   organizerEmail: string;
   startTime: string | null;
   endTime: string | null;
+  kind: 'invite' | 'proposed_time';
 }
 
 // ── Config ──────────────────────────────────────────────────

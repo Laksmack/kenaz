@@ -452,7 +452,11 @@ export class CacheStore {
     const rows = this.db.prepare(`
       SELECT id, subject, from_name, from_email, last_date, is_unread, labels
       FROM threads
-      WHERE (subject LIKE 'Invitation:%' OR subject LIKE 'Updated Invitation:%')
+      WHERE (
+        subject LIKE 'Invitation:%'
+        OR subject LIKE 'Updated Invitation:%'
+        OR subject LIKE 'Proposed new time:%'
+      )
         AND labels LIKE '%"INBOX"%'
       ORDER BY last_date DESC
       LIMIT 50

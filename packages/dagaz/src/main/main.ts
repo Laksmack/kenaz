@@ -171,12 +171,16 @@ interface KenazInvite {
   date: string;
 }
 
-function parseInviteSubject(subject: string): { title: string; dateStr: string | null } {
+function parseInviteSubject(subject: string): { title: string; dateStr: string | null; kind: 'invite' | 'proposed_time' } {
+  // "Proposed new time: Sean / Martin 1:1 @ Mon Mar 23, 2026 11:30am – 12pm (EDT) (Martin Stenkilde)"
+  const proposedMatch = subject.match(/^Proposed new time:\s*(.+?)\s+@\s+(.+?)(?:\s+\([^)]+\))*$/);
+  if (proposedMatch) return { title: proposedMatch[1].trim(), dateStr: proposedMatch[2].trim(), kind: 'proposed_time' };
+
   const match = subject.match(/^(?:Updated )?[Ii]nvitation:\s*(.+?)\s+@\s+(.+)$/);
-  if (match) return { title: match[1].trim(), dateStr: match[2].trim() };
+  if (match) return { title: match[1].trim(), dateStr: match[2].trim(), kind: 'invite' };
   const simple = subject.match(/^(?:Updated )?[Ii]nvitation:\s*(.+)$/);
-  if (simple) return { title: simple[1].trim(), dateStr: null };
-  return { title: subject, dateStr: null };
+  if (simple) return { title: simple[1].trim(), dateStr: null, kind: 'invite' };
+  return { title: subject, dateStr: null, kind: 'invite' };
 }
 
 async function getPendingInvites(): Promise<import('../shared/types').PendingInvite[]> {
@@ -193,7 +197,7 @@ async function getPendingInvites(): Promise<import('../shared/types').PendingInv
     console.log(`[Badge] Kenaz returned ${invites.length} pending invite(s)${invites.map(i => `\n  - "${i.subject?.slice(0, 60)}"`).join('')}`);
 
     return invites.map(inv => {
-      const { title, dateStr } = parseInviteSubject(inv.subject);
+      const { title, dateStr, kind } = parseInviteSubject(inv.subject);
       let startTime: string | null = null;
       let endTime: string | null = null;
 
@@ -215,6 +219,7 @@ async function getPendingInvites(): Promise<import('../shared/types').PendingInv
         organizerEmail: inv.fromEmail,
         startTime,
         endTime,
+        kind,
       };
     });
   } catch (e) {

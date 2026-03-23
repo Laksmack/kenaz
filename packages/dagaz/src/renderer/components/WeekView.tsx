@@ -358,11 +358,11 @@ export function WeekView({ currentDate, events, overlayEvents = [], pendingInvit
 
                 {/* Drag ghost */}
                 {ghostStyle && dragState && (
-                  <div style={ghostStyle} className="drag-ghost flex items-start px-2 py-1">
-                    <span className="text-[10px] font-medium text-accent-primary">
+                  <div style={ghostStyle} className="drag-ghost flex flex-col justify-between px-2 py-1.5">
+                    <span className="text-[11px] font-semibold leading-tight truncate" style={{ color: 'var(--drag-ghost-text)' }}>
                       {dragState.event.summary}
                     </span>
-                    <span className="text-[9px] text-text-muted ml-auto whitespace-nowrap">
+                    <span className="text-[10px] font-medium opacity-90 whitespace-nowrap" style={{ color: 'var(--drag-ghost-text)' }}>
                       {getGhostLabel(getUse24HourClock())}
                     </span>
                   </div>

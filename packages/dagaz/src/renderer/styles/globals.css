@@ -31,7 +31,9 @@
     --time-marker: #4A9AC2;
     --event-default: #4A9AC2;
     --event-allday: rgba(74, 154, 194, 0.15);
-    --drag-ghost: rgba(74, 154, 194, 0.3);
+    --drag-ghost: rgba(74, 154, 194, 0.22);
+    --drag-ghost-border: rgba(74, 154, 194, 0.9);
+    --drag-ghost-text: rgba(74, 154, 194, 1);
     --hour-line: rgba(255, 255, 255, 0.04);
     --now-line: #E8834A;
   }
@@ -49,6 +51,9 @@
 
     --time-marker: #3A7FA5;
     --now-line: #D06A2E;
+    --drag-ghost: rgba(58, 127, 165, 0.18);
+    --drag-ghost-border: rgba(58, 127, 165, 0.85);
+    --drag-ghost-text: rgba(58, 127, 165, 1);
     --hour-line: rgba(0, 0, 0, 0.06);
   }
 }
@@ -188,7 +193,8 @@
 
   .drag-ghost {
     background: var(--drag-ghost);
-    border: 1px dashed rgb(var(--accent-primary));
+    border: 2px solid var(--drag-ghost-border);
+    box-shadow: 0 0 0 1px rgba(74, 154, 194, 0.25), 0 4px 16px rgba(74, 154, 194, 0.2), inset 0 1px 0 rgba(255,255,255,0.08);
     @apply rounded-md;
   }
 }
