@@ -1269,7 +1269,7 @@ function CacheSettings({ config, onSave, saving, saved }: TabProps) {
             </div>
             <div className="h-1.5 bg-bg-tertiary rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all ${usagePct > 90 ? 'bg-accent-danger' : usagePct > 70 ? 'bg-yellow-500' : 'bg-accent-primary'}`}
+                className={`h-full rounded-full transition-all ${usagePct > 90 ? 'bg-accent-danger' : usagePct > 70 ? 'bg-yellow-500' : 'bg-accent-success'}`}
                 style={{ width: `${Math.min(100, usagePct)}%` }}
               />
             </div>

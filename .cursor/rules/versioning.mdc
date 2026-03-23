@@ -1,16 +1,25 @@
 ---
-description: Always bump the version in package.json after any code change (fix, feature, refactor)
+description: Bump per-app versions for client updates; do not rely on root-only bumps
 globs:
 alwaysApply: true
 ---
 
 # Version Bumping Rule
 
-After every code change (bug fix, feature, refactor, or any modification to source files), bump the patch version in `package.json` before building.
+Client updates are gated by each app package version in `packages/<app>/package.json`.
 
-- Use semver: `MAJOR.MINOR.PATCH`
-- Fixes and small changes: bump PATCH (e.g. 0.3.0 → 0.3.1)
-- New features: bump MINOR (e.g. 0.3.1 → 0.4.0)
-- Breaking changes: bump MAJOR
-- Always bump before running `npm run dist` or `npm run build`
-- The version in `package.json` is the single source of truth
+For any client-facing app change:
+- Bump the changed app(s): `packages/kenaz/package.json`, `packages/raido/package.json`, `packages/laguz/package.json`, `packages/dagaz/package.json`.
+- Use semver per app:
+  - Fix/small change: PATCH
+  - Feature: MINOR
+  - Breaking change: MAJOR
+- If a shared runtime change affects multiple apps, bump every affected app package version.
+- Do not bump unrelated app versions.
+
+Root versioning:
+- Root `package.json` does not trigger app client updates by itself.
+- Do not use a root-only version bump as a substitute for app version bumps.
+
+Before `npm run build`/`npm run dist` for an app:
+- Confirm that app's `packages/<app>/package.json` version has been incremented when behavior changed.
