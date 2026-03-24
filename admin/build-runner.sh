@@ -54,6 +54,12 @@ REMOTE_HOST="ubuntu@compsci-hackathons.com"
 REMOTE_PATH="/home/ubuntu/projects/kenaz/html/releases"
 REMOTE_HTML="/home/ubuntu/projects/kenaz/html"
 BRANCH="main"
+TIMESTAMP_HOST="timestamp.apple.com"
+TIMESTAMP_PORT=443
+
+log() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') — $*"
+}
 
 # Prevent overlapping runs
 if [ -f "$LOCK_FILE" ]; then
@@ -159,6 +165,28 @@ if [ "$FORCE" = true ] || echo "$CHANGED_FILES" | grep -q "^web/"; then
   WEB_CHANGED=true
 fi
 
+# Ensure Apple timestamp service is reachable before expensive builds.
+# If this fails, delay to next cron run instead of spending minutes building.
+check_timestamp_authority() {
+  local max_attempts=3
+  local attempt=1
+
+  while [ "$attempt" -le "$max_attempts" ]; do
+    if nc -z -w 10 "$TIMESTAMP_HOST" "$TIMESTAMP_PORT" >/dev/null 2>&1; then
+      return 0
+    fi
+
+    if [ "$attempt" -lt "$max_attempts" ]; then
+      log "timestamp authority probe failed (attempt $attempt/$max_attempts, timeout 10s) — retrying in 10s"
+      sleep 10
+    fi
+
+    attempt=$((attempt + 1))
+  done
+
+  return 1
+}
+
 # Load credentials (keychain password for codesign access)
 source "$REPO_ROOT/.env.notarize"
 
@@ -172,6 +200,15 @@ fi
 # Build apps if any need building
 FAILED=()
 if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
+  log "verifying timestamp authority ($TIMESTAMP_HOST:$TIMESTAMP_PORT)..."
+  if ! check_timestamp_authority; then
+    mkdir -p "$(dirname "$RETRY_FILE")"
+    printf '%s\n' "${APPS_TO_BUILD[@]}" | awk 'NF && !seen[$0]++' > "$RETRY_FILE"
+    log "timestamp authority unavailable [DELAY] ($TIMESTAMP_HOST:$TIMESTAMP_PORT) — delaying build to next run"
+    exit 0
+  fi
+  log "timestamp authority reachable [OK] ($TIMESTAMP_HOST:$TIMESTAMP_PORT)"
+
   # Unlock keychain for codesign (launchd may have empty keychain search list)
   security list-keychains -s ~/Library/Keychains/login.keychain-db
   security unlock-keychain -p "$KEYCHAIN_PASSWORD" ~/Library/Keychains/login.keychain-db
@@ -426,6 +463,7 @@ if [ ${#UPLOAD_PIDS[@]} -gt 0 ]; then
     else
       echo "  ✗ $name upload failed"
       ((UPLOAD_ERRORS++))
+      FAILED+=("$app")
     fi
 
     log="$REPO_ROOT/.upload-$app.log"
@@ -447,7 +485,7 @@ echo ""
 if [ ${#FAILED[@]} -gt 0 ]; then
   # Persist failed apps so next cron run retries them
   mkdir -p "$(dirname "$RETRY_FILE")"
-  printf '%s\n' "${FAILED[@]}" > "$RETRY_FILE"
+  printf '%s\n' "${FAILED[@]}" | awk 'NF && !seen[$0]++' > "$RETRY_FILE"
   echo "━━━ Done (${#FAILED[@]} failed: ${FAILED[*]} — will retry next run) ━━━"
 else
   rm -f "$RETRY_FILE"

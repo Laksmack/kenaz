@@ -45,20 +45,30 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
   // Sent, All Mail, and Search always use newest-first
   const effectiveSort = ALWAYS_NEWEST_FIRST.has(currentView) ? 'newest' : sort;
 
-  const applySort = useCallback((list: EmailThread[]) => {
-    // For Sent view, re-sort by the date of the user's last sent message
+  const getThreadTimestamp = useCallback((thread: EmailThread): number => {
     if (currentView === 'sent' && userEmail) {
       const lowerEmail = userEmail.toLowerCase();
-      return [...list].sort((a, b) => {
-        const aSent = [...a.messages].reverse().find((m) => m.from.email.toLowerCase() === lowerEmail);
-        const bSent = [...b.messages].reverse().find((m) => m.from.email.toLowerCase() === lowerEmail);
-        const aDate = aSent ? new Date(aSent.date).getTime() : new Date(a.lastDate).getTime();
-        const bDate = bSent ? new Date(bSent.date).getTime() : new Date(b.lastDate).getTime();
-        return bDate - aDate; // newest first
-      });
+      const sent = [...thread.messages]
+        .reverse()
+        .find((m) => m.from.email.toLowerCase() === lowerEmail);
+      const sentTs = sent ? new Date(sent.date).getTime() : NaN;
+      if (!Number.isNaN(sentTs)) return sentTs;
     }
-    return effectiveSort === 'oldest' ? [...list].reverse() : list;
-  }, [effectiveSort, currentView, userEmail]);
+    const lastTs = new Date(thread.lastDate).getTime();
+    return Number.isNaN(lastTs) ? 0 : lastTs;
+  }, [currentView, userEmail]);
+
+  const applySort = useCallback((list: EmailThread[]) => {
+    return [...list].sort((a, b) => {
+      const aTs = getThreadTimestamp(a);
+      const bTs = getThreadTimestamp(b);
+      if (aTs !== bTs) {
+        return effectiveSort === 'oldest' ? aTs - bTs : bTs - aTs;
+      }
+      // Stable deterministic tie-break so order doesn't flicker across refreshes.
+      return a.id.localeCompare(b.id);
+    });
+  }, [effectiveSort, getThreadTimestamp]);
 
   const filterRecentlyDone = useCallback((list: EmailThread[]) => {
     // Only suppress in inbox-style views where "done" removes the thread.
@@ -92,7 +102,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     } finally {
       setLoading(false);
     }
-  }, [query, enabled, applySort]);
+  }, [query, enabled, applySort, filterRecentlyDone]);
 
   const refreshFromCache = useCallback(async () => {
     if (!enabled) return;
@@ -123,15 +133,16 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
         const merged = effectiveSort === 'oldest'
           ? [...filteredNewThreads.reverse(), ...prev]
           : [...prev, ...filteredNewThreads];
-        cacheRef.current[query] = merged;
-        return merged;
+        const sorted = applySort(merged);
+        cacheRef.current[query] = sorted;
+        return sorted;
       });
     } catch (e) {
       console.error('Failed to load more threads:', e);
     } finally {
       setLoadingMore(false);
     }
-  }, [query, enabled, loadingMore, effectiveSort]);
+  }, [query, enabled, loadingMore, effectiveSort, applySort, filterRecentlyDone]);
 
   // Fetch whenever query, enabled, or sort changes
   useEffect(() => {

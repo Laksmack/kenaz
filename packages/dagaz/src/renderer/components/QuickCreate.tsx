@@ -107,10 +107,11 @@ function formatTimeLabel(value: string): string {
   return `${h12}:${m.toString().padStart(2, '0')} ${suffix}`;
 }
 
-function TimeInput({ value, onChange, id }: { value: string; onChange: (v: string) => void; id: string }) {
+function TimeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   const [text, setText] = useState(() => formatTimeLabel(value));
   const [focused, setFocused] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pickerRef = useRef<HTMLSelectElement>(null);
 
   useEffect(() => {
     if (!focused) setText(formatTimeLabel(value));
@@ -127,23 +128,42 @@ function TimeInput({ value, onChange, id }: { value: string; onChange: (v: strin
   };
 
   return (
-    <>
+    <div className="relative w-[100px]">
       <input
         ref={inputRef}
         type="text"
-        list={`${id}-opts`}
         value={text}
         onChange={e => setText(e.target.value)}
         onFocus={() => { setFocused(true); setTimeout(() => inputRef.current?.select(), 0); }}
         onBlur={() => { setFocused(false); commit(); }}
         onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); commit(); inputRef.current?.blur(); } }}
-        className="bg-bg-primary border border-border-subtle rounded px-1.5 py-0.5 text-xs text-text-primary outline-none focus:border-accent-primary/40 w-[90px]"
+        className="w-full bg-bg-primary border border-border-subtle rounded px-1.5 pr-5 py-0.5 text-xs text-text-primary outline-none focus:border-accent-primary/40"
         autoComplete="off"
       />
-      <datalist id={`${id}-opts`}>
-        {TIME_OPTIONS.map(t => <option key={t.value} value={t.label} />)}
-      </datalist>
-    </>
+      <select
+        ref={pickerRef}
+        defaultValue=""
+        onChange={e => {
+          const picked = e.target.value;
+          if (!picked) return;
+          onChange(picked);
+          setText(formatTimeLabel(picked));
+          e.target.value = '';
+        }}
+        className="absolute top-0 right-0 h-full w-5 opacity-0 cursor-pointer"
+        aria-label="Pick time"
+      >
+        <option value="">Pick time</option>
+        {TIME_OPTIONS.map(t => (
+          <option key={t.value} value={t.value}>
+            {t.label}
+          </option>
+        ))}
+      </select>
+      <svg className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-3 h-3 text-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+      </svg>
+    </div>
   );
 }
 
@@ -444,9 +464,9 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs text-text-primary font-medium">{friendlyDate(startD)}</span>
                 <span className="text-text-muted text-[10px]">·</span>
-                <TimeInput value={startTime} onChange={setStartTime} id="qc-start" />
+                <TimeInput value={startTime} onChange={setStartTime} />
                 <span className="text-text-muted text-xs">→</span>
-                <TimeInput value={endTime} onChange={setEndTime} id="qc-end" />
+                <TimeInput value={endTime} onChange={setEndTime} />
                 <span className="text-[10px] text-text-muted">{dur}</span>
               </div>
             )}
