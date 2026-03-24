@@ -23,6 +23,7 @@ import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
 import { ErrorBoundary } from '@futhark/core/components/ErrorBoundary';
 import { formatDayHeader, dateKey, setUse24HourClock, getWeekStart } from './lib/utils';
 import { buildConflictRanges, mergeConflictEvents } from './lib/response-conflict-events';
+import { inviteMatchesEvent } from './lib/event-layout';
 import type { ViewType, CalendarEvent, AppConfig, CreateEventInput, UpdateEventInput } from '../shared/types';
 import { PeopleOverlay } from './components/PeopleOverlay';
 import { SearchDialog } from './components/SearchDialog';
@@ -68,6 +69,14 @@ export default function App() {
     refresh: refreshNeedsAction,
   } = useNeedsAction();
   const [responseConflictEvents, setResponseConflictEvents] = useState<CalendarEvent[]>([]);
+
+  const dedupedPendingInvites = useMemo(
+    () =>
+      pendingInvites.filter(
+        (invite) => !needsActionEvents.some((event) => inviteMatchesEvent(invite, event)),
+      ),
+    [pendingInvites, needsActionEvents],
+  );
 
   const events = useMemo(() => {
     if (!appConfig?.hideDeclinedEvents) return rawEvents;
@@ -272,7 +281,7 @@ export default function App() {
     let cancelled = false;
     const CONFLICT_FETCH_BUFFER_MS = 6 * 60 * 60 * 1000; // Include nearby overlaps and TZ edge cases
 
-    const conflictRanges = buildConflictRanges(needsActionEvents, pendingInvites, CONFLICT_FETCH_BUFFER_MS);
+    const conflictRanges = buildConflictRanges(needsActionEvents, dedupedPendingInvites, CONFLICT_FETCH_BUFFER_MS);
     if (conflictRanges.length === 0) {
       setResponseConflictEvents(events);
       return;
@@ -294,7 +303,7 @@ export default function App() {
 
     loadConflictEvents();
     return () => { cancelled = true; };
-  }, [needsActionEvents, pendingInvites, events]);
+  }, [needsActionEvents, dedupedPendingInvites, events]);
 
   const handleJoinMeeting = useCallback(() => {
     if (!selectedEvent) return;
@@ -424,7 +433,7 @@ export default function App() {
           <div className="flex-1" />
 
           <div className="titlebar-no-drag flex items-center gap-1 mr-3" role="tablist" aria-label="Calendar views">
-            {(needsActionEvents.length > 0 || pendingInvites.length > 0) && (
+            {(needsActionEvents.length > 0 || dedupedPendingInvites.length > 0) && (
               <button
                 onClick={() => { setShowInvitesPanel(true); setSelectedEvent(null); }}
                 className={`view-tab flex items-center gap-1.5 ${showInvitesPanel && !selectedEvent ? 'active' : ''}`}
@@ -433,7 +442,7 @@ export default function App() {
                 aria-selected={showInvitesPanel && !selectedEvent}
               >
                 Pending
-                <span className="px-1.5 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary text-[10px] font-semibold leading-none">{needsActionEvents.length + pendingInvites.length}</span>
+                <span className="px-1.5 py-0.5 rounded-full bg-accent-primary/20 text-accent-primary text-[10px] font-semibold leading-none">{needsActionEvents.length + dedupedPendingInvites.length}</span>
               </button>
             )}
             {([
@@ -512,13 +521,13 @@ export default function App() {
           <ErrorBoundary inline>
           <div className="flex-1 min-w-0">
             {currentView === 'week' && (
-              <WeekView currentDate={currentDate} events={events} overlayEvents={overlayEvents} pendingInvites={pendingInvites}
+              <WeekView currentDate={currentDate} events={events} overlayEvents={overlayEvents} pendingInvites={dedupedPendingInvites}
                 selectedEvent={selectedEvent} onSelectEvent={selectEvent} onCreateEvent={(start, end) => openQuickCreate(start, end)}
                 onUpdateEvent={handleUpdateEvent} onRSVP={handleRSVP} onDeleteEvent={handleDeleteEvent}
                 weekDays={weekDays} weekendWeekAhead={weekendWeekAhead} defaultEventDurationMinutes={appConfig?.defaultEventDurationMinutes} />
             )}
             {currentView === 'day' && (
-              <DayView currentDate={currentDate} events={events} overlayEvents={overlayEvents} pendingInvites={pendingInvites}
+              <DayView currentDate={currentDate} events={events} overlayEvents={overlayEvents} pendingInvites={dedupedPendingInvites}
                 selectedEvent={selectedEvent} onSelectEvent={selectEvent} onCreateEvent={(start, end) => openQuickCreate(start, end)}
                 onUpdateEvent={handleUpdateEvent} onRSVP={handleRSVP} onDeleteEvent={handleDeleteEvent}
                 defaultEventDurationMinutes={appConfig?.defaultEventDurationMinutes} />
@@ -532,12 +541,12 @@ export default function App() {
 
           <ErrorBoundary inline>
           {selectedEvent ? (
-            <EventDetail event={selectedEvent} onClose={() => { setSelectedEvent(null); if (needsActionEvents.length > 0 || pendingInvites.length > 0) setShowInvitesPanel(true); }}
+            <EventDetail event={selectedEvent} onClose={() => { setSelectedEvent(null); if (needsActionEvents.length > 0 || dedupedPendingInvites.length > 0) setShowInvitesPanel(true); }}
               onDelete={handleDeleteEvent} onRSVP={handleRSVP} onEdit={openEditEvent} />
-          ) : (showInvitesPanel || needsActionEvents.length > 0 || pendingInvites.length > 0) && (
+          ) : (showInvitesPanel || needsActionEvents.length > 0 || dedupedPendingInvites.length > 0) && (
             <InviteReviewPanel events={needsActionEvents} allEvents={responseConflictEvents} isLoading={needsActionLoading}
               onRefresh={refreshNeedsAction} onRsvp={handleRSVP} onSelectEvent={selectEvent} onDateSelect={handleReviewDateSelect}
-              pendingInvites={pendingInvites} pendingInvitesLoading={pendingInvitesLoading}
+              pendingInvites={dedupedPendingInvites} pendingInvitesLoading={pendingInvitesLoading}
               onRefreshInvites={refreshPendingInvites} onDismissInvite={dismissPendingInvite} onRsvpInvite={handleInviteRsvp} />
           )}
           </ErrorBoundary>
