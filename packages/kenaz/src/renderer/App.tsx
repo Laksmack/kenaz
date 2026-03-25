@@ -294,10 +294,17 @@ export default function App() {
           // Comparing 0 !== N would always be true, firing the banner on every sync.
           // When list has no message entries, fall back to lastDate as a reliable proxy:
           // a new message always advances lastDate; a label/read change does not.
+          // List metadata and full-thread fetches can use different date formats
+          // (RFC2822 header vs ISO string), so compare timestamps, not raw strings.
+          const selectedLastTs = Date.parse(selectedThread.lastDate);
+          const matchLastTs = Date.parse(match.lastDate);
+          const hasNewerLastDate = Number.isFinite(matchLastTs) &&
+            Number.isFinite(selectedLastTs) &&
+            matchLastTs > selectedLastTs;
           const hasThreadActivity = match.messages.length > 0
             ? (match.messages.length !== selectedThread.messages.length ||
                (matchLast?.id && selectedLast?.id && matchLast.id !== selectedLast.id))
-            : match.lastDate > selectedThread.lastDate;
+            : hasNewerLastDate;
           if (hasThreadActivity) {
             console.log(`[SELECT] thread "${match.subject?.slice(0,30)}" has update (lastDate: ${selectedThread.lastDate} → ${match.lastDate}, msgs: ${selectedThread.messages.length} → ${match.messages.length})`);
             setThreadUpdateAvailable(true);
