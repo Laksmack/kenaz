@@ -14,6 +14,7 @@ interface Props {
 export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [fullEvent, setFullEvent] = useState<CalendarEvent | null>(null);
+  const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
 
   const [rsvpVersion, setRsvpVersion] = useState(0);
 
@@ -54,6 +55,29 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
 
   const handleOpenInGoogle = () => {
     if (ev.html_link) window.dagaz.openExternal(ev.html_link);
+  };
+
+  const copyEmailToClipboard = async (email?: string | null) => {
+    if (!email) return;
+    try {
+      await navigator.clipboard.writeText(email);
+      setCopiedEmail(email);
+      window.setTimeout(() => setCopiedEmail(null), 1200);
+    } catch (e) {
+      console.error('[EventDetail] Failed to copy attendee email:', e);
+    }
+  };
+
+  const handleEmailAll = () => {
+    const attendeeEmails = (ev.attendees || [])
+      .map((a) => a.email?.trim())
+      .filter((email): email is string => !!email);
+    const uniqueEmails = [...new Set(attendeeEmails)];
+    if (uniqueEmails.length === 0) return;
+
+    const subject = ev.summary || 'Meeting';
+    const mailto = `mailto:${encodeURIComponent(uniqueEmails.join(','))}?subject=${encodeURIComponent(subject)}`;
+    window.dagaz.openExternal(mailto);
   };
 
   // Date/time formatting — guard against empty/invalid times
@@ -243,13 +267,31 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
                 return '';
               })()}
             </h3>
+            <div className="flex justify-end mb-1">
+              <button
+                onClick={handleEmailAll}
+                className="p-1 rounded hover:bg-bg-hover text-text-muted/70 hover:text-text-primary transition-colors"
+                title="Email all guests"
+                aria-label="Email all guests"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 8l9 6 9-6M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+              </button>
+            </div>
             <div className="space-y-1 mt-1.5 selectable">
               {/* Organizer first */}
               {organizer && (
                 <div className="flex items-center gap-2 py-0.5">
-                  <span className={`text-xs font-medium w-4 text-center ${responseStatusColor(organizer.response_status)}`}>
+                  <button
+                    type="button"
+                    onClick={() => copyEmailToClipboard(organizer.email)}
+                    className={`text-xs font-medium w-4 text-center ${responseStatusColor(organizer.response_status)} hover:opacity-80 transition-opacity`}
+                    title={copiedEmail === organizer.email ? 'Copied!' : `Copy ${organizer.email}`}
+                    aria-label={`Copy ${organizer.email}`}
+                  >
                     {responseStatusIcon(organizer.response_status)}
-                  </span>
+                  </button>
                   <div className="flex-1 min-w-0">
                     <span className="text-xs text-text-primary truncate block">
                       {organizer.display_name || organizer.email}
@@ -261,9 +303,15 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
               {/* Self if not organizer */}
               {selfAttendee && !selfAttendee.is_organizer && (
                 <div className="flex items-center gap-2 py-0.5">
-                  <span className={`text-xs font-medium w-4 text-center ${responseStatusColor(selfAttendee.response_status)}`}>
+                  <button
+                    type="button"
+                    onClick={() => copyEmailToClipboard(selfAttendee.email)}
+                    className={`text-xs font-medium w-4 text-center ${responseStatusColor(selfAttendee.response_status)} hover:opacity-80 transition-opacity`}
+                    title={copiedEmail === selfAttendee.email ? 'Copied!' : `Copy ${selfAttendee.email}`}
+                    aria-label={`Copy ${selfAttendee.email}`}
+                  >
                     {responseStatusIcon(selfAttendee.response_status)}
-                  </span>
+                  </button>
                   <div className="flex-1 min-w-0">
                     <span className="text-xs text-text-primary truncate block">
                       {selfAttendee.display_name || selfAttendee.email}
@@ -275,9 +323,15 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
               {/* Other attendees */}
               {otherAttendees.map((a, i) => (
                 <div key={i} className="flex items-center gap-2 py-0.5">
-                  <span className={`text-xs font-medium w-4 text-center ${responseStatusColor(a.response_status)}`}>
+                  <button
+                    type="button"
+                    onClick={() => copyEmailToClipboard(a.email)}
+                    className={`text-xs font-medium w-4 text-center ${responseStatusColor(a.response_status)} hover:opacity-80 transition-opacity`}
+                    title={copiedEmail === a.email ? 'Copied!' : `Copy ${a.email}`}
+                    aria-label={`Copy ${a.email}`}
+                  >
                     {responseStatusIcon(a.response_status)}
-                  </span>
+                  </button>
                   <div className="flex-1 min-w-0">
                     <span className="text-xs text-text-primary truncate block">
                       {a.display_name || a.email}
