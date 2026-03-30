@@ -70,6 +70,53 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     });
   }, [effectiveSort, getThreadTimestamp]);
 
+  const isFollowUpCandidate = useCallback((thread: EmailThread): boolean => {
+    if (!userEmail) return false;
+    if (thread.labels.includes('INBOX')) return false;
+    if (thread.labels.includes('TRASH') || thread.labels.includes('SPAM')) return false;
+    if (thread.labels.includes('SNOOZED')) return false;
+
+    const lastMsg = thread.messages[thread.messages.length - 1];
+    if (!lastMsg) return false;
+
+    const isFromMe = lastMsg.from.email.toLowerCase() === userEmail.toLowerCase();
+    if (!isFromMe) return false;
+
+    const msgDate = new Date(lastMsg.date);
+    if (Number.isNaN(msgDate.getTime())) return false;
+    const daysAgo = Math.floor((Date.now() - msgDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    return daysAgo >= 2;
+  }, [userEmail]);
+
+  const augmentInboxWithFollowUps = useCallback(async (inboxThreads: EmailThread[]) => {
+    if (currentView !== 'inbox' || !userEmail) return inboxThreads;
+
+    try {
+      // Pull from local cache to keep follow-up candidates visible even if INBOX
+      // label reconciliation removes them during a background refresh.
+      const cacheResult = await window.kenaz.fetchThreadsFromCache('', 250);
+      const extras = cacheResult.threads
+        .filter(isFollowUpCandidate)
+        .slice(0, 25);
+
+      if (extras.length === 0) return inboxThreads;
+
+      const seen = new Set(inboxThreads.map((t) => t.id));
+      const merged = [...inboxThreads];
+      for (const thread of extras) {
+        if (!seen.has(thread.id)) {
+          merged.push(thread);
+          seen.add(thread.id);
+        }
+      }
+      return merged;
+    } catch (e) {
+      console.error('[useEmails] Failed to augment inbox with follow-ups:', e);
+      return inboxThreads;
+    }
+  }, [currentView, userEmail, isFollowUpCandidate]);
+
   const filterRecentlyDone = useCallback((list: EmailThread[]) => {
     // Only suppress in inbox-style views where "done" removes the thread.
     if (currentView !== 'inbox' && currentView !== 'all' && currentView !== 'search') {
@@ -94,7 +141,8 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
       const result = await window.kenaz.fetchThreads(query, PAGE_SIZE);
       nextPageTokenRef.current = result.nextPageToken;
       setHasMore(!!result.nextPageToken);
-      const sorted = applySort(filterRecentlyDone(result.threads));
+      const withFollowUps = await augmentInboxWithFollowUps(result.threads);
+      const sorted = applySort(filterRecentlyDone(withFollowUps));
       cacheRef.current[query] = sorted;
       setThreads(sorted);
     } catch (e) {
@@ -102,7 +150,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     } finally {
       setLoading(false);
     }
-  }, [query, enabled, applySort, filterRecentlyDone]);
+  }, [query, enabled, applySort, filterRecentlyDone, augmentInboxWithFollowUps]);
 
   const refreshFromCache = useCallback(async () => {
     if (!enabled) return;
@@ -110,13 +158,14 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
       const result = await window.kenaz.fetchThreadsFromCache(query, PAGE_SIZE);
       nextPageTokenRef.current = undefined;
       setHasMore(false);
-      const sorted = applySort(filterRecentlyDone(result.threads));
+      const withFollowUps = await augmentInboxWithFollowUps(result.threads);
+      const sorted = applySort(filterRecentlyDone(withFollowUps));
       cacheRef.current[query] = sorted;
       setThreads(sorted);
     } catch (e) {
       console.error('Failed to refresh threads from cache:', e);
     }
-  }, [query, enabled, applySort, filterRecentlyDone]);
+  }, [query, enabled, applySort, filterRecentlyDone, augmentInboxWithFollowUps]);
 
   const loadMore = useCallback(async () => {
     if (!enabled || !nextPageTokenRef.current || loadingMore) return;
