@@ -99,10 +99,9 @@ export class ConnectivityMonitor extends EventEmitter {
   }
 
   private async probe(): Promise<boolean> {
-    // Layer 1: OS-level check
-    if (!net.isOnline()) {
-      return false;
-    }
+    // Layer 1: OS-level check (hint only). Electron can occasionally report
+    // stale offline state after reconnect, so we still attempt Gmail probing.
+    const osOnline = net.isOnline();
 
     // Layer 2: If we have a gmail service, try a lightweight API call
     if (this.gmail) {
@@ -110,11 +109,11 @@ export class ConnectivityMonitor extends EventEmitter {
         await this.gmail.getProfile();
         return true;
       } catch (e: any) {
+        const msg = (e.message || '').toLowerCase();
         // Network errors indicate offline
-        const msg = e.message || '';
-        if (msg.includes('ENOTFOUND') || msg.includes('ENETUNREACH') ||
-            msg.includes('ECONNREFUSED') || msg.includes('ETIMEDOUT') ||
-            msg.includes('ERR_NETWORK') || msg.includes('fetch failed')) {
+        if (msg.includes('enotfound') || msg.includes('enetunreach') ||
+            msg.includes('econnrefused') || msg.includes('etimedout') ||
+            msg.includes('err_network') || msg.includes('fetch failed')) {
           return false;
         }
         // Auth errors (401, 403) or "Not authenticated" — we're online but token is bad
@@ -123,8 +122,8 @@ export class ConnectivityMonitor extends EventEmitter {
       }
     }
 
-    // No gmail service — rely on OS check
-    return true;
+    // No gmail service — fall back to OS-level state
+    return osOnline;
   }
 
   private updateState(online: boolean): void {
