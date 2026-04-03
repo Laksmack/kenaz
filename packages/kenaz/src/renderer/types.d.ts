@@ -6,7 +6,7 @@ declare global {
       fetchThreads: (query: string, maxResults?: number, pageToken?: string) => Promise<{ threads: any[]; nextPageToken?: string }>;
       fetchThreadsFromCache: (query: string, maxResults?: number) => Promise<{ threads: any[]; nextPageToken?: string; fromCache: boolean }>;
       fetchThread: (threadId: string) => Promise<any>;
-      search: (query: string) => Promise<any>;
+      search: (query: string) => Promise<import('@shared/types').EmailThread[]>;
       sendEmail: (payload: any) => Promise<any>;
       archiveThread: (threadId: string) => Promise<void>;
       modifyLabels: (threadId: string, add: string | null, remove: string | null) => Promise<void>;

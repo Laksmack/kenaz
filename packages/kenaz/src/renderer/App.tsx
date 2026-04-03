@@ -932,9 +932,14 @@ export default function App() {
   }, [selectedThread, handleCompose]);
 
   const handleSearch = useCallback((query: string) => {
-    setSearchQuery(query);
-    if (query) {
+    const trimmed = query.trim();
+    setSearchQuery(trimmed);
+    if (trimmed) {
       setCurrentView('search');
+    } else {
+      setCurrentView('inbox');
+      setSelectedThread(null);
+      setSelectedIds(new Set());
     }
   }, []);
 

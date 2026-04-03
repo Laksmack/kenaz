@@ -4,8 +4,8 @@ import { VIEWS } from '@shared/types';
 import { extractLinearIssueKeys } from '../lib/linear';
 
 function buildQuery(currentView: ViewType, searchQuery: string, views: View[]): string {
-  if (currentView === 'search' && searchQuery) {
-    return searchQuery;
+  if (currentView === 'search') {
+    return searchQuery.trim();
   }
   if (currentView === 'linear') {
     return 'in:inbox';
@@ -38,6 +38,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const nextPageTokenRef = useRef<string | undefined>(undefined);
+  const requestSeqRef = useRef(0);
 
   // Per-view cache for instant switching
   const cacheRef = useRef<Record<string, EmailThread[]>>({});
@@ -147,10 +148,29 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
 
   const fetchThreads = useCallback(async () => {
     if (!enabled) return;
+    const requestSeq = ++requestSeqRef.current;
     setLoading(true);
     nextPageTokenRef.current = undefined;
     try {
+      if (currentView === 'search') {
+        if (!query) {
+          if (requestSeq !== requestSeqRef.current) return;
+          setHasMore(false);
+          cacheRef.current[query] = [];
+          setThreads([]);
+          return;
+        }
+        const searchResults = await window.kenaz.search(query);
+        if (requestSeq !== requestSeqRef.current) return;
+        setHasMore(false);
+        const sorted = applySort(filterRecentlyDone(filterLinearView(searchResults)));
+        cacheRef.current[query] = sorted;
+        setThreads(sorted);
+        return;
+      }
+
       const result = await window.kenaz.fetchThreads(query, PAGE_SIZE);
+      if (requestSeq !== requestSeqRef.current) return;
       nextPageTokenRef.current = result.nextPageToken;
       setHasMore(!!result.nextPageToken);
       const withFollowUps = await augmentInboxWithFollowUps(result.threads);
@@ -160,14 +180,35 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     } catch (e) {
       console.error('Failed to fetch threads:', e);
     } finally {
-      setLoading(false);
+      if (requestSeq === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
-  }, [query, enabled, applySort, filterRecentlyDone, filterLinearView, augmentInboxWithFollowUps]);
+  }, [query, enabled, currentView, applySort, filterRecentlyDone, filterLinearView, augmentInboxWithFollowUps]);
 
   const refreshFromCache = useCallback(async () => {
     if (!enabled) return;
+    const requestSeq = ++requestSeqRef.current;
     try {
+      if (currentView === 'search') {
+        if (!query) {
+          if (requestSeq !== requestSeqRef.current) return;
+          setHasMore(false);
+          cacheRef.current[query] = [];
+          setThreads([]);
+          return;
+        }
+        const searchResults = await window.kenaz.search(query);
+        if (requestSeq !== requestSeqRef.current) return;
+        setHasMore(false);
+        const sorted = applySort(filterRecentlyDone(filterLinearView(searchResults)));
+        cacheRef.current[query] = sorted;
+        setThreads(sorted);
+        return;
+      }
+
       const result = await window.kenaz.fetchThreadsFromCache(query, PAGE_SIZE);
+      if (requestSeq !== requestSeqRef.current) return;
       nextPageTokenRef.current = undefined;
       setHasMore(false);
       const withFollowUps = await augmentInboxWithFollowUps(result.threads);
@@ -177,7 +218,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     } catch (e) {
       console.error('Failed to refresh threads from cache:', e);
     }
-  }, [query, enabled, applySort, filterRecentlyDone, filterLinearView, augmentInboxWithFollowUps]);
+  }, [query, enabled, currentView, applySort, filterRecentlyDone, filterLinearView, augmentInboxWithFollowUps]);
 
   const loadMore = useCallback(async () => {
     if (!enabled || !nextPageTokenRef.current || loadingMore) return;

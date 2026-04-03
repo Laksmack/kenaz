@@ -375,11 +375,15 @@ function registerIpcHandlers() {
   ipcMain.handle(IPC.GMAIL_SEARCH, async (_event, query: string) => {
     const { gmail, cache, config } = active();
     const appConfig = config.get();
+    const normalizedQuery = (query || '').trim();
+    if (!normalizedQuery) {
+      return [];
+    }
 
     let localResults: any[] = [];
     if (appConfig.cacheEnabled) {
       try {
-        localResults = cache.searchLocal(query, 50);
+        localResults = cache.searchLocal(normalizedQuery, 50);
       } catch (e) {
         console.error('[Cache] Local search failed:', e);
       }
@@ -390,7 +394,7 @@ function registerIpcHandlers() {
     }
 
     try {
-      const result = await withOfflineAwareness(() => gmail.fetchThreads(query, 50));
+      const result = await withOfflineAwareness(() => gmail.fetchThreads(normalizedQuery, 50));
       if (appConfig.cacheEnabled && result.threads.length > 0) {
         try {
           cache.upsertThreads(result.threads);
