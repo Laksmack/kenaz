@@ -12,6 +12,7 @@ import { initAutoUpdater, getUpdateMenuItems } from '@futhark/core/lib/auto-upda
 import { startApiServer } from './api-server';
 import { ConfigStore } from './config';
 import { TaskStore } from './task-store';
+import { LinearService } from './linear';
 import { IPC } from '../shared/types';
 
 // ── Crash resilience ─────────────────────────────────────────
@@ -28,6 +29,7 @@ process.on('unhandledRejection', (reason) => {
 let mainWindow: BrowserWindow | null = null;
 let config: ConfigStore;
 let store: TaskStore;
+let linear: LinearService;
 let badgeInterval: ReturnType<typeof setInterval> | null = null;
 
 const isDev = process.env.NODE_ENV === 'development';
@@ -85,6 +87,7 @@ function createWindow() {
 async function initServices() {
   config = new ConfigStore();
   store = new TaskStore();
+  linear = new LinearService(config);
 
   const appConfig = config.get();
   if (appConfig.apiEnabled) {
@@ -184,6 +187,35 @@ function registerIpcHandlers() {
       });
       notif.show();
     }
+  });
+
+  // Linear
+  ipcMain.handle(IPC.LINEAR_TEST, async () => {
+    return linear.testConnection();
+  });
+
+  ipcMain.handle(IPC.LINEAR_TEAMS, async () => {
+    return linear.listTeams();
+  });
+
+  ipcMain.handle(IPC.LINEAR_ISSUE_GET, async (_event, identifier: string) => {
+    return linear.getIssueByIdentifier(identifier);
+  });
+
+  ipcMain.handle(IPC.LINEAR_ISSUES_SEARCH, async (_event, query: string, first?: number) => {
+    return linear.searchIssues(query, first);
+  });
+
+  ipcMain.handle(IPC.LINEAR_ISSUE_CREATE, async (_event, input: any) => {
+    return linear.createIssue(input);
+  });
+
+  ipcMain.handle(IPC.LINEAR_ISSUE_UPDATE, async (_event, input: any) => {
+    return linear.updateIssue(input);
+  });
+
+  ipcMain.handle(IPC.LINEAR_ISSUE_COMMENT, async (_event, issueId: string, body: string) => {
+    return linear.addComment(issueId, body);
   });
 
   // Attachments

@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import type { Task } from '../../shared/types';
 import { cn, formatDate, getDateColor } from '../lib/utils';
+import { firstLinearIssueKey } from '../lib/linear';
 import { createDraftFromTask, createNoteFromTask, createEventFromTask, type TaskContext } from '@futhark/core/lib/crossApp';
 
 interface TaskListProps {
@@ -11,9 +12,10 @@ interface TaskListProps {
   onUpdate: (id: string, updates: Partial<Task>) => void;
   loading: boolean;
   title: string;
+  linearEnabled?: boolean;
 }
 
-export function TaskList({ tasks, selectedId, onSelect, onComplete, onUpdate, loading, title }: TaskListProps) {
+export function TaskList({ tasks, selectedId, onSelect, onComplete, onUpdate, loading, title, linearEnabled = false }: TaskListProps) {
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -220,6 +222,11 @@ export function TaskList({ tasks, selectedId, onSelect, onComplete, onUpdate, lo
                         ))}
                       </div>
                     )}
+                    {linearEnabled && (() => {
+                      const key = firstLinearIssueKey(`${task.title || ''}\n${task.notes || ''}`);
+                      if (!key) return null;
+                      return <span className="tag-pill border border-cyan-500/30 bg-cyan-500/15 text-cyan-300">{key}</span>;
+                    })()}
                   </div>
                 </div>
 
@@ -268,6 +275,34 @@ export function TaskList({ tasks, selectedId, onSelect, onComplete, onUpdate, lo
             { label: 'Create Note in Laguz', icon: 'ᛚ', fn: async () => { try { await createNoteFromTask(fetcher, ctx); window.raido.notify('Laguz', `Note created: ${ctx.title}`); } catch (e) { console.error('[CrossApp] Laguz note failed:', e); window.raido.notify('Laguz', 'Failed — is Laguz running?'); } } },
             { label: 'Create Event in Dagaz', icon: 'ᛞ', fn: async () => { try { await createEventFromTask(fetcher, ctx); window.raido.notify('Dagaz', `Event created: ${ctx.title}`); } catch (e) { console.error('[CrossApp] Dagaz event failed:', e); window.raido.notify('Dagaz', 'Failed — is Dagaz running?'); } } },
           ];
+          if (linearEnabled) {
+            actions.push({
+              label: 'Create Issue in Linear',
+              icon: '📐',
+              fn: async () => {
+                try {
+                  const teams = await window.raido.linearListTeams();
+                  if (!teams.length) {
+                    window.raido.notify('Linear', 'No teams available');
+                    return;
+                  }
+                  const result = await window.raido.linearCreateIssue({
+                    title: task.title,
+                    description: task.notes || '',
+                    teamId: teams[0].id,
+                  });
+                  if (result.success && result.issue?.url) {
+                    window.open(result.issue.url, '_blank');
+                    window.raido.notify('Linear', `Created ${result.issue.identifier}`);
+                  } else {
+                    window.raido.notify('Linear', result.error || 'Issue creation failed');
+                  }
+                } catch (e: any) {
+                  window.raido.notify('Linear', e?.message || 'Issue creation failed');
+                }
+              },
+            });
+          }
           return (
             <div
               ref={menuRef}

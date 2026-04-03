@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { EmailThread, ViewType, View } from '@shared/types';
 import { formatRelativeDate } from '../lib/utils';
+import { firstLinearIssueKey } from '../lib/linear';
 import { createTodoFromEmail, createNoteFromEmail, createEventFromEmail, type EmailContext, type CreateTodoOptions } from '@futhark/core/lib/crossApp';
 
 // ── Nudge Detection ──────────────────────────────────────────
@@ -109,6 +110,7 @@ interface Props {
   onLoadMore?: () => void;
   currentView: ViewType;
   userEmail?: string;
+  linearEnabled?: boolean;
   views?: View[];
   onArchive?: (threadId: string) => void;
   onLabel?: (threadId: string, label: string) => void;
@@ -118,7 +120,7 @@ interface Props {
   userDisplayName?: string;
 }
 
-export function EmailList({ threads, selectedId, selectedIds, loading, loadingMore, hasMore, onSelect, onMultiSelect, onLoadMore, currentView, userEmail, userDisplayName, views = [], onArchive, onLabel, onStar, onCreateRule, onDoubleClick }: Props) {
+export function EmailList({ threads, selectedId, selectedIds, loading, loadingMore, hasMore, onSelect, onMultiSelect, onLoadMore, currentView, userEmail, linearEnabled = false, userDisplayName, views = [], onArchive, onLabel, onStar, onCreateRule, onDoubleClick }: Props) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; thread: EmailThread } | null>(null);
   const [dueDatePicker, setDueDatePicker] = useState<{ x: number; y: number; ctx: EmailContext } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -415,6 +417,7 @@ export function EmailList({ threads, selectedId, selectedIds, loading, loadingMo
           userDisplayName={userDisplayName}
           currentView={currentView}
           snoozeUntil={snoozeMap.get(thread.id)}
+          linearEnabled={linearEnabled}
         />
       ))}
 
@@ -611,6 +614,7 @@ function EmailListItem({
   userDisplayName,
   currentView,
   snoozeUntil,
+  linearEnabled,
 }: {
   thread: EmailThread;
   selected: boolean;
@@ -622,6 +626,7 @@ function EmailListItem({
   userDisplayName?: string;
   currentView?: string;
   snoozeUntil?: string;
+  linearEnabled?: boolean;
 }) {
   const isPending = thread.labels.includes('PENDING');
   const isTodo = thread.labels.includes('TODO');
@@ -630,6 +635,7 @@ function EmailListItem({
   const hasAttachments = thread.messages.some((m) => m.hasAttachments);
   const role = getUserRole(thread, userEmail);
   const nudge = detectNudge(thread, userEmail, currentView);
+  const issueKey = linearEnabled ? firstLinearIssueKey(`${thread.subject || ''}\n${thread.snippet || ''}`) : null;
 
   // In Sent view, find the last message the user sent (for snippet, date, and recipients)
   const lastSentMsg = currentView === 'sent' && userEmail
@@ -704,6 +710,11 @@ function EmailListItem({
           </span>
         )}
         {isStarred && <span className="text-yellow-400 text-xs">★</span>}
+        {issueKey && (
+          <span className="label-badge border border-cyan-500/30 bg-cyan-500/15 text-cyan-300">
+            {issueKey}
+          </span>
+        )}
         {nudge && (
           <span
             className={`text-[10px] font-medium ${

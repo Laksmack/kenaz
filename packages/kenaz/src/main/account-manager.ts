@@ -4,6 +4,7 @@ import { app, BrowserWindow } from 'electron';
 import { GmailService } from './gmail';
 import { HubSpotService } from './hubspot';
 import { CalendarService } from './calendar';
+import { LinearService } from './linear';
 import { CacheStore } from './cache-store';
 import { GlobalConfigStore, AccountConfigStore, ConfigStore } from './config';
 import { ViewStore, RuleStore } from './stores';
@@ -15,6 +16,7 @@ export interface AccountServices {
   gmail: GmailService;
   hubspot: HubSpotService;
   calendar: CalendarService;
+  linear: LinearService;
   cache: CacheStore;
   config: ConfigStore;
   accountConfig: AccountConfigStore;
@@ -138,6 +140,7 @@ export class AccountManager {
     const gmail = new GmailService(config, dataDir);
     const hubspot = new HubSpotService(config);
     const calendar = new CalendarService();
+    const linear = new LinearService(config);
     const cache = new CacheStore(dataDir);
     const viewStore = new ViewStore(dataDir);
     const ruleStore = new RuleStore(dataDir);
@@ -162,6 +165,7 @@ export class AccountManager {
       gmail,
       hubspot,
       calendar,
+      linear,
       cache,
       config,
       accountConfig,

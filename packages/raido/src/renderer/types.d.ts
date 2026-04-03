@@ -48,6 +48,13 @@ declare global {
       setConfig: (updates: Partial<AppConfig>) => Promise<AppConfig>;
       setBadge: (count: number) => Promise<void>;
       notify: (title: string, body: string) => Promise<void>;
+      linearTestConnection: () => Promise<{ ok: boolean; message?: string }>;
+      linearListTeams: () => Promise<Array<{ id: string; key: string; name: string }>>;
+      linearGetIssue: (identifier: string) => Promise<any | null>;
+      linearSearchIssues: (query: string, first?: number) => Promise<any[]>;
+      linearCreateIssue: (input: any) => Promise<{ success: boolean; issue?: any; error?: string }>;
+      linearUpdateIssue: (input: any) => Promise<{ success: boolean; error?: string }>;
+      linearAddComment: (issueId: string, body: string) => Promise<{ success: boolean; error?: string }>;
 
       // MCP
       getMcpStatus: () => Promise<{ enabled: boolean; claudeDesktopConfig: any; serverPath: string }>;

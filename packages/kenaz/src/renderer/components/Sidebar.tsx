@@ -5,11 +5,13 @@ import { CalendarWidget } from './CalendarWidget';
 import { CalendarInviteContext } from './CalendarInviteContext';
 import { detectCalendarInvite } from '../lib/detectInvite';
 import { formatRelativeDate } from '../lib/utils';
+import { firstLinearIssueKey } from '../lib/linear';
 
 interface Props {
   thread: EmailThread | null;
   hubspotEnabled?: boolean;
   hubspotPortalId?: string;
+  linearEnabled?: boolean;
 }
 
 function hubspotContactUrl(portalId: string, contactId: string) {
@@ -112,10 +114,26 @@ function useInviteInfo(thread: EmailThread | null) {
   return { isInvite: !!detection?.isInvite, inviteInfo };
 }
 
-export function Sidebar({ thread, hubspotEnabled = false, hubspotPortalId = '' }: Props) {
+export function Sidebar({ thread, hubspotEnabled = false, hubspotPortalId = '', linearEnabled = false }: Props) {
   const senderEmail = hubspotEnabled ? (thread?.from?.email || null) : null;
   const hubspot = useHubSpot(senderEmail);
   const { isInvite, inviteInfo } = useInviteInfo(thread);
+  const [linearIssue, setLinearIssue] = useState<any | null>(null);
+  const linearIssueKey = thread && linearEnabled
+    ? firstLinearIssueKey(`${thread.subject || ''}\n${thread.snippet || ''}`)
+    : null;
+
+  useEffect(() => {
+    if (!thread || !linearEnabled || !linearIssueKey) {
+      setLinearIssue(null);
+      return;
+    }
+    let cancelled = false;
+    window.kenaz.linearGetIssue(linearIssueKey)
+      .then((issue) => { if (!cancelled) setLinearIssue(issue); })
+      .catch(() => { if (!cancelled) setLinearIssue(null); });
+    return () => { cancelled = true; };
+  }, [thread?.id, linearEnabled, linearIssueKey]);
 
   if (!thread) {
     return (
@@ -143,6 +161,24 @@ export function Sidebar({ thread, hubspotEnabled = false, hubspotPortalId = '' }
       </div>
 
       <div className="flex-1 p-3 space-y-3">
+        {linearEnabled && linearIssue && (
+          <div className="sidebar-section">
+            <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Linear</h4>
+            <a
+              href={linearIssue.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block no-underline"
+            >
+              <div className="text-xs text-cyan-300 font-semibold">{linearIssue.identifier}</div>
+              <div className="text-xs text-text-primary mt-0.5">{linearIssue.title}</div>
+              {linearIssue.state?.name && (
+                <div className="text-[10px] text-text-muted mt-1">{linearIssue.state.name}</div>
+              )}
+            </a>
+          </div>
+        )}
+
         {hubspot.loading && (
           <div className="text-xs text-text-muted text-center py-4">Looking up contact...</div>
         )}

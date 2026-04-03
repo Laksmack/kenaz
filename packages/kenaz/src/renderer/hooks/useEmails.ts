@@ -1,10 +1,14 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import type { EmailThread, ViewType, View } from '@shared/types';
 import { VIEWS } from '@shared/types';
+import { extractLinearIssueKeys } from '../lib/linear';
 
 function buildQuery(currentView: ViewType, searchQuery: string, views: View[]): string {
   if (currentView === 'search' && searchQuery) {
     return searchQuery;
+  }
+  if (currentView === 'linear') {
+    return 'in:inbox';
   }
 
   // Try dynamic views first, fall back to hardcoded VIEWS
@@ -133,6 +137,14 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     });
   }, [currentView]);
 
+  const filterLinearView = useCallback((list: EmailThread[]) => {
+    if (currentView !== 'linear') return list;
+    return list.filter((thread) => {
+      const text = `${thread.subject || ''}\n${thread.snippet || ''}`;
+      return extractLinearIssueKeys(text).length > 0;
+    });
+  }, [currentView]);
+
   const fetchThreads = useCallback(async () => {
     if (!enabled) return;
     setLoading(true);
@@ -142,7 +154,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
       nextPageTokenRef.current = result.nextPageToken;
       setHasMore(!!result.nextPageToken);
       const withFollowUps = await augmentInboxWithFollowUps(result.threads);
-      const sorted = applySort(filterRecentlyDone(withFollowUps));
+      const sorted = applySort(filterRecentlyDone(filterLinearView(withFollowUps)));
       cacheRef.current[query] = sorted;
       setThreads(sorted);
     } catch (e) {
@@ -150,7 +162,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     } finally {
       setLoading(false);
     }
-  }, [query, enabled, applySort, filterRecentlyDone, augmentInboxWithFollowUps]);
+  }, [query, enabled, applySort, filterRecentlyDone, filterLinearView, augmentInboxWithFollowUps]);
 
   const refreshFromCache = useCallback(async () => {
     if (!enabled) return;
@@ -159,13 +171,13 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
       nextPageTokenRef.current = undefined;
       setHasMore(false);
       const withFollowUps = await augmentInboxWithFollowUps(result.threads);
-      const sorted = applySort(filterRecentlyDone(withFollowUps));
+      const sorted = applySort(filterRecentlyDone(filterLinearView(withFollowUps)));
       cacheRef.current[query] = sorted;
       setThreads(sorted);
     } catch (e) {
       console.error('Failed to refresh threads from cache:', e);
     }
-  }, [query, enabled, applySort, filterRecentlyDone, augmentInboxWithFollowUps]);
+  }, [query, enabled, applySort, filterRecentlyDone, filterLinearView, augmentInboxWithFollowUps]);
 
   const loadMore = useCallback(async () => {
     if (!enabled || !nextPageTokenRef.current || loadingMore) return;
@@ -177,7 +189,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
       setThreads((prev) => {
         const existingIds = new Set(prev.map((t) => t.id));
         const newThreads = result.threads.filter((t: EmailThread) => !existingIds.has(t.id));
-        const filteredNewThreads = filterRecentlyDone(newThreads);
+        const filteredNewThreads = filterLinearView(filterRecentlyDone(newThreads));
         // Gmail pages go further back in time; for oldest-first those go to the top
         const merged = effectiveSort === 'oldest'
           ? [...filteredNewThreads.reverse(), ...prev]
@@ -191,7 +203,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     } finally {
       setLoadingMore(false);
     }
-  }, [query, enabled, loadingMore, effectiveSort, applySort, filterRecentlyDone]);
+  }, [query, enabled, loadingMore, effectiveSort, applySort, filterRecentlyDone, filterLinearView]);
 
   // Fetch whenever query, enabled, or sort changes
   useEffect(() => {
@@ -199,7 +211,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     // Show cached version instantly if available
     const cached = cacheRef.current[query];
     if (cached) {
-      setThreads(filterRecentlyDone(cached));
+      setThreads(filterLinearView(filterRecentlyDone(cached)));
     }
     // Always fetch fresh data in the background
     fetchThreads();

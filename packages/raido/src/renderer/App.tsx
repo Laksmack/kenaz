@@ -176,8 +176,9 @@ export default function App() {
         case '2': setCurrentView('inbox'); break;
         case '3': setCurrentView('upcoming'); break;
         case '4': setCurrentView('logbook'); break;
-        case '5': setCurrentView('pipeline'); break;
+        case '5': if (appConfig?.hubspot_enabled) setCurrentView('pipeline'); break;
         case '6': setCurrentView('deferred'); break;
+        case '7': if (appConfig?.linear_enabled) setCurrentView('linear'); break;
         case 'escape':
           if (newTaskOpen) { setNewTaskOpen(false); break; }
           if (settingsOpen) { setSettingsOpen(false); break; }
@@ -188,7 +189,18 @@ export default function App() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedTask, tasks, newTaskOpen, settingsOpen, refresh, openNewTask, handleComplete]);
+  }, [selectedTask, tasks, newTaskOpen, settingsOpen, refresh, openNewTask, handleComplete, appConfig?.hubspot_enabled, appConfig?.linear_enabled]);
+
+  useEffect(() => {
+    if (currentView === 'pipeline' && !appConfig?.hubspot_enabled) {
+      setCurrentView('today');
+      setSelectedTask(null);
+    }
+    if (currentView === 'linear' && !appConfig?.linear_enabled) {
+      setCurrentView('today');
+      setSelectedTask(null);
+    }
+  }, [currentView, appConfig?.hubspot_enabled, appConfig?.linear_enabled]);
 
   const handleUpdate = useCallback(async (id: string, updates: Partial<Task>) => {
     await window.raido.updateTask(id, updates);
@@ -225,6 +237,7 @@ export default function App() {
       case 'logbook': return 'Logbook';
       case 'deferred': return 'Deferred';
       case 'pipeline': return 'Pipeline';
+      case 'linear': return 'Linear';
       case 'search': return 'Search';
       case 'group': return selectedGroup || 'Group';
       default: return '';
@@ -244,6 +257,7 @@ export default function App() {
             selectedGroup={selectedGroup}
             onSelectGroup={handleSelectGroup}
             hubspotEnabled={appConfig?.hubspot_enabled || false}
+            linearEnabled={appConfig?.linear_enabled || false}
           />
         </div>
       </div>
@@ -368,6 +382,7 @@ export default function App() {
                 onUpdate={handleUpdate}
                 onComplete={handleComplete}
                 onDelete={handleDelete}
+                linearEnabled={appConfig?.linear_enabled || false}
               />
             </>
           ) : currentView === 'pipeline' ? (
@@ -388,6 +403,7 @@ export default function App() {
                   onUpdate={handleUpdate}
                   loading={loading}
                   title={viewTitle}
+                  linearEnabled={appConfig?.linear_enabled || false}
                 />
                 <div
                   onMouseDown={handleResizeStart}
@@ -400,6 +416,7 @@ export default function App() {
                 onUpdate={handleUpdate}
                 onComplete={handleComplete}
                 onDelete={handleDelete}
+                linearEnabled={appConfig?.linear_enabled || false}
               />
             </>
           )}

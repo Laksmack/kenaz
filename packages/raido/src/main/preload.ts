@@ -33,6 +33,13 @@ const IPC = {
   APP_SET_CONFIG: 'app:set-config',
   APP_SET_BADGE: 'app:set-badge',
   APP_NOTIFY: 'app:notify',
+  LINEAR_TEST: 'linear:test',
+  LINEAR_TEAMS: 'linear:teams',
+  LINEAR_ISSUE_GET: 'linear:issue:get',
+  LINEAR_ISSUES_SEARCH: 'linear:issues:search',
+  LINEAR_ISSUE_CREATE: 'linear:issue:create',
+  LINEAR_ISSUE_UPDATE: 'linear:issue:update',
+  LINEAR_ISSUE_COMMENT: 'linear:issue:comment',
   MCP_STATUS: 'mcp:status',
 } as const;
 
@@ -82,6 +89,13 @@ const api = {
   setConfig: (updates: any) => ipcRenderer.invoke(IPC.APP_SET_CONFIG, updates),
   setBadge: (count: number) => ipcRenderer.invoke(IPC.APP_SET_BADGE, count),
   notify: (title: string, body: string) => ipcRenderer.invoke(IPC.APP_NOTIFY, title, body),
+  linearTestConnection: () => ipcRenderer.invoke(IPC.LINEAR_TEST),
+  linearListTeams: () => ipcRenderer.invoke(IPC.LINEAR_TEAMS),
+  linearGetIssue: (identifier: string) => ipcRenderer.invoke(IPC.LINEAR_ISSUE_GET, identifier),
+  linearSearchIssues: (query: string, first?: number) => ipcRenderer.invoke(IPC.LINEAR_ISSUES_SEARCH, query, first),
+  linearCreateIssue: (input: any) => ipcRenderer.invoke(IPC.LINEAR_ISSUE_CREATE, input),
+  linearUpdateIssue: (input: any) => ipcRenderer.invoke(IPC.LINEAR_ISSUE_UPDATE, input),
+  linearAddComment: (issueId: string, body: string) => ipcRenderer.invoke(IPC.LINEAR_ISSUE_COMMENT, issueId, body),
 
   // MCP
   getMcpStatus: () => ipcRenderer.invoke(IPC.MCP_STATUS),

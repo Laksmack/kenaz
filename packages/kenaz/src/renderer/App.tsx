@@ -12,6 +12,7 @@ import { UndoToast } from './components/UndoToast';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useEmails } from './hooks/useEmails';
 import { useConnectivity } from './hooks/useConnectivity';
+import { extractLinearIssueKeys } from './lib/linear';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { AccountSwitcher } from './components/AccountSwitcher';
 import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
@@ -97,7 +98,9 @@ export default function App() {
     removeThread,
     labelThread,
     markRead,
-  } = useEmails(currentView, searchQuery, authenticated === true, views, appConfig?.inboxSort ?? 'newest', userEmail);
+  } = useEmails(currentView, searchQuery, authenticated === true, views.filter((v) => v.id !== 'linear' || !!appConfig?.linearEnabled), appConfig?.inboxSort ?? 'newest', userEmail);
+
+  const visibleViews = views.filter((v) => v.id !== 'linear' || !!appConfig?.linearEnabled);
 
   // ── View counts (background fetch) ──────────────────────
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
@@ -106,17 +109,24 @@ export default function App() {
   const prevCountsRef = useRef<Record<string, number>>({});
 
   useEffect(() => {
-    if (authenticated !== true || views.length === 0) return;
+    if (authenticated !== true || visibleViews.length === 0) return;
 
     const fetchCounts = async () => {
       const counts: Record<string, number> = {};
       await Promise.all(
-        views
+        visibleViews
           .filter((v) => v.id !== 'all' && v.id !== 'sent')
           .map(async (v) => {
             try {
               const result = await window.kenaz.fetchThreads(v.query || 'in:inbox', 50);
-              counts[v.id] = result.threads.length;
+              if (v.id === 'linear') {
+                counts[v.id] = result.threads.filter((t: any) => {
+                  const text = `${t.subject || ''}\n${t.snippet || ''}`;
+                  return extractLinearIssueKeys(text).length > 0;
+                }).length;
+              } else {
+                counts[v.id] = result.threads.length;
+              }
             } catch (e) {
               console.error(`[App] Failed to fetch count for view "${v.id}":`, e);
               counts[v.id] = 0;
@@ -142,7 +152,14 @@ export default function App() {
     // Poll every 30 seconds when online, 120s when offline (rely on cache)
     const interval = setInterval(fetchCounts, isOnline ? 30000 : 120000);
     return () => clearInterval(interval);
-  }, [authenticated, views, currentView, refresh, isOnline]);
+  }, [authenticated, visibleViews, currentView, refresh, isOnline]);
+
+  useEffect(() => {
+    if (currentView === 'linear' && !appConfig?.linearEnabled) {
+      setCurrentView('inbox');
+      setSelectedThread(null);
+    }
+  }, [currentView, appConfig?.linearEnabled]);
 
   // ── Notifications for new unread mail ──────────────────
   useEffect(() => {
@@ -1075,7 +1092,7 @@ export default function App() {
           <UpdateBanner api={window.kenaz} />
         </div>
         <div className="titlebar-no-drag">
-          <ViewNav currentView={currentView} onViewChange={handleViewChange} views={views} counts={viewCounts} />
+          <ViewNav currentView={currentView} onViewChange={handleViewChange} views={visibleViews} counts={viewCounts} />
         </div>
         <div className="flex-1" /> {/* This space IS draggable */}
         <div className="titlebar-no-drag flex items-center gap-2">
@@ -1164,8 +1181,9 @@ export default function App() {
             onLoadMore={loadMore}
             currentView={currentView}
             userEmail={userEmail}
+            linearEnabled={appConfig?.linearEnabled}
             userDisplayName={appConfig?.displayName}
-            views={views}
+            views={visibleViews}
             onArchive={handleContextArchive}
             onLabel={handleContextLabel}
             onStar={handleContextStar}
@@ -1201,6 +1219,7 @@ export default function App() {
               onRefreshThread={refreshSelectedThread}
               userEmail={userEmail}
               currentView={currentView}
+              linearEnabled={appConfig?.linearEnabled}
               printMenuOpen={printMenuOpen}
               onTogglePrintMenu={() => setPrintMenuOpen((p) => !p)}
             />
@@ -1213,6 +1232,7 @@ export default function App() {
             thread={selectedThread}
             hubspotEnabled={appConfig?.hubspotEnabled}
             hubspotPortalId={appConfig?.hubspotPortalId}
+            linearEnabled={appConfig?.linearEnabled}
           />
         </div>
       </div>

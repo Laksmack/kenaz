@@ -26,6 +26,13 @@ const IPC = {
   HUBSPOT_LOG_THREAD: 'hubspot:log-thread',
   HUBSPOT_SEARCH_DEALS: 'hubspot:search-deals',
   HUBSPOT_ASSOCIATE_DEAL: 'hubspot:associate-deal',
+  LINEAR_TEST: 'linear:test',
+  LINEAR_TEAMS: 'linear:teams',
+  LINEAR_ISSUE_GET: 'linear:issue:get',
+  LINEAR_ISSUES_SEARCH: 'linear:issues:search',
+  LINEAR_ISSUE_CREATE: 'linear:issue:create',
+  LINEAR_ISSUE_UPDATE: 'linear:issue:update',
+  LINEAR_ISSUE_COMMENT: 'linear:issue:comment',
   GMAIL_CREATE_DRAFT: 'gmail:create-draft',
   GMAIL_UPDATE_DRAFT: 'gmail:update-draft',
   GMAIL_LIST_DRAFTS: 'gmail:list-drafts',
@@ -132,6 +139,20 @@ const api = {
     ipcRenderer.invoke(IPC.HUBSPOT_SEARCH_DEALS, query),
   hubspotAssociateDeal: (contactId: string, dealId: string) =>
     ipcRenderer.invoke(IPC.HUBSPOT_ASSOCIATE_DEAL, contactId, dealId),
+  linearTestConnection: () =>
+    ipcRenderer.invoke(IPC.LINEAR_TEST),
+  linearListTeams: () =>
+    ipcRenderer.invoke(IPC.LINEAR_TEAMS),
+  linearGetIssue: (identifier: string) =>
+    ipcRenderer.invoke(IPC.LINEAR_ISSUE_GET, identifier),
+  linearSearchIssues: (query: string, first?: number) =>
+    ipcRenderer.invoke(IPC.LINEAR_ISSUES_SEARCH, query, first),
+  linearCreateIssue: (input: any) =>
+    ipcRenderer.invoke(IPC.LINEAR_ISSUE_CREATE, input),
+  linearUpdateIssue: (input: any) =>
+    ipcRenderer.invoke(IPC.LINEAR_ISSUE_UPDATE, input),
+  linearAddComment: (issueId: string, body: string) =>
+    ipcRenderer.invoke(IPC.LINEAR_ISSUE_COMMENT, issueId, body),
 
   // Badge & Notifications
   setBadge: (count: number) => ipcRenderer.invoke(IPC.APP_SET_BADGE, count),

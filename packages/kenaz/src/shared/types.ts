@@ -70,6 +70,7 @@ export interface View {
 
 export const DEFAULT_VIEWS: View[] = [
   { id: 'inbox', name: 'Inbox', icon: '📥', query: 'in:inbox', shortcut: 'gi' },
+  { id: 'linear', name: 'Linear', icon: '📐', query: 'in:inbox' },
   { id: 'pending', name: 'Pending', icon: '⏳', query: 'label:PENDING', shortcut: 'gp' },
   { id: 'todo', name: 'Todo', icon: '✓', query: 'label:TODO', shortcut: 'gt' },
   { id: 'snoozed', name: 'Snoozed', icon: '⏰', query: 'label:SNOOZED' },
@@ -190,6 +191,15 @@ export const IPC = {
   HUBSPOT_SEARCH_DEALS: 'hubspot:search-deals',
   HUBSPOT_ASSOCIATE_DEAL: 'hubspot:associate-deal',
 
+  // Linear
+  LINEAR_TEST: 'linear:test',
+  LINEAR_TEAMS: 'linear:teams',
+  LINEAR_ISSUE_GET: 'linear:issue:get',
+  LINEAR_ISSUES_SEARCH: 'linear:issues:search',
+  LINEAR_ISSUE_CREATE: 'linear:issue:create',
+  LINEAR_ISSUE_UPDATE: 'linear:issue:update',
+  LINEAR_ISSUE_COMMENT: 'linear:issue:comment',
+
   // Drafts
   GMAIL_CREATE_DRAFT: 'gmail:create-draft',
   GMAIL_UPDATE_DRAFT: 'gmail:update-draft',
@@ -277,6 +287,8 @@ export interface AccountConfig {
   hubspotToken: string;
   hubspotEnabled: boolean;
   hubspotPortalId: string;
+  linearApiKey: string;
+  linearEnabled: boolean;
   defaultView: ViewType;
   autoBccEnabled: boolean;
   autoBccAddress: string;
@@ -326,6 +338,8 @@ export const DEFAULT_ACCOUNT_CONFIG: AccountConfig = {
   hubspotToken: '',
   hubspotEnabled: false,
   hubspotPortalId: '',
+  linearApiKey: '',
+  linearEnabled: false,
   defaultView: 'inbox',
   autoBccEnabled: false,
   autoBccAddress: '',

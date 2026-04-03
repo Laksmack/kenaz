@@ -649,6 +649,35 @@ function registerIpcHandlers() {
     return active().hubspot.associateContactWithDeal(contactId, dealId);
   });
 
+  // ── Linear ──
+  ipcMain.handle(IPC.LINEAR_TEST, async () => {
+    return active().linear.testConnection();
+  });
+
+  ipcMain.handle(IPC.LINEAR_TEAMS, async () => {
+    return active().linear.listTeams();
+  });
+
+  ipcMain.handle(IPC.LINEAR_ISSUE_GET, async (_event, identifier: string) => {
+    return active().linear.getIssueByIdentifier(identifier);
+  });
+
+  ipcMain.handle(IPC.LINEAR_ISSUES_SEARCH, async (_event, query: string, first?: number) => {
+    return active().linear.searchIssues(query, first);
+  });
+
+  ipcMain.handle(IPC.LINEAR_ISSUE_CREATE, async (_event, input: any) => {
+    return active().linear.createIssue(input);
+  });
+
+  ipcMain.handle(IPC.LINEAR_ISSUE_UPDATE, async (_event, input: any) => {
+    return active().linear.updateIssue(input);
+  });
+
+  ipcMain.handle(IPC.LINEAR_ISSUE_COMMENT, async (_event, issueId: string, body: string) => {
+    return active().linear.addComment(issueId, body);
+  });
+
   // ── Badge & Notifications ──
   ipcMain.handle(IPC.APP_SET_BADGE, async (_event, count: number) => {
     if (process.platform === 'darwin' && app.dock) {

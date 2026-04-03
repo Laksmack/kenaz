@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify';
 import type { EmailThread, Email } from '@shared/types';
 import { formatFullDate } from '../lib/utils';
 import { detectCalendarInvite } from '../lib/detectInvite';
+import { firstLinearIssueKey } from '../lib/linear';
 
 // ── Print-ready HTML builder ─────────────────────────────────
 // Builds clean, formatted HTML for printing/PDF — no buttons, no app chrome.
@@ -129,13 +130,17 @@ interface Props {
   onRefreshThread?: () => void;
   userEmail?: string;
   currentView?: string;
+  linearEnabled?: boolean;
   printMenuOpen?: boolean;
   onTogglePrintMenu?: () => void;
 }
 
-export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDeleteDraft, onEditDraft, onSendDraft, threadUpdateAvailable, onRefreshThread, userEmail, currentView, printMenuOpen, onTogglePrintMenu }: Props) {
+export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDeleteDraft, onEditDraft, onSendDraft, threadUpdateAvailable, onRefreshThread, userEmail, currentView, linearEnabled = false, printMenuOpen, onTogglePrintMenu }: Props) {
   const [showDetails, setShowDetails] = useState(false);
   const [labelMap, setLabelMap] = useState<Record<string, string>>({});
+  const [linearIssue, setLinearIssue] = useState<any | null>(null);
+  const [linearLoading, setLinearLoading] = useState(false);
+  const [linearMessage, setLinearMessage] = useState<string | null>(null);
   const printMenuRef = useRef<HTMLDivElement>(null);
   const printBtnRef = useRef<HTMLButtonElement>(null);
 
@@ -153,6 +158,76 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
 
   // Resolve a label ID to its human-readable name
   const labelName = (id: string) => labelMap[id] ? `${labelMap[id]}` : id;
+
+  const linearIssueKey = thread && linearEnabled
+    ? firstLinearIssueKey(`${thread.subject || ''}\n${thread.snippet || ''}`)
+    : null;
+
+  useEffect(() => {
+    if (!thread || !linearEnabled || !linearIssueKey) {
+      setLinearIssue(null);
+      setLinearLoading(false);
+      setLinearMessage(null);
+      return;
+    }
+    let cancelled = false;
+    setLinearLoading(true);
+    window.kenaz.linearGetIssue(linearIssueKey).then((issue) => {
+      if (!cancelled) {
+        setLinearIssue(issue);
+        setLinearMessage(issue ? null : `No Linear issue found for ${linearIssueKey}`);
+      }
+    }).catch((e) => {
+      if (!cancelled) {
+        setLinearIssue(null);
+        setLinearMessage(e?.message || 'Failed to fetch Linear issue');
+      }
+    }).finally(() => {
+      if (!cancelled) setLinearLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [thread?.id, linearEnabled, linearIssueKey]);
+
+  const createLinearFromEmail = useCallback(async () => {
+    if (!thread) return;
+    setLinearMessage(null);
+    try {
+      const teams = await window.kenaz.linearListTeams();
+      if (!teams.length) {
+        setLinearMessage('No Linear teams available for this API key');
+        return;
+      }
+      const issueTitle = thread.subject || '(no subject)';
+      const issueBody = [
+        `From: ${thread.from.name || thread.from.email} <${thread.from.email}>`,
+        '',
+        thread.snippet || '',
+        '',
+        `Kenaz Thread: ${thread.id}`,
+      ].join('\n');
+      const result = await window.kenaz.linearCreateIssue({
+        title: issueTitle,
+        description: issueBody,
+        teamId: teams[0].id,
+      });
+      if (result.success && result.issue?.url) {
+        window.open(result.issue.url, '_blank');
+        setLinearMessage(`Created ${result.issue.identifier}`);
+      } else {
+        setLinearMessage(result.error || 'Failed to create Linear issue');
+      }
+    } catch (e: any) {
+      setLinearMessage(e?.message || 'Failed to create Linear issue');
+    }
+  }, [thread]);
+
+  const addLinearComment = useCallback(async () => {
+    if (!linearIssue?.id) return;
+    const text = window.prompt('Comment for Linear issue');
+    if (!text?.trim()) return;
+    const result = await window.kenaz.linearAddComment(linearIssue.id, text.trim());
+    setLinearMessage(result.success ? 'Comment added' : (result.error || 'Failed to add comment'));
+  }, [linearIssue?.id]);
 
   // Close print menu on click outside or Escape
   useEffect(() => {
@@ -369,6 +444,56 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
             );
           })()}
         </div>
+        {linearEnabled && (
+          <div className="text-xs mt-2 p-2 rounded-md border border-border-subtle bg-bg-primary/70">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] text-text-secondary">
+                {linearIssueKey ? (
+                  linearLoading ? (
+                    <span className="text-text-muted">Loading Linear issue {linearIssueKey}…</span>
+                  ) : linearIssue ? (
+                    <span>
+                      <span className="text-cyan-300 font-semibold">{linearIssue.identifier}</span>
+                      {' · '}
+                      <span className="text-text-primary">{linearIssue.title}</span>
+                      {linearIssue.state?.name ? (
+                        <span className="text-text-muted"> · {linearIssue.state.name}</span>
+                      ) : null}
+                    </span>
+                  ) : (
+                    <span className="text-text-muted">{linearMessage || `No issue found for ${linearIssueKey}`}</span>
+                  )
+                ) : (
+                  <span className="text-text-muted">No Linear issue key detected</span>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {linearIssue?.url && (
+                  <button
+                    onClick={() => window.open(linearIssue.url, '_blank')}
+                    className="px-2 py-1 rounded bg-bg-tertiary hover:bg-bg-hover text-[11px] text-text-secondary"
+                  >
+                    Open
+                  </button>
+                )}
+                {linearIssue?.id && (
+                  <button
+                    onClick={addLinearComment}
+                    className="px-2 py-1 rounded bg-bg-tertiary hover:bg-bg-hover text-[11px] text-text-secondary"
+                  >
+                    Comment
+                  </button>
+                )}
+                <button
+                  onClick={createLinearFromEmail}
+                  className="px-2 py-1 rounded bg-bg-tertiary hover:bg-bg-hover text-[11px] text-text-secondary"
+                >
+                  Create Issue
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* New messages in thread banner */}

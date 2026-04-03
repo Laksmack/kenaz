@@ -10,6 +10,7 @@ interface SidebarProps {
   selectedGroup: string | null;
   onSelectGroup: (name: string) => void;
   hubspotEnabled?: boolean;
+  linearEnabled?: boolean;
 }
 
 interface NavItem {
@@ -18,6 +19,7 @@ interface NavItem {
   icon: string;
   statKey?: keyof TaskStats;
   requiresHubspot?: boolean;
+  requiresLinear?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -26,10 +28,11 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'upcoming', name: 'Upcoming', icon: '📅' },
   { id: 'logbook', name: 'Logbook', icon: '📖' },
   { id: 'pipeline', name: 'Pipeline', icon: '📊', requiresHubspot: true },
+  { id: 'linear', name: 'Linear', icon: '📐', requiresLinear: true },
   { id: 'deferred', name: 'Deferred', icon: '🔕', statKey: 'deferred' },
 ];
 
-export function Sidebar({ currentView, onViewChange, stats, groups, selectedGroup, onSelectGroup, hubspotEnabled = false }: SidebarProps) {
+export function Sidebar({ currentView, onViewChange, stats, groups, selectedGroup, onSelectGroup, hubspotEnabled = false, linearEnabled = false }: SidebarProps) {
   const activeGroups = groups.filter(g => g.count > 0);
 
   return (
@@ -39,7 +42,10 @@ export function Sidebar({ currentView, onViewChange, stats, groups, selectedGrou
 
       {/* Nav items */}
       <nav className="px-3 space-y-0.5">
-        {NAV_ITEMS.filter(item => !item.requiresHubspot || hubspotEnabled).map((item) => {
+        {NAV_ITEMS
+          .filter(item => !item.requiresHubspot || hubspotEnabled)
+          .filter(item => !item.requiresLinear || linearEnabled)
+          .map((item) => {
           const count = item.statKey ? stats[item.statKey] : undefined;
           const isActive = currentView === item.id;
           return (

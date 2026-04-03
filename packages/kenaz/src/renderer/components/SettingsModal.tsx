@@ -10,7 +10,7 @@ interface Props {
   prefillRule?: Partial<Rule>;
 }
 
-type SettingsTab = 'general' | 'views' | 'rules' | 'hubspot' | 'api' | 'signature' | 'auto-bcc' | 'cache' | 'calendar' | 'mcp';
+type SettingsTab = 'general' | 'views' | 'rules' | 'hubspot' | 'linear' | 'api' | 'signature' | 'auto-bcc' | 'cache' | 'calendar' | 'mcp';
 
 export function SettingsModal({ onClose, onViewsChanged, onConfigChanged, initialTab, prefillRule }: Props) {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -60,7 +60,8 @@ export function SettingsModal({ onClose, onViewsChanged, onConfigChanged, initia
     { id: 'general', label: 'General', icon: '⚙️' },
     { id: 'views', label: 'Views', icon: '👁' },
     { id: 'rules', label: 'Rules', icon: '⚡' },
-    { id: 'hubspot', label: 'HubSpot', icon: '🔗' },
+    ...(config.hubspotEnabled ? [{ id: 'hubspot' as SettingsTab, label: 'HubSpot', icon: '🔗' }] : []),
+    ...(config.linearEnabled ? [{ id: 'linear' as SettingsTab, label: 'Linear', icon: '📐' }] : []),
     { id: 'api', label: 'API', icon: '🔌' },
     { id: 'signature', label: 'Signature', icon: '✍️' },
     { id: 'auto-bcc', label: 'Auto BCC', icon: '📋' },
@@ -68,6 +69,12 @@ export function SettingsModal({ onClose, onViewsChanged, onConfigChanged, initia
     { id: 'calendar', label: 'Calendar', icon: '📅' },
     { id: 'mcp', label: 'MCP', icon: 'ᚲ' },
   ];
+
+  useEffect(() => {
+    if (!tabs.some((t) => t.id === activeTab)) {
+      setActiveTab('general');
+    }
+  }, [activeTab, tabs]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -112,6 +119,9 @@ export function SettingsModal({ onClose, onViewsChanged, onConfigChanged, initia
           )}
           {activeTab === 'hubspot' && (
             <HubSpotSettings config={config} onSave={handleSave} saving={saving} saved={saved} />
+          )}
+          {activeTab === 'linear' && (
+            <LinearSettings config={config} onSave={handleSave} saving={saving} saved={saved} />
           )}
           {activeTab === 'api' && (
             <APISettings config={config} onSave={handleSave} saving={saving} saved={saved} />
@@ -162,6 +172,8 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
   useEffect(() => { window.kenaz.listViews().then(setViewOptions); }, []);
   const [displayName, setDisplayName] = useState(config.displayName ?? '');
   const [archiveOnReply, setArchiveOnReply] = useState(config.archiveOnReply ?? false);
+  const [hubspotEnabled, setHubspotEnabled] = useState(config.hubspotEnabled ?? false);
+  const [linearEnabled, setLinearEnabled] = useState(config.linearEnabled ?? false);
   const [inboxSort, setInboxSort] = useState<'newest' | 'oldest'>(config.inboxSort ?? 'newest');
   const [composeMode, setComposeMode] = useState<'html' | 'markdown'>(config.composeMode ?? 'html');
   const [autoDraftEnabled, setAutoDraftEnabled] = useState(config.autoDraftEnabled ?? false);
@@ -196,6 +208,14 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
 
         <SettingsField label="Archive on Reply" description="Automatically mark a thread as done when you send a reply">
           <ToggleSwitch checked={archiveOnReply} onChange={setArchiveOnReply} />
+        </SettingsField>
+
+        <SettingsField label="Enable HubSpot" description="Show HubSpot settings and CRM context surfaces.">
+          <ToggleSwitch checked={hubspotEnabled} onChange={(v) => { setHubspotEnabled(v); onSave({ hubspotEnabled: v }); }} />
+        </SettingsField>
+
+        <SettingsField label="Enable Linear" description="Show Linear settings and issue-aware context/actions.">
+          <ToggleSwitch checked={linearEnabled} onChange={(v) => { setLinearEnabled(v); onSave({ linearEnabled: v }); }} />
         </SettingsField>
 
         <SettingsField label="Inbox Sort Order" description="Newest first is the default. Oldest first is great for inbox-zero workflows — work through emails from oldest to newest.">
@@ -261,6 +281,8 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
           displayName: displayName.trim(),
           defaultView,
           archiveOnReply,
+          hubspotEnabled,
+          linearEnabled,
           composeMode,
           autoDraftEnabled,
           autoDraftIntervalSeconds: Math.min(600, Math.max(30, autoDraftIntervalSeconds || 120)),
@@ -325,6 +347,78 @@ function HubSpotSettings({ config, onSave, saving, saved }: TabProps) {
                 </span>
               )}
             </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LinearSettings({ config, onSave, saving, saved }: TabProps) {
+  const [enabled, setEnabled] = useState(config.linearEnabled ?? false);
+  const [apiKey, setApiKey] = useState(config.linearApiKey ?? '');
+  const [testing, setTesting] = useState(false);
+  const [testMessage, setTestMessage] = useState<string | null>(null);
+  const [testOk, setTestOk] = useState<boolean | null>(null);
+
+  const testConnection = async () => {
+    setTesting(true);
+    setTestMessage(null);
+    setTestOk(null);
+    try {
+      const result = await window.kenaz.linearTestConnection();
+      setTestOk(!!result.ok);
+      setTestMessage(result.message || (result.ok ? 'Connected' : 'Connection failed'));
+    } catch (e: any) {
+      setTestOk(false);
+      setTestMessage(e?.message || 'Connection test failed');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-text-primary mb-1">Linear Integration</h3>
+      <p className="text-xs text-text-muted mb-4">
+        Connect Linear to detect issue references, show issue context, and run issue actions from Kenaz.
+      </p>
+      <div className="space-y-4">
+        <SettingsField label="Enable Linear" description="Show Linear-aware context and actions in Kenaz.">
+          <ToggleSwitch checked={enabled} onChange={(v) => { setEnabled(v); onSave({ linearEnabled: v }); }} />
+        </SettingsField>
+
+        {enabled && (
+          <>
+            <SettingsField
+              label="Linear API Key"
+              description="Create a personal API key in Linear → Settings → API → Personal API keys."
+            >
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary font-mono"
+                placeholder="lin_api_..."
+              />
+            </SettingsField>
+
+            <div className="flex items-center gap-2">
+              <SaveButton onClick={() => onSave({ linearApiKey: apiKey })} saving={saving} saved={saved} />
+              <button
+                onClick={testConnection}
+                disabled={testing || !apiKey.trim()}
+                className="px-3 py-2 rounded-lg text-xs font-medium bg-bg-tertiary text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {testing ? 'Testing…' : 'Test connection'}
+              </button>
+            </div>
+
+            {testMessage && (
+              <div className={`text-[11px] ${testOk ? 'text-accent-success' : 'text-accent-danger'}`}>
+                {testMessage}
+              </div>
+            )}
           </>
         )}
       </div>

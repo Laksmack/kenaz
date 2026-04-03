@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Task, TaskStats, TaskGroup } from '../../shared/types';
+import { extractLinearIssueKeys } from '../lib/linear';
 
-type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'deferred' | 'pipeline' | 'group' | 'search';
+type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'deferred' | 'pipeline' | 'linear' | 'group' | 'search';
 
 export function useTasks(view: ViewType | string, query?: string) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -38,6 +39,14 @@ export function useTasks(view: ViewType | string, query?: string) {
         case 'search':
           result = query ? await window.raido.searchTasks(query) : [];
           break;
+        case 'linear': {
+          const inbox = await window.raido.getInbox();
+          result = inbox.filter((task) => {
+            const text = `${task.title || ''}\n${task.notes || ''}`;
+            return extractLinearIssueKeys(text).length > 0;
+          });
+          break;
+        }
         default:
           result = [];
       }

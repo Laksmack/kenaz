@@ -119,6 +119,15 @@ export const IPC = {
   APP_SET_BADGE: 'app:set-badge',
   APP_NOTIFY: 'app:notify',
 
+  // Linear
+  LINEAR_TEST: 'linear:test',
+  LINEAR_TEAMS: 'linear:teams',
+  LINEAR_ISSUE_GET: 'linear:issue:get',
+  LINEAR_ISSUES_SEARCH: 'linear:issues:search',
+  LINEAR_ISSUE_CREATE: 'linear:issue:create',
+  LINEAR_ISSUE_UPDATE: 'linear:issue:update',
+  LINEAR_ISSUE_COMMENT: 'linear:issue:comment',
+
   // MCP
   MCP_STATUS: 'mcp:status',
 } as const;
@@ -133,6 +142,8 @@ export interface AppConfig {
   today_suggestion_pinned: boolean;
   calendar_enabled: boolean;
   hubspot_enabled: boolean;
+  linear_enabled: boolean;
+  linear_api_key: string;
   hubspot_portal_id: string;
   hubspot_owner_id: string;
   hubspot_pipelines: string[];
@@ -147,6 +158,8 @@ export const DEFAULT_CONFIG: AppConfig = {
   today_suggestion_pinned: false,
   calendar_enabled: true,
   hubspot_enabled: false,
+  linear_enabled: false,
+  linear_api_key: '',
   hubspot_portal_id: '',
   hubspot_owner_id: '',
   hubspot_pipelines: [],
@@ -155,7 +168,7 @@ export const DEFAULT_CONFIG: AppConfig = {
 
 // ── Sidebar Views ───────────────────────────────────────────
 
-export type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'deferred' | 'pipeline' | 'group' | 'search';
+export type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'deferred' | 'pipeline' | 'linear' | 'group' | 'search';
 
 export interface SidebarItem {
   id: ViewType | string;

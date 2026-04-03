@@ -31,6 +31,13 @@ declare global {
       hubspotLogThread: (dealId: string, subject: string, body: string, senderEmail: string, recipientEmail: string) => Promise<{ success: boolean; error?: string }>;
       hubspotSearchDeals: (query: string) => Promise<any[]>;
       hubspotAssociateDeal: (contactId: string, dealId: string) => Promise<{ success: boolean; error?: string }>;
+      linearTestConnection: () => Promise<{ ok: boolean; message?: string }>;
+      linearListTeams: () => Promise<Array<{ id: string; key: string; name: string }>>;
+      linearGetIssue: (identifier: string) => Promise<any | null>;
+      linearSearchIssues: (query: string, first?: number) => Promise<any[]>;
+      linearCreateIssue: (input: any) => Promise<{ success: boolean; issue?: any; error?: string }>;
+      linearUpdateIssue: (input: any) => Promise<{ success: boolean; error?: string }>;
+      linearAddComment: (issueId: string, body: string) => Promise<{ success: boolean; error?: string }>;
       setBadge: (count: number) => Promise<void>;
       notify: (title: string, body: string) => Promise<void>;
       listViews: () => Promise<any[]>;

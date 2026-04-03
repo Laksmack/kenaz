@@ -4,6 +4,7 @@ import type { Task, TaskAttachment, ChecklistItem } from '../../shared/types';
 import { CommentSection } from './CommentSection';
 import { extractGroup } from '../../shared/types';
 import { cn, isOverdue, isToday, formatDateLabel } from '../lib/utils';
+import { firstLinearIssueKey } from '../lib/linear';
 
 const RECURRENCE_OPTIONS = [
   { value: '', label: 'None' },
@@ -25,9 +26,10 @@ interface TaskDetailProps {
   onUpdate: (id: string, updates: Partial<Task>) => void;
   onComplete: (id: string) => void;
   onDelete: (id: string) => void;
+  linearEnabled?: boolean;
 }
 
-export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailProps) {
+export function TaskDetail({ task, onUpdate, onComplete, onDelete, linearEnabled = false }: TaskDetailProps) {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [editingTitle, setEditingTitle] = useState(false);
@@ -38,6 +40,9 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
   const [newItemTitle, setNewItemTitle] = useState('');
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingItemTitle, setEditingItemTitle] = useState('');
+  const [linearIssue, setLinearIssue] = useState<any | null>(null);
+  const [linearLoading, setLinearLoading] = useState(false);
+  const [linearMessage, setLinearMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (task) {
@@ -54,6 +59,34 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
   }, [task?.id]);
 
   const group = useMemo(() => task ? extractGroup(task.title) : null, [task?.title]);
+  const linearIssueKey = useMemo(() => (
+    task && linearEnabled ? firstLinearIssueKey(`${task.title || ''}\n${task.notes || ''}`) : null
+  ), [task?.id, task?.title, task?.notes, linearEnabled]);
+
+  useEffect(() => {
+    if (!task || !linearEnabled || !linearIssueKey) {
+      setLinearIssue(null);
+      setLinearLoading(false);
+      setLinearMessage(null);
+      return;
+    }
+    let cancelled = false;
+    setLinearLoading(true);
+    window.raido.linearGetIssue(linearIssueKey).then((issue) => {
+      if (!cancelled) {
+        setLinearIssue(issue);
+        setLinearMessage(issue ? null : `No issue found for ${linearIssueKey}`);
+      }
+    }).catch((e) => {
+      if (!cancelled) {
+        setLinearIssue(null);
+        setLinearMessage(e?.message || 'Failed to fetch Linear issue');
+      }
+    }).finally(() => {
+      if (!cancelled) setLinearLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [task?.id, linearEnabled, linearIssueKey]);
 
   const saveTitle = useCallback(() => {
     if (task && title.trim() && title !== task.title) {
@@ -81,6 +114,39 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
     const newTags = (task.tags || []).filter(t => t !== tag);
     onUpdate(task.id, { tags: newTags } as any);
   }, [task, onUpdate]);
+
+  const createLinearFromTask = useCallback(async () => {
+    if (!task) return;
+    setLinearMessage(null);
+    try {
+      const teams = await window.raido.linearListTeams();
+      if (!teams.length) {
+        setLinearMessage('No Linear teams available for this API key');
+        return;
+      }
+      const result = await window.raido.linearCreateIssue({
+        title: task.title,
+        description: task.notes || '',
+        teamId: teams[0].id,
+      });
+      if (result.success && result.issue?.url) {
+        window.open(result.issue.url, '_blank');
+        setLinearMessage(`Created ${result.issue.identifier}`);
+      } else {
+        setLinearMessage(result.error || 'Failed to create Linear issue');
+      }
+    } catch (e: any) {
+      setLinearMessage(e?.message || 'Failed to create Linear issue');
+    }
+  }, [task?.id, task?.title, task?.notes]);
+
+  const addLinearComment = useCallback(async () => {
+    if (!linearIssue?.id) return;
+    const text = window.prompt('Comment for Linear issue');
+    if (!text?.trim()) return;
+    const result = await window.raido.linearAddComment(linearIssue.id, text.trim());
+    setLinearMessage(result.success ? 'Comment added' : (result.error || 'Failed to add comment'));
+  }, [linearIssue?.id]);
 
   const links = useMemo(() => {
     if (!task) return [];
@@ -336,6 +402,57 @@ export function TaskDetail({ task, onUpdate, onComplete, onDelete }: TaskDetailP
                 </svg>
               </button>
             ))}
+          </div>
+        )}
+
+        {linearEnabled && (
+          <div className="mt-3 ml-9 p-2 rounded-md border border-border-subtle bg-bg-primary/70">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] text-text-secondary">
+                {linearIssueKey ? (
+                  linearLoading ? (
+                    <span className="text-text-muted">Loading Linear issue {linearIssueKey}…</span>
+                  ) : linearIssue ? (
+                    <span>
+                      <span className="text-cyan-300 font-semibold">{linearIssue.identifier}</span>
+                      {' · '}
+                      <span className="text-text-primary">{linearIssue.title}</span>
+                      {linearIssue.state?.name ? (
+                        <span className="text-text-muted"> · {linearIssue.state.name}</span>
+                      ) : null}
+                    </span>
+                  ) : (
+                    <span className="text-text-muted">{linearMessage || `No issue found for ${linearIssueKey}`}</span>
+                  )
+                ) : (
+                  <span className="text-text-muted">No Linear issue key detected</span>
+                )}
+              </div>
+              <div className="flex items-center gap-1">
+                {linearIssue?.url && (
+                  <button
+                    onClick={() => window.open(linearIssue.url, '_blank')}
+                    className="px-2 py-1 rounded bg-bg-tertiary hover:bg-bg-hover text-[11px] text-text-secondary"
+                  >
+                    Open
+                  </button>
+                )}
+                {linearIssue?.id && (
+                  <button
+                    onClick={addLinearComment}
+                    className="px-2 py-1 rounded bg-bg-tertiary hover:bg-bg-hover text-[11px] text-text-secondary"
+                  >
+                    Comment
+                  </button>
+                )}
+                <button
+                  onClick={createLinearFromTask}
+                  className="px-2 py-1 rounded bg-bg-tertiary hover:bg-bg-hover text-[11px] text-text-secondary"
+                >
+                  Create Issue
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

@@ -5,7 +5,7 @@ interface Props {
   onClose: () => void;
 }
 
-type SettingsTab = 'general' | 'hubspot' | 'api' | 'mcp';
+type SettingsTab = 'general' | 'hubspot' | 'linear' | 'api' | 'mcp';
 
 export function SettingsModal({ onClose }: Props) {
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -50,10 +50,17 @@ export function SettingsModal({ onClose }: Props) {
 
   const tabs: { id: SettingsTab; label: string; icon: string }[] = [
     { id: 'general', label: 'General', icon: '⚙️' },
-    { id: 'hubspot', label: 'HubSpot', icon: '🟠' },
+    ...(config.hubspot_enabled ? [{ id: 'hubspot' as SettingsTab, label: 'HubSpot', icon: '🟠' }] : []),
+    ...(config.linear_enabled ? [{ id: 'linear' as SettingsTab, label: 'Linear', icon: '📐' }] : []),
     { id: 'api', label: 'API', icon: '🔌' },
     { id: 'mcp', label: 'MCP', icon: 'ᚱ' },
   ];
+
+  useEffect(() => {
+    if (!tabs.some((t) => t.id === activeTab)) {
+      setActiveTab('general');
+    }
+  }, [activeTab, tabs]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -89,6 +96,9 @@ export function SettingsModal({ onClose }: Props) {
           {activeTab === 'hubspot' && (
             <HubSpotSettings config={config} onSave={handleSave} saving={saving} saved={saved} />
           )}
+          {activeTab === 'linear' && (
+            <LinearSettings config={config} onSave={handleSave} saving={saving} saved={saved} />
+          )}
           {activeTab === 'api' && (
             <APISettings config={config} onSave={handleSave} saving={saving} saved={saved} />
           )}
@@ -122,6 +132,8 @@ interface TabProps {
 function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
   const [theme, setTheme] = useState<'dark' | 'light' | 'system'>(config.theme ?? 'dark');
   const [calendarEnabled, setCalendarEnabled] = useState(config.calendar_enabled ?? true);
+  const [hubspotEnabled, setHubspotEnabled] = useState(config.hubspot_enabled ?? false);
+  const [linearEnabled, setLinearEnabled] = useState(config.linear_enabled ?? false);
 
   return (
     <div>
@@ -143,7 +155,15 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
           <ToggleSwitch checked={calendarEnabled} onChange={(v) => { setCalendarEnabled(v); onSave({ calendar_enabled: v }); }} />
         </SettingsField>
 
-        <SaveButton onClick={() => onSave({ theme })} saving={saving} saved={saved} />
+        <SettingsField label="Enable HubSpot" description="Show HubSpot settings and hubspot-aware views.">
+          <ToggleSwitch checked={hubspotEnabled} onChange={(v) => { setHubspotEnabled(v); onSave({ hubspot_enabled: v }); }} />
+        </SettingsField>
+
+        <SettingsField label="Enable Linear" description="Show Linear settings and issue-aware views/actions.">
+          <ToggleSwitch checked={linearEnabled} onChange={(v) => { setLinearEnabled(v); onSave({ linear_enabled: v }); }} />
+        </SettingsField>
+
+        <SaveButton onClick={() => onSave({ theme, calendar_enabled: calendarEnabled, hubspot_enabled: hubspotEnabled, linear_enabled: linearEnabled })} saving={saving} saved={saved} />
       </div>
     </div>
   );
@@ -307,6 +327,78 @@ function HubSpotSettings({ config, onSave, saving, saved }: TabProps) {
               saving={saving}
               saved={saved}
             />
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LinearSettings({ config, onSave, saving, saved }: TabProps) {
+  const [enabled, setEnabled] = useState(config.linear_enabled ?? false);
+  const [apiKey, setApiKey] = useState(config.linear_api_key ?? '');
+  const [testing, setTesting] = useState(false);
+  const [testMessage, setTestMessage] = useState<string | null>(null);
+  const [testOk, setTestOk] = useState<boolean | null>(null);
+
+  const testConnection = async () => {
+    setTesting(true);
+    setTestMessage(null);
+    setTestOk(null);
+    try {
+      const result = await window.raido.linearTestConnection();
+      setTestOk(!!result.ok);
+      setTestMessage(result.message || (result.ok ? 'Connected' : 'Connection failed'));
+    } catch (e: any) {
+      setTestOk(false);
+      setTestMessage(e?.message || 'Connection test failed');
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-text-primary mb-1">Linear Integration</h3>
+      <p className="text-xs text-text-muted mb-4">
+        Connect Linear to detect issue references, show issue context, and run issue actions from Raiðo.
+      </p>
+      <div className="space-y-4">
+        <SettingsField label="Enable Linear" description="Show Linear-aware context and actions in Raiðo.">
+          <ToggleSwitch checked={enabled} onChange={(v) => { setEnabled(v); onSave({ linear_enabled: v }); }} />
+        </SettingsField>
+
+        {enabled && (
+          <>
+            <SettingsField
+              label="Linear API Key"
+              description="Create a personal API key in Linear → Settings → API → Personal API keys."
+            >
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary font-mono"
+                placeholder="lin_api_..."
+              />
+            </SettingsField>
+
+            <div className="flex items-center gap-2">
+              <SaveButton onClick={() => onSave({ linear_api_key: apiKey })} saving={saving} saved={saved} />
+              <button
+                onClick={testConnection}
+                disabled={testing || !apiKey.trim()}
+                className="px-3 py-2 rounded-lg text-xs font-medium bg-bg-tertiary text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {testing ? 'Testing…' : 'Test connection'}
+              </button>
+            </div>
+
+            {testMessage && (
+              <div className={`text-[11px] ${testOk ? 'text-accent-success' : 'text-accent-danger'}`}>
+                {testMessage}
+              </div>
+            )}
           </>
         )}
       </div>
