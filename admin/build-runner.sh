@@ -44,6 +44,9 @@ fi
 export PATH="/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Add workspace node_modules/.bin to PATH so tsc, vite, electron-builder etc. are found
+export PATH="$REPO_ROOT/node_modules/.bin:$PATH"
 LOCK_FILE="/tmp/futhark-build-runner.lock"
 RETRY_FILE="$HOME/.futhark/build-retry.txt"
 APPS=(kenaz raido dagaz laguz)
