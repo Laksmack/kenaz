@@ -100,6 +100,7 @@ declare global {
       onThreadsUpdated: (callback: (data: any) => void) => () => void;
       onThreadUpdated: (callback: (data: any) => void) => () => void;
       onNavigate: (callback: (data: any) => void) => () => void;
+      onMailto: (callback: (data: { to: string; cc: string; bcc: string; subject: string; body: string }) => void) => () => void;
     };
   }
 }

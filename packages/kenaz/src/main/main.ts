@@ -38,6 +38,51 @@ let connectivity: ConnectivityMonitor;
 
 const isDev = process.env.NODE_ENV === 'development';
 
+// ── Mailto URI handling ─────────────────────────────────────
+// Queues a mailto URI until the renderer is ready, then sends it.
+let pendingMailtoUrl: string | null = null;
+
+function parseMailtoUrl(url: string): { to: string; cc: string; bcc: string; subject: string; body: string } | null {
+  try {
+    // mailto:user@example.com?subject=Hello&body=Hi&cc=other@example.com
+    const withoutScheme = url.replace(/^mailto:/i, '');
+    const [recipientPart, queryPart] = withoutScheme.split('?', 2);
+    const to = decodeURIComponent(recipientPart || '').trim();
+    const params = new URLSearchParams(queryPart || '');
+    return {
+      to: [to, params.get('to') || ''].filter(Boolean).join(', '),
+      cc: params.get('cc') || '',
+      bcc: params.get('bcc') || '',
+      subject: params.get('subject') || '',
+      body: params.get('body') || '',
+    };
+  } catch (e) {
+    console.error('[Kenaz] Failed to parse mailto URL:', url, e);
+    return null;
+  }
+}
+
+function handleMailtoUrl(url: string) {
+  if (!url.toLowerCase().startsWith('mailto:')) return;
+  const parsed = parseMailtoUrl(url);
+  if (!parsed) return;
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+    mainWindow.webContents.send('mailto', parsed);
+  } else {
+    // Window not ready yet — queue for when it loads
+    pendingMailtoUrl = url;
+  }
+}
+
+// macOS: open-url fires when the OS routes a mailto: link to us
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleMailtoUrl(url);
+});
+
 function createWindow() {
   const preloadPath = path.join(__dirname, 'preload.js');
   console.log(`[Kenaz] v${app.getVersion()} — ${isDev ? 'development' : 'production'}`);
@@ -124,10 +169,22 @@ function createWindow() {
     console.log('[Renderer]', message);
   });
 
-  // Open external links in browser
+  // Open external links in browser (intercept mailto: to handle internally)
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (url.toLowerCase().startsWith('mailto:')) {
+      handleMailtoUrl(url);
+    } else {
+      shell.openExternal(url);
+    }
     return { action: 'deny' };
+  });
+
+  // Flush any mailto URL that arrived before the window was ready
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (pendingMailtoUrl) {
+      handleMailtoUrl(pendingMailtoUrl);
+      pendingMailtoUrl = null;
+    }
   });
 
   mainWindow.on('closed', () => {

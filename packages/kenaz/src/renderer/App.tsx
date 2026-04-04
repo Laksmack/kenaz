@@ -213,6 +213,21 @@ export default function App() {
     return cleanup;
   }, []);
 
+  // Handle mailto: URIs from the system (Kenaz is default mail app)
+  useEffect(() => {
+    const cleanup = window.kenaz.onMailto((data) => {
+      setComposeData({
+        to: data.to,
+        cc: data.cc,
+        bcc: data.bcc,
+        subject: data.subject,
+        bodyMarkdown: data.body,
+      });
+      setComposeOpen(true);
+    });
+    return cleanup;
+  }, []);
+
   // Listen for account changes from main process
   useEffect(() => {
     const cleanup = window.kenaz.onAccountChanged((email: string | null) => {

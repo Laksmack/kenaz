@@ -247,6 +247,11 @@ const api = {
     ipcRenderer.on('navigate', handler);
     return () => { ipcRenderer.removeListener('navigate', handler); };
   },
+  onMailto: (callback: (data: { to: string; cc: string; bcc: string; subject: string; body: string }) => void) => {
+    const handler = (_event: any, data: any) => callback(data);
+    ipcRenderer.on('mailto', handler);
+    return () => { ipcRenderer.removeListener('mailto', handler); };
+  },
 };
 
 contextBridge.exposeInMainWorld('kenaz', api);
