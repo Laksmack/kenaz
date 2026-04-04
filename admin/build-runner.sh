@@ -59,7 +59,12 @@ UPLOAD_PIDS=()
 REMOTE_HOST="${BUILD_REMOTE_HOST:-ubuntu@kenaz.app}"
 REMOTE_PATH="${BUILD_REMOTE_PATH:-/var/www/kenaz.app/releases}"
 REMOTE_HTML="${BUILD_REMOTE_HTML:-/var/www/kenaz.app}"
+REMOTE_SSH_KEY="${BUILD_REMOTE_SSH_KEY:-}"
 BRANCH="main"
+
+# Build SSH/SCP option arrays (include identity file if set)
+SSH_KEY_OPTS=()
+[ -n "$REMOTE_SSH_KEY" ] && SSH_KEY_OPTS=(-i "$REMOTE_SSH_KEY")
 
 log() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') — $*"
@@ -222,11 +227,12 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
     local log="$REPO_ROOT/.upload-$app.log"
     {
       echo "$(date '+%H:%M:%S') starting upload of $name v$version"
-      local ssh_opts=(-o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
-      ssh "${ssh_opts[@]}" "$REMOTE_HOST" "mkdir -p $REMOTE_PATH/$app"
+      local ssh_opts=("${SSH_KEY_OPTS[@]}" -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+      # mkdir via sftp (works with sftp-only deploy user)
+      sftp "${ssh_opts[@]}" -b - "$REMOTE_HOST" <<< "mkdir $REMOTE_PATH/$app" 2>/dev/null || true
 
       local remote_dest="$REMOTE_HOST:$REMOTE_PATH/$app/"
-      local scp_opts=(-o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+      local scp_opts=("${SSH_KEY_OPTS[@]}" -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
       local failed=false
       local max_retries=2
 
@@ -258,15 +264,11 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
       local dmg_name
       dmg_name=$(ls -t "$release_dir"/*.dmg 2>/dev/null | head -1 | xargs basename)
       if [ -n "$dmg_name" ]; then
-        ssh "${ssh_opts[@]}" "$REMOTE_HOST" "cd $REMOTE_PATH/$app && ln -sf '$dmg_name' ${app}_latest.dmg"
+        # symlink via sftp (ln not available in sftp, so just copy the dmg as _latest.dmg)
+        scp "${scp_opts[@]}" "$release_dir/$dmg_name" "$REMOTE_HOST:$REMOTE_PATH/$app/${app}_latest.dmg"
       fi
 
-      # Only clean old versions after a successful upload
-      local cleaned
-      cleaned=$(ssh "${ssh_opts[@]}" "$REMOTE_HOST" "cd $REMOTE_PATH/$app && find . -maxdepth 1 -type f \( -name '*.dmg' -o -name '*.zip' \) ! -name '*${version}*' -print -delete 2>/dev/null" | wc -l | tr -d ' ')
-      if [ "$cleaned" -gt 0 ] 2>/dev/null; then
-        echo "cleaned $cleaned old release file(s)"
-      fi
+      # Skip remote cleanup (no shell access with sftp-only user)
 
       echo "$(date '+%H:%M:%S') upload complete"
     } > "$log" 2>&1
@@ -417,7 +419,7 @@ if [ "$WEB_CHANGED" = true ] || [ "$HAS_NEW_COMMITS" = true ] || [ "$FORCE" = tr
   generate_versions
   echo ""
   echo "  syncing website..."
-  if scp "$REPO_ROOT/web/"* "$REMOTE_HOST:$REMOTE_HTML/"; then
+  if scp "${SSH_KEY_OPTS[@]}" "$REPO_ROOT/web/"* "$REMOTE_HOST:$REMOTE_HTML/"; then
     echo "  ✓ website synced (with changelog)"
   else
     echo "  ⚠ website sync failed (continuing)"

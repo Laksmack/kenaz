@@ -8,20 +8,22 @@
 	<key>ProgramArguments</key>
 	<array>
 		<string>/bin/bash</string>
-		<string>/Users/martin/futhark/admin/build-runner.sh</string>
+		<string>/Users/martin/code/futhark/admin/build-runner.sh</string>
 	</array>
 
 	<key>WorkingDirectory</key>
-	<string>/Users/martin/futhark</string>
+	<string>/Users/martin/code/futhark</string>
 
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>BUILD_REMOTE_HOST</key>
-		<string>ubuntu@kenaz.app</string>
+		<string>deploy@35.174.107.250</string>
 		<key>BUILD_REMOTE_PATH</key>
-		<string>/var/www/kenaz.app/releases</string>
+		<string>/kenaz/releases</string>
 		<key>BUILD_REMOTE_HTML</key>
-		<string>/var/www/kenaz.app</string>
+		<string>/kenaz</string>
+		<key>BUILD_REMOTE_SSH_KEY</key>
+		<string>/Users/martin/.ssh/futhark-deploy-new</string>
 	</dict>
 
 	<key>StartInterval</key>
