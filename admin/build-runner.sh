@@ -422,11 +422,17 @@ if [ "$WEB_CHANGED" = true ] || [ "$HAS_NEW_COMMITS" = true ] || [ "$FORCE" = tr
   generate_versions
   echo ""
   echo "  syncing website..."
-  if scp "${SSH_KEY_OPTS[@]}" "$REPO_ROOT/web/"* "$REMOTE_HOST:$REMOTE_HTML/"; then
+  # Use sftp to sync web files (works with sftp-only deploy user)
+  SFTP_BATCH=$(mktemp)
+  for f in "$REPO_ROOT"/web/*; do
+    [ -f "$f" ] && echo "put $f $REMOTE_HTML/$(basename $f)" >> "$SFTP_BATCH"
+  done
+  if sftp "${SSH_KEY_OPTS[@]}" -b "$SFTP_BATCH" "$REMOTE_HOST" 2>/dev/null; then
     echo "  ✓ website synced (with changelog)"
   else
     echo "  ⚠ website sync failed (continuing)"
   fi
+  rm -f "$SFTP_BATCH"
 fi
 
 # Wait for background uploads to finish
@@ -471,7 +477,7 @@ if [ ${#FAILED[@]} -gt 0 ]; then
   # Persist failed apps so next cron run retries them
   mkdir -p "$(dirname "$RETRY_FILE")"
   printf '%s\n' "${FAILED[@]}" | awk 'NF && !seen[$0]++' > "$RETRY_FILE"
-  echo "━━━ Done (${#FAILED[@]} failed: ${FAILED[*]} — will retry next run) ━━━"
+  echo "━━━ Done (${#FAILED[@]} failed: ${FAILED[*]} - will retry next run) ━━━"
 else
   rm -f "$RETRY_FILE"
   echo "━━━ Done ━━━"
