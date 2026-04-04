@@ -1,6 +1,9 @@
 #!/bin/bash
 #
 # Futhark Build Runner — Mac Mini
+
+# Set PATH immediately (before main()) so launchd can find node/npm
+export PATH="/opt/homebrew/opt/node@22/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 #
 # Polls origin/main for new commits. If found, builds only the apps
 # that changed (signed DMGs), then uploads to kenaz.app.
