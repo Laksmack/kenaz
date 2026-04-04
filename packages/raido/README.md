@@ -59,3 +59,4 @@ Runs on `http://localhost:3142`.
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/health` | GET | Health check |
+

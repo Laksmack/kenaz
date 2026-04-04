@@ -134,3 +134,4 @@ Runs on `http://localhost:3141` — usable by Claude Desktop (via MCP), scripts,
 | `/api/navigate` | POST | Cross-app deep link (`{action, threadId}`) |
 | `/openapi.json` | GET | Full OpenAPI 3.0 spec |
 | `/` | GET | Root discovery (links to docs and health) |
+
