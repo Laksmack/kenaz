@@ -49,15 +49,25 @@ RETRY_FILE="$HOME/.futhark/build-retry.txt"
 APPS=(kenaz raido dagaz laguz)
 UPLOAD_PIDS=()
 
-# ── Config (edit these) ──────────────────────────────────────
-REMOTE_HOST="ubuntu@compsci-hackathons.com"
-REMOTE_PATH="/home/ubuntu/projects/kenaz/html/releases"
-REMOTE_HTML="/home/ubuntu/projects/kenaz/html"
+# ── Config (override via env) ────────────────────────────────
+# Defaults are aligned with a Tailscale-routed host where uploads go over SSH
+# as the ubuntu user unless overridden.
+# Examples:
+#   BUILD_REMOTE_HOST=ubuntu@your-server.tailnet-name.ts.net
+#   BUILD_REMOTE_PATH=/var/www/kenaz.app/releases
+#   BUILD_REMOTE_HTML=/var/www/kenaz.app
+REMOTE_HOST="${BUILD_REMOTE_HOST:-ubuntu@kenaz.app}"
+REMOTE_PATH="${BUILD_REMOTE_PATH:-/var/www/kenaz.app/releases}"
+REMOTE_HTML="${BUILD_REMOTE_HTML:-/var/www/kenaz.app}"
 BRANCH="main"
 
 log() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') — $*"
 }
+
+log "upload target host: $REMOTE_HOST"
+log "upload releases dir: $REMOTE_PATH"
+log "upload web dir: $REMOTE_HTML"
 
 # Prevent overlapping runs
 if [ -f "$LOCK_FILE" ]; then
@@ -216,7 +226,7 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
       ssh "${ssh_opts[@]}" "$REMOTE_HOST" "mkdir -p $REMOTE_PATH/$app"
 
       local remote_dest="$REMOTE_HOST:$REMOTE_PATH/$app/"
-      local scp_opts=(-q -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
+      local scp_opts=(-o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
       local failed=false
       local max_retries=2
 
@@ -407,8 +417,11 @@ if [ "$WEB_CHANGED" = true ] || [ "$HAS_NEW_COMMITS" = true ] || [ "$FORCE" = tr
   generate_versions
   echo ""
   echo "  syncing website..."
-  scp -q "$REPO_ROOT/web/"* "$REMOTE_HOST:$REMOTE_HTML/" 2>/dev/null || true
-  echo "  ✓ website synced (with changelog)"
+  if scp "$REPO_ROOT/web/"* "$REMOTE_HOST:$REMOTE_HTML/"; then
+    echo "  ✓ website synced (with changelog)"
+  else
+    echo "  ⚠ website sync failed (continuing)"
+  fi
 fi
 
 # Wait for background uploads to finish

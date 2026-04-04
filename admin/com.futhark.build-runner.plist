@@ -14,6 +14,16 @@
 	<key>WorkingDirectory</key>
 	<string>/Users/martin/futhark</string>
 
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>BUILD_REMOTE_HOST</key>
+		<string>ubuntu@kenaz.app</string>
+		<key>BUILD_REMOTE_PATH</key>
+		<string>/var/www/kenaz.app/releases</string>
+		<key>BUILD_REMOTE_HTML</key>
+		<string>/var/www/kenaz.app</string>
+	</dict>
+
 	<key>StartInterval</key>
 	<integer>600</integer>
 
