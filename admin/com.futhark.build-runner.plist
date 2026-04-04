@@ -17,7 +17,7 @@
 	<key>EnvironmentVariables</key>
 	<dict>
 		<key>BUILD_REMOTE_HOST</key>
-		<string>deploy@35.174.107.250</string>
+		<string>deploy@ssh.kenaz.app</string>
 		<key>BUILD_REMOTE_PATH</key>
 		<string>/kenaz/releases</string>
 		<key>BUILD_REMOTE_HTML</key>
