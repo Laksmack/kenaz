@@ -30,10 +30,12 @@ main() {
 
 FORCE=false
 NOTARIZE=true
+TARGET_APPS=()
 for arg in "$@"; do
   case "$arg" in
     --force|-f) FORCE=true ;;
     --no-notarize) NOTARIZE=false ;;
+    kenaz|raido|dagaz|laguz) TARGET_APPS+=("$arg") ;;
   esac
 done
 
@@ -157,7 +159,11 @@ elif echo "$CHANGED_FILES" | grep -qE '^(packages/core/|signing/|package\.json|p
 fi
 
 APPS_TO_BUILD=()
-if [ "$REBUILD_ALL" = true ]; then
+if [ ${#TARGET_APPS[@]} -gt 0 ]; then
+  # Explicit app targets specified on command line
+  APPS_TO_BUILD=("${TARGET_APPS[@]}")
+  REBUILD_ALL=false
+elif [ "$REBUILD_ALL" = true ]; then
   APPS_TO_BUILD=("${APPS[@]}")
 else
   for app in "${APPS[@]}"; do
