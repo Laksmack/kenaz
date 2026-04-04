@@ -235,8 +235,8 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
       echo "$(date '+%H:%M:%S') starting upload of $name v$version"
       local ssh_opts=("${SSH_KEY_OPTS[@]}" -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
 
-      # mkdir via sftp
-      sftp "${ssh_opts[@]}" -b - "$REMOTE_HOST" <<< "mkdir $REMOTE_PATH/$app" 2>/dev/null || true
+      # mkdir via sftp (ignore failure - dir may already exist)
+      sftp "${ssh_opts[@]}" "$REMOTE_HOST" <<< "mkdir $REMOTE_PATH/$app" 2>/dev/null; true
 
       local remote_dest="$REMOTE_HOST:$REMOTE_PATH/$app/"
       local scp_opts=("${SSH_KEY_OPTS[@]}" -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
@@ -249,7 +249,7 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
         echo "  uploading $basename_f ($(du -h "$f" | cut -f1))..."
         local attempt=0
         while [ $attempt -le $max_retries ]; do
-          if sftp "${ssh_opts[@]}" -b - "$REMOTE_HOST" << SFTP_EOF
+          if sftp "${ssh_opts[@]}" "$REMOTE_HOST" << SFTP_EOF
 put "$f" $REMOTE_PATH/$app/$basename_f
 SFTP_EOF
           then
@@ -274,7 +274,7 @@ SFTP_EOF
       local dmg_name
       dmg_name=$(ls -t "$release_dir"/*.dmg 2>/dev/null | head -1 | xargs basename)
       if [ -n "$dmg_name" ]; then
-        sftp "${ssh_opts[@]}" -b - "$REMOTE_HOST" << SFTP_EOF
+        sftp "${ssh_opts[@]}" "$REMOTE_HOST" << SFTP_EOF
 put "$release_dir/$dmg_name" $REMOTE_PATH/$app/${app}_latest.dmg
 SFTP_EOF
       fi
