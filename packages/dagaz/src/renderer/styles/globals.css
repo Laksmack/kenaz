@@ -36,6 +36,14 @@
     --drag-ghost-text: rgba(74, 154, 194, 1);
     --hour-line: rgba(255, 255, 255, 0.04);
     --now-line: #E8834A;
+
+    /* Pending invite ghost blocks on the grid (needs response) */
+    --invite-ghost-bg: rgba(255, 255, 255, 0.3);
+    --invite-ghost-border: rgba(255, 255, 255, 0.62);
+    --invite-ghost-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 2px 12px rgba(0, 0, 0, 0.35);
+    --invite-ghost-conflict-bg: rgba(220, 38, 38, 0.5);
+    --invite-ghost-conflict-border: rgba(254, 202, 202, 0.95);
+    --invite-ghost-conflict-shadow: 0 0 0 1px rgba(127, 29, 29, 0.5), 0 2px 14px rgba(0, 0, 0, 0.4);
   }
 
   [data-theme='light'] {
@@ -55,6 +63,13 @@
     --drag-ghost-border: rgba(58, 127, 165, 0.85);
     --drag-ghost-text: rgba(58, 127, 165, 1);
     --hour-line: rgba(0, 0, 0, 0.06);
+
+    --invite-ghost-bg: rgba(15, 23, 42, 0.12);
+    --invite-ghost-border: rgba(15, 23, 42, 0.45);
+    --invite-ghost-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08), 0 2px 10px rgba(0, 0, 0, 0.08);
+    --invite-ghost-conflict-bg: rgba(220, 38, 38, 0.35);
+    --invite-ghost-conflict-border: rgba(185, 28, 28, 0.85);
+    --invite-ghost-conflict-shadow: 0 0 0 1px rgba(127, 29, 29, 0.25), 0 2px 12px rgba(0, 0, 0, 0.12);
   }
 }
 

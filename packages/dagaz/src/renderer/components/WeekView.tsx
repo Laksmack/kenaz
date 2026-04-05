@@ -307,25 +307,23 @@ export function WeekView({ currentDate, events, overlayEvents = [], pendingInvit
                   return (
                     <div key={`invite-${inv.threadId}`} style={getInviteStyle(inv.startTime, inv.endTime)}>
                       <div
-                        className="h-full rounded-md px-1 py-0.5 text-[9px] leading-tight overflow-hidden"
+                        className={`h-full rounded-md px-1 py-0.5 text-[9px] leading-tight overflow-hidden font-semibold ${
+                          hasConflict ? 'text-white' : 'text-text-primary'
+                        }`}
                         style={{
-                          backgroundColor: 'var(--accent-primary-rgb, 74 154 194 / 0.15)',
-                          border: '1.5px dashed var(--accent-primary, #4A9AC2)',
-                          opacity: 0.55,
+                          backgroundColor: hasConflict ? 'var(--invite-ghost-conflict-bg)' : 'var(--invite-ghost-bg)',
+                          border: hasConflict
+                            ? '2px dashed var(--invite-ghost-conflict-border)'
+                            : '2px dashed var(--invite-ghost-border)',
+                          boxShadow: hasConflict ? 'var(--invite-ghost-conflict-shadow)' : 'var(--invite-ghost-shadow)',
                         }}
                       >
-                        <div className="flex items-center gap-0.5 truncate text-text-muted font-medium">
+                        <div className="flex items-center gap-0.5 truncate">
                           <span>📨</span>
                           <span className="truncate">{inv.title}</span>
-                          {hasConflict && <span className="flex-shrink-0">⚠️</span>}
+                          {hasConflict && <span className="flex-shrink-0" title="Overlaps another event">⚠️</span>}
                         </div>
                       </div>
-                      {hasConflict && (
-                        <div
-                          className="absolute inset-0 rounded-md pointer-events-none"
-                          style={{ backgroundColor: 'rgba(245, 158, 11, 0.06)' }}
-                        />
-                      )}
                     </div>
                   );
                 })}
