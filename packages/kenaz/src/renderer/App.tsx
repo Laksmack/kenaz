@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { EmailList } from './components/EmailList';
 import { EmailView } from './components/EmailView';
 import { Sidebar } from './components/Sidebar';
@@ -87,6 +87,11 @@ export default function App() {
     }
   }, [appConfig?.theme]);
 
+  const visibleViews = useMemo(
+    () => views.filter((v) => v.id !== 'linear' || !!appConfig?.linearEnabled),
+    [views, appConfig?.linearEnabled]
+  );
+
   const {
     threads,
     loading,
@@ -98,9 +103,7 @@ export default function App() {
     removeThread,
     labelThread,
     markRead,
-  } = useEmails(currentView, searchQuery, authenticated === true, views.filter((v) => v.id !== 'linear' || !!appConfig?.linearEnabled), appConfig?.inboxSort ?? 'newest', userEmail);
-
-  const visibleViews = views.filter((v) => v.id !== 'linear' || !!appConfig?.linearEnabled);
+  } = useEmails(currentView, searchQuery, authenticated === true, visibleViews, appConfig?.inboxSort ?? 'newest', userEmail);
 
   // ── View counts (background fetch) ──────────────────────
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
