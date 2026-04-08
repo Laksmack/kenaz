@@ -133,17 +133,27 @@ export default function App() {
             }
           })
       );
-      setViewCounts(counts);
+      // Only update state if counts actually changed (avoids toolbar re-render flicker)
+      const prev = prevCountsRef.current;
+      const changed = Object.keys(counts).some((k) => counts[k] !== prev[k]) ||
+        Object.keys(prev).some((k) => prev[k] !== counts[k]);
 
-      // Dock badge: unread inbox count
-      const inboxCount = counts['inbox'] || 0;
-      window.kenaz.setBadge(inboxCount);
+      if (changed) {
+        setViewCounts(counts);
 
-      // Auto-refresh current view if its count changed (new mail arrived or was removed)
-      const prevCount = prevCountsRef.current[currentView];
-      const newCount = counts[currentView];
-      if (prevCount !== undefined && newCount !== undefined && prevCount !== newCount) {
-        refresh();
+        // Dock badge: only update when inbox count changes
+        const inboxCount = counts['inbox'] || 0;
+        const prevInbox = prev['inbox'] || 0;
+        if (inboxCount !== prevInbox) {
+          window.kenaz.setBadge(inboxCount);
+        }
+
+        // Auto-refresh current view if its count changed (new mail arrived or was removed)
+        const prevCount = prev[currentView];
+        const newCount = counts[currentView];
+        if (prevCount !== undefined && newCount !== undefined && prevCount !== newCount) {
+          refresh();
+        }
       }
       prevCountsRef.current = counts;
     };
