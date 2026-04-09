@@ -16,14 +16,12 @@
 
 	<key>EnvironmentVariables</key>
 	<dict>
-		<key>BUILD_REMOTE_HOST</key>
-		<string>deploy@ssh.kenaz.app</string>
-		<key>BUILD_REMOTE_PATH</key>
-		<string>/kenaz/releases</string>
-		<key>BUILD_REMOTE_HTML</key>
-		<string>/kenaz</string>
-		<key>BUILD_REMOTE_SSH_KEY</key>
-		<string>/Users/martin/.ssh/futhark-deploy-new</string>
+		<key>BUILD_LOCAL_DEPLOY</key>
+		<string>true</string>
+		<key>BUILD_DEPLOY_PATH</key>
+		<string>/var/www/chat/releases</string>
+		<key>BUILD_DEPLOY_HTML</key>
+		<string>/var/www/chat</string>
 	</dict>
 
 	<key>StartInterval</key>
