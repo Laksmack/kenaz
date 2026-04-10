@@ -489,8 +489,12 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
               </div>
             ) : (
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-xs text-text-primary font-medium">{friendlyDate(startD)}</span>
-                <span className="text-text-muted text-[10px]">·</span>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={e => { setDate(e.target.value); setEndDate(e.target.value); }}
+                  className="bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary/40 cursor-pointer"
+                />
                 <TimeInput value={startTime} onChange={setStartTime} />
                 <span className="text-text-muted text-xs">→</span>
                 <TimeInput value={endTime} onChange={setEndTime} />
