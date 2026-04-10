@@ -88,6 +88,7 @@ export class CacheStore {
         response_status TEXT,
         is_organizer INTEGER DEFAULT 0,
         is_self INTEGER DEFAULT 0,
+        optional INTEGER DEFAULT 0,
         UNIQUE(event_id, email)
       );
 
@@ -113,6 +114,7 @@ export class CacheStore {
 
     // Migrations — add columns if missing
     try { this.db.exec('ALTER TABLE events ADD COLUMN attachments TEXT'); } catch (e) { /* column already exists */ }
+    try { this.db.exec('ALTER TABLE attendees ADD COLUMN optional INTEGER DEFAULT 0'); } catch (e) { /* column already exists */ }
   }
 
   private genId(): string {
@@ -264,11 +266,11 @@ export class CacheStore {
   upsertAttendees(eventId: string, attendees: Omit<Attendee, 'id'>[]): void {
     this.db.prepare('DELETE FROM attendees WHERE event_id = ?').run(eventId);
     const insert = this.db.prepare(`
-      INSERT OR IGNORE INTO attendees (event_id, email, display_name, response_status, is_organizer, is_self)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO attendees (event_id, email, display_name, response_status, is_organizer, is_self, optional)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     for (const a of attendees) {
-      insert.run(eventId, a.email, a.display_name, a.response_status, a.is_organizer ? 1 : 0, a.is_self ? 1 : 0);
+      insert.run(eventId, a.email, a.display_name, a.response_status, a.is_organizer ? 1 : 0, a.is_self ? 1 : 0, a.optional ? 1 : 0);
     }
   }
 
@@ -329,7 +331,8 @@ export class CacheStore {
   }
 
   getAttendees(eventId: string): Attendee[] {
-    return this.db.prepare('SELECT * FROM attendees WHERE event_id = ?').all(eventId) as Attendee[];
+    const rows = this.db.prepare('SELECT * FROM attendees WHERE event_id = ?').all(eventId) as any[];
+    return rows.map(r => ({ ...r, is_organizer: !!r.is_organizer, is_self: !!r.is_self, optional: !!r.optional }));
   }
 
   createLocalEvent(input: CreateEventInput): CalendarEvent {
@@ -355,14 +358,18 @@ export class CacheStore {
     );
 
     if (input.attendees) {
-      const attendees = input.attendees.map(email => ({
-        event_id: id,
-        email,
-        display_name: null,
-        response_status: 'needsAction' as const,
-        is_organizer: false,
-        is_self: false,
-      }));
+      const attendees = input.attendees.map(a => {
+        const { email, optional } = typeof a === 'string' ? { email: a, optional: false } : { email: a.email, optional: a.optional || false };
+        return {
+          event_id: id,
+          email,
+          display_name: null,
+          response_status: 'needsAction' as const,
+          is_organizer: false,
+          is_self: false,
+          optional,
+        };
+      });
       this.upsertAttendees(id, attendees);
     }
 

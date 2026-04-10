@@ -21,6 +21,11 @@ export function startApiServer(
 
   // ── Validation Schemas ────────────────────────────────────
 
+  const attendeeSchema = z.union([
+    z.string().email(),
+    z.object({ email: z.string().email(), optional: z.boolean().optional() }),
+  ]);
+
   const createEventSchema = z.object({
     summary: z.string().min(1),
     description: z.string().optional(),
@@ -29,7 +34,7 @@ export function startApiServer(
     end: z.string(),
     all_day: z.boolean().optional(),
     time_zone: z.string().optional(),
-    attendees: z.array(z.string().email()).optional(),
+    attendees: z.array(attendeeSchema).optional(),
     calendar_id: z.string().optional(),
     add_conferencing: z.boolean().optional(),
     recurrence: z.array(z.string()).optional(),
@@ -45,7 +50,7 @@ export function startApiServer(
     end: z.string().optional(),
     all_day: z.boolean().optional(),
     time_zone: z.string().optional(),
-    attendees: z.array(z.string().email()).optional(),
+    attendees: z.array(attendeeSchema).optional(),
     transparency: z.enum(['opaque', 'transparent']).optional(),
     visibility: z.string().optional(),
   });
@@ -170,7 +175,11 @@ export function startApiServer(
       const selfEmail = cache.getPrimaryCalendarId();
       if (selfEmail && parsed.attendees && parsed.attendees.length > 0) {
         const lower = selfEmail.toLowerCase();
-        if (!parsed.attendees.some(e => e.toLowerCase() === lower)) {
+        const hasOrganizer = parsed.attendees.some(a => {
+          const email = typeof a === 'string' ? a : a.email;
+          return email.toLowerCase() === lower;
+        });
+        if (!hasOrganizer) {
           parsed.attendees.push(selfEmail);
         }
       }

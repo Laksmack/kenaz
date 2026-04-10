@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { Calendar, CalendarEvent, CreateEventInput, UpdateEventInput, OverlayPerson } from '../../shared/types';
+import type { Calendar, CalendarEvent, CreateEventInput, UpdateEventInput, OverlayPerson, AttendeeInput } from '../../shared/types';
 
 interface Props {
   open: boolean;
@@ -193,7 +193,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [allDay, setAllDay] = useState(false);
-  const [attendees, setAttendees] = useState<string[]>([]);
+  const [attendees, setAttendees] = useState<{ email: string; optional: boolean }[]>([]);
   const [attendeeInput, setAttendeeInput] = useState('');
   const [contactSuggestions, setContactSuggestions] = useState<Array<{ email: string; display_name: string | null; count: number }>>([]);
   const [suggestionIdx, setSuggestionIdx] = useState(-1);
@@ -241,7 +241,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
       setAttendees(
         (ev.attendees || [])
           .filter(a => !a.is_self)
-          .map(a => a.email)
+          .map(a => ({ email: a.email, optional: !!a.optional }))
       );
       setCalendarId(ev.calendar_id || defaultCalendarId || '');
     } else {
@@ -262,7 +262,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
       setRecurrence('none');
       setAddConferencing(false);
       setAttendeeInput('');
-      setAttendees(defaultAttendees?.filter(p => p.visible).map(p => p.email) || []);
+      setAttendees(defaultAttendees?.filter(p => p.visible).map(p => ({ email: p.email, optional: false })) || []);
       setCalendarId(defaultCalendarId || '');
     }
 
@@ -299,19 +299,22 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
         start: allDay ? date : startD.toISOString(),
         end: allDay ? addDays(endDate, 1) : endD.toISOString(),
         all_day: allDay,
-        attendees: attendees.length > 0 ? attendees : [],
+        attendees: attendees.length > 0 ? attendees.map(a => a.optional ? { email: a.email, optional: true } : a.email) : [],
         location: location || '',
         description: description || '',
       };
       onUpdate(editingEvent.id, updates);
       onClose();
     } else {
+      const attendeeInputs: AttendeeInput[] | undefined = attendees.length > 0
+        ? attendees.map(a => a.optional ? { email: a.email, optional: true } : a.email)
+        : undefined;
       const data: CreateEventInput = {
         summary: title.trim(),
         start: allDay ? date : startD.toISOString(),
         end: allDay ? addDays(endDate, 1) : endD.toISOString(),
         all_day: allDay || undefined,
-        attendees: attendees.length > 0 ? attendees : undefined,
+        attendees: attendeeInputs,
         location: location || undefined,
         description: description || undefined,
         calendar_id: calendarId || undefined,
@@ -325,8 +328,8 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
 
   const addAttendee = useCallback((raw: string) => {
     const email = raw.trim().toLowerCase();
-    if (email && email.includes('@') && !attendees.includes(email)) {
-      setAttendees(prev => [...prev, email]);
+    if (email && email.includes('@') && !attendees.some(a => a.email === email)) {
+      setAttendees(prev => [...prev, { email, optional: false }]);
     }
     setAttendeeInput('');
     setContactSuggestions([]);
@@ -334,7 +337,11 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
   }, [attendees]);
 
   const removeAttendee = useCallback((email: string) => {
-    setAttendees(prev => prev.filter(e => e !== email));
+    setAttendees(prev => prev.filter(a => a.email !== email));
+  }, []);
+
+  const toggleOptional = useCallback((email: string) => {
+    setAttendees(prev => prev.map(a => a.email === email ? { ...a, optional: !a.optional } : a));
   }, []);
 
   const searchAttendeeContacts = useCallback((q: string) => {
@@ -343,7 +350,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
     suggestDebounceRef.current = setTimeout(async () => {
       try {
         const hits = await window.dagaz.searchContacts(q);
-        const added = new Set(attendees);
+        const added = new Set(attendees.map(a => a.email));
         setContactSuggestions((hits || []).filter((r: any) => !added.has(r.email)));
         setSuggestionIdx(-1);
       } catch (e) { console.error('[QuickCreate] Contact search failed:', e); setContactSuggestions([]); }
@@ -384,7 +391,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
       if (attendeeInput.trim()) addAttendee(attendeeInput);
     }
     if (e.key === 'Backspace' && !attendeeInput && attendees.length > 0) {
-      removeAttendee(attendees[attendees.length - 1]);
+      removeAttendee(attendees[attendees.length - 1].email);
     }
   }, [attendeeInput, attendees, addAttendee, removeAttendee, contactSuggestions, suggestionIdx]);
 
@@ -510,10 +517,22 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
             </svg>
             <div className="flex-1 min-w-0 relative">
               <div className="flex flex-wrap items-center gap-1">
-                {attendees.map(email => (
-                  <span key={email} className="inline-flex items-center gap-1 bg-bg-tertiary border border-border-subtle rounded-full px-2 py-0.5 text-[11px] text-text-secondary">
-                    {email}
-                    <button onClick={() => removeAttendee(email)} className="text-text-muted hover:text-text-primary text-xs leading-none ml-0.5">×</button>
+                {attendees.map(a => (
+                  <span
+                    key={a.email}
+                    className={`inline-flex items-center gap-1 border rounded-full px-2 py-0.5 text-[11px] ${
+                      a.optional
+                        ? 'bg-bg-tertiary/50 border-border-subtle/50 text-text-muted italic'
+                        : 'bg-bg-tertiary border-border-subtle text-text-secondary'
+                    }`}
+                  >
+                    <button
+                      onClick={() => toggleOptional(a.email)}
+                      className="hover:text-text-primary transition-colors"
+                      title={a.optional ? 'Click to mark as required' : 'Click to mark as optional'}
+                    >{a.email}</button>
+                    {a.optional && <span className="text-[9px] text-text-muted font-normal">opt</span>}
+                    <button onClick={() => removeAttendee(a.email)} className="text-text-muted hover:text-text-primary text-xs leading-none ml-0.5">×</button>
                   </span>
                 ))}
                 <input

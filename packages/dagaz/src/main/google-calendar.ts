@@ -9,8 +9,13 @@ import { URL } from 'url';
 import { OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI, CALENDAR_SCOPES } from './oauth-config';
 import type {
   CalendarEvent, Calendar, Attendee, CreateEventInput, UpdateEventInput,
-  FreeBusyResponse, ConferenceData,
+  FreeBusyResponse, ConferenceData, AttendeeInput,
 } from '../shared/types';
+
+function normalizeAttendeeInput(a: AttendeeInput): { email: string; optional?: boolean } {
+  if (typeof a === 'string') return { email: a };
+  return { email: a.email, optional: a.optional || undefined };
+}
 
 export class GoogleCalendarService {
   private oauth2Client: OAuth2Client;
@@ -304,7 +309,7 @@ export class GoogleCalendarService {
     };
 
     if (input.attendees && input.attendees.length > 0) {
-      requestBody.attendees = input.attendees.map(email => ({ email }));
+      requestBody.attendees = input.attendees.map(normalizeAttendeeInput);
     }
 
     if (input.reminders && input.reminders.length > 0) {
@@ -409,7 +414,7 @@ export class GoogleCalendarService {
     }
 
     if (updates.attendees) {
-      requestBody.attendees = updates.attendees.map(email => ({ email }));
+      requestBody.attendees = updates.attendees.map(normalizeAttendeeInput);
     }
 
     if (updates.transparency) requestBody.transparency = updates.transparency;
@@ -523,7 +528,7 @@ export class GoogleCalendarService {
     }
 
     if (updates.attendees) {
-      event.attendees = updates.attendees.map(email => ({ email }));
+      event.attendees = updates.attendees.map(normalizeAttendeeInput);
     } else if (parent.attendees && parent.attendees.length > 0) {
       event.attendees = parent.attendees
         .filter(a => !!a.email)
@@ -677,6 +682,7 @@ export class GoogleCalendarService {
       response_status: (a.responseStatus as any) || 'needsAction',
       is_organizer: a.organizer || false,
       is_self: a.self || false,
+      optional: a.optional || false,
     }));
 
     return {

@@ -335,6 +335,7 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
                   <div className="flex-1 min-w-0">
                     <span className="text-xs text-text-primary truncate block">
                       {a.display_name || a.email}
+                      {a.optional && <span className="text-text-muted ml-1 text-[10px]">Optional</span>}
                     </span>
                   </div>
                 </div>

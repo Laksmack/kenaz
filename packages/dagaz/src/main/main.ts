@@ -410,14 +410,18 @@ function registerIpcHandlers() {
     }
     // Persist attendees locally so they appear in the UI immediately
     if (updates.attendees) {
-      cache.upsertAttendees(id, updates.attendees.map(email => ({
-        event_id: id,
-        email,
-        display_name: null,
-        response_status: 'needsAction' as const,
-        is_organizer: false,
-        is_self: false,
-      })));
+      cache.upsertAttendees(id, updates.attendees.map(a => {
+        const { email, optional } = typeof a === 'string' ? { email: a, optional: false } : { email: a.email, optional: a.optional || false };
+        return {
+          event_id: id,
+          email,
+          display_name: null,
+          response_status: 'needsAction' as const,
+          is_organizer: false,
+          is_self: false,
+          optional,
+        };
+      }));
     }
     if (existing.google_id) {
       cache.enqueueSync(existing.google_id, existing.calendar_id, 'update', updates);

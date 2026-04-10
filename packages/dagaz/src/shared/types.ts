@@ -90,7 +90,11 @@ export interface Attendee {
   response_status: 'needsAction' | 'declined' | 'tentative' | 'accepted';
   is_organizer: boolean;
   is_self: boolean;
+  optional?: boolean;
 }
+
+/** Accepts plain email string (required) or object with optional flag */
+export type AttendeeInput = string | { email: string; optional?: boolean };
 
 export interface SyncQueueItem {
   id: number;
@@ -122,7 +126,7 @@ export interface CreateEventInput {
   end: string;
   all_day?: boolean;
   time_zone?: string;
-  attendees?: string[];
+  attendees?: AttendeeInput[];
   calendar_id?: string;
   add_conferencing?: boolean;
   recurrence?: string[];
@@ -139,7 +143,7 @@ export interface UpdateEventInput {
   end?: string;
   all_day?: boolean;
   time_zone?: string;
-  attendees?: string[];
+  attendees?: AttendeeInput[];
   reminders?: ReminderOverride[];
   transparency?: 'opaque' | 'transparent';
   visibility?: string;
