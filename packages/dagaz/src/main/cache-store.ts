@@ -556,6 +556,11 @@ export class CacheStore {
       UPDATE events SET self_response = ?, updated_at = datetime('now')
       WHERE id = ?
     `).run(response, id);
+    // Also update the attendee record so the UI icon matches
+    this.db.prepare(`
+      UPDATE attendees SET response_status = ?
+      WHERE event_id = ? AND is_self = 1
+    `).run(response, id);
   }
 
   updateRecurringSeriesResponse(recurringEventId: string, response: string): number {

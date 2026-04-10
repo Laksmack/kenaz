@@ -475,6 +475,9 @@ function registerIpcHandlers() {
         const { recurringEventId } = await google.rsvpEvent(existing.calendar_id, existing.google_id, response, scope);
         const updated = await google.getEvent(existing.calendar_id, existing.google_id);
         cache.upsertEvent(updated);
+        if (updated.attendees) {
+          cache.upsertAttendees(existing.id, updated.attendees.map(a => ({ ...a, event_id: existing.id })));
+        }
         // Safety net: force local self_response in case Google returns stale data
         cache.updateEventResponse(existing.id, response);
         if (recurringEventId && scope !== 'single') {
