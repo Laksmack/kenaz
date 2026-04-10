@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import type { Calendar, CalendarEvent, CreateEventInput, UpdateEventInput, OverlayPerson, AttendeeInput } from '../../shared/types';
+import type { Calendar, CalendarEvent, CreateEventInput, UpdateEventInput, OverlayPerson, AttendeeInput, ReminderOverride } from '../../shared/types';
 
 interface Props {
   open: boolean;
@@ -203,6 +203,9 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
   const [description, setDescription] = useState('');
   const [addConferencing, setAddConferencing] = useState(false);
   const [calendarId, setCalendarId] = useState('');
+  const [reminder, setReminder] = useState('30');
+  const [transparency, setTransparency] = useState<'opaque' | 'transparent'>('opaque');
+  const [colorId, setColorId] = useState('');
 
   const titleRef = useRef<HTMLInputElement>(null);
 
@@ -244,6 +247,9 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
           .map(a => ({ email: a.email, optional: !!a.optional }))
       );
       setCalendarId(ev.calendar_id || defaultCalendarId || '');
+      setReminder(ev.reminders && ev.reminders.length > 0 ? String(ev.reminders[0].minutes) : '30');
+      setTransparency(ev.transparency === 'transparent' ? 'transparent' : 'opaque');
+      setColorId(ev.color_id || '');
     } else {
       // Create mode: use defaults
       const start = defaultStart
@@ -264,6 +270,9 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
       setAttendeeInput('');
       setAttendees(defaultAttendees?.filter(p => p.visible).map(p => ({ email: p.email, optional: false })) || []);
       setCalendarId(defaultCalendarId || '');
+      setReminder('30');
+      setTransparency('opaque');
+      setColorId('');
     }
 
     setTimeout(() => titleRef.current?.focus(), 50);
@@ -293,6 +302,10 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
     const rruleEntry = RECURRENCE_PRESETS.find(p => p.value === recurrence);
     const recurrenceRules = rruleEntry?.rrule ? [rruleEntry.rrule] : undefined;
 
+    const reminderOverrides: ReminderOverride[] | undefined = reminder !== 'none'
+      ? [{ method: 'popup' as const, minutes: Number(reminder) }]
+      : undefined;
+
     if (isEditing && editingEvent && onUpdate) {
       const updates: UpdateEventInput = {
         summary: title.trim(),
@@ -302,6 +315,10 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
         attendees: attendees.length > 0 ? attendees.map(a => a.optional ? { email: a.email, optional: true } : a.email) : [],
         location: location || '',
         description: description || '',
+        reminders: reminderOverrides,
+        transparency,
+        color_id: colorId || undefined,
+        calendar_id: calendarId !== editingEvent.calendar_id ? calendarId : undefined,
       };
       onUpdate(editingEvent.id, updates);
       onClose();
@@ -320,11 +337,14 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
         calendar_id: calendarId || undefined,
         add_conferencing: addConferencing,
         recurrence: recurrenceRules,
+        reminders: reminderOverrides,
+        transparency: transparency !== 'opaque' ? transparency : undefined,
+        color_id: colorId || undefined,
       };
       onCreate(data);
       onClose();
     }
-  }, [title, buildDates, allDay, date, endDate, attendees, location, description, calendarId, addConferencing, recurrence, isEditing, editingEvent, onUpdate, onCreate, onClose]);
+  }, [title, buildDates, allDay, date, endDate, attendees, location, description, calendarId, addConferencing, recurrence, reminder, transparency, colorId, isEditing, editingEvent, onUpdate, onCreate, onClose]);
 
   const addAttendee = useCallback((raw: string) => {
     const email = raw.trim().toLowerCase();
@@ -615,6 +635,78 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
               rows={2}
               className="flex-1 bg-transparent border-none outline-none text-xs text-text-primary placeholder-text-muted/50 resize-none"
             />
+          </div>
+        </div>
+
+        {/* Reminder */}
+        <div className="px-4 py-2.5 border-t border-border-subtle">
+          <div className="flex items-center gap-3">
+            <svg className="w-4 h-4 text-text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0" />
+            </svg>
+            <select
+              value={reminder}
+              onChange={e => setReminder(e.target.value)}
+              className="flex-1 bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary/40 cursor-pointer"
+            >
+              <option value="none">No reminder</option>
+              <option value="0">At time of event</option>
+              <option value="5">5 minutes before</option>
+              <option value="10">10 minutes before</option>
+              <option value="15">15 minutes before</option>
+              <option value="30">30 minutes before</option>
+              <option value="60">1 hour before</option>
+              <option value="1440">1 day before</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Transparency + Color */}
+        <div className="px-4 py-2.5 border-t border-border-subtle flex items-center gap-4">
+          <div
+            className="flex items-center gap-2 cursor-pointer"
+            onClick={() => setTransparency(v => v === 'opaque' ? 'transparent' : 'opaque')}
+          >
+            <svg className="w-4 h-4 text-text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-xs text-text-secondary">{transparency === 'transparent' ? 'Free' : 'Busy'}</span>
+            <span className={`w-8 h-[18px] rounded-full relative transition-colors ${
+              transparency === 'opaque' ? 'bg-accent-primary' : 'bg-bg-tertiary border border-border-subtle'
+            }`}>
+              <span className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-sm transition-transform ${
+                transparency === 'opaque' ? 'translate-x-[16px]' : 'translate-x-[2px]'
+              }`} />
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 ml-auto">
+            <span className="text-[10px] text-text-muted mr-1">Color</span>
+            {[
+              { id: '', color: '' },
+              { id: '1', color: '#7986CB' },
+              { id: '2', color: '#33B679' },
+              { id: '3', color: '#8E24AA' },
+              { id: '4', color: '#E67C73' },
+              { id: '5', color: '#F6BF26' },
+              { id: '6', color: '#F4511E' },
+              { id: '7', color: '#039BE5' },
+              { id: '8', color: '#616161' },
+              { id: '9', color: '#3F51B5' },
+              { id: '10', color: '#0B8043' },
+              { id: '11', color: '#D50000' },
+            ].map(c => (
+              <button
+                key={c.id}
+                onClick={() => setColorId(c.id)}
+                className={`w-4 h-4 rounded-full transition-all ${
+                  colorId === c.id ? 'ring-2 ring-accent-primary ring-offset-1 ring-offset-bg-secondary scale-110' : 'hover:scale-110'
+                }`}
+                style={{ backgroundColor: c.color || 'var(--bg-tertiary)' }}
+                title={c.id ? `Color ${c.id}` : 'Default (calendar color)'}
+              >
+                {!c.id && <span className="block w-full h-full rounded-full border border-border-subtle" />}
+              </button>
+            ))}
           </div>
         </div>
 

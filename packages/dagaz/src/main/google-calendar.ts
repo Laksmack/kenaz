@@ -319,6 +319,10 @@ export class GoogleCalendarService {
       };
     }
 
+    if (input.color_id) {
+      requestBody.colorId = input.color_id;
+    }
+
     const conferenceParams: any = {};
     if (input.add_conferencing) {
       conferenceParams.conferenceDataVersion = 1;
@@ -415,6 +419,17 @@ export class GoogleCalendarService {
 
     if (updates.attendees) {
       requestBody.attendees = updates.attendees.map(normalizeAttendeeInput);
+    }
+
+    if (updates.reminders && updates.reminders.length > 0) {
+      requestBody.reminders = {
+        useDefault: false,
+        overrides: updates.reminders.map(r => ({ method: r.method, minutes: r.minutes })),
+      };
+    }
+
+    if (updates.color_id !== undefined) {
+      requestBody.colorId = updates.color_id || undefined;
     }
 
     if (updates.transparency) requestBody.transparency = updates.transparency;
@@ -545,6 +560,17 @@ export class GoogleCalendarService {
     }
 
     return event;
+  }
+
+  async moveEvent(calendarId: string, eventId: string, destinationCalendarId: string): Promise<Partial<CalendarEvent> & { google_id: string; calendar_id: string }> {
+    if (!this.calendar) throw new Error('Not authenticated');
+    const res = await this.calendar.events.move({
+      calendarId,
+      eventId,
+      destination: destinationCalendarId,
+      sendUpdates: 'all',
+    });
+    return this.parseGoogleEvent(res.data, destinationCalendarId);
   }
 
   async deleteEvent(calendarId: string, eventId: string): Promise<void> {

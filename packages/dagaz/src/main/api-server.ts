@@ -58,6 +58,11 @@ export function startApiServer(
     z.object({ email: z.string().email(), optional: z.boolean().optional() }),
   ]);
 
+  const reminderSchema = z.object({
+    method: z.enum(['email', 'popup']),
+    minutes: z.number().min(0),
+  });
+
   const createEventSchema = z.object({
     summary: z.string().min(1),
     description: z.string().optional(),
@@ -70,8 +75,10 @@ export function startApiServer(
     calendar_id: z.string().optional(),
     add_conferencing: z.boolean().optional(),
     recurrence: z.array(z.string()).optional(),
+    reminders: z.array(reminderSchema).optional(),
     transparency: z.enum(['opaque', 'transparent']).optional(),
     visibility: z.string().optional(),
+    color_id: z.string().optional(),
     force: z.boolean().optional(),
   });
 
@@ -84,8 +91,11 @@ export function startApiServer(
     all_day: z.boolean().optional(),
     time_zone: z.string().optional(),
     attendees: z.array(attendeeSchema).optional(),
+    reminders: z.array(reminderSchema).optional(),
     transparency: z.enum(['opaque', 'transparent']).optional(),
     visibility: z.string().optional(),
+    color_id: z.string().optional(),
+    calendar_id: z.string().optional(),
     force: z.boolean().optional(),
   });
 
@@ -285,11 +295,18 @@ export function startApiServer(
         }
       }
 
-      // Strip force from the payload before passing on
-      const { force: _f, ...updateFields } = updates;
+      // Strip force and calendar_id (handled separately for moves) from the update payload
+      const { force: _f, calendar_id: newCalendarId, ...updateFields } = updates;
+
+      // Move event to different calendar if requested
+      if (newCalendarId && newCalendarId !== event.calendar_id && connectivity.isOnline && google.isAuthorized() && event.google_id) {
+        const moved = await google.moveEvent(event.calendar_id, event.google_id, newCalendarId);
+        cache.upsertEvent(moved);
+      }
 
       if (connectivity.isOnline && google.isAuthorized() && event.google_id) {
-        const result = await google.updateEvent(event.calendar_id, event.google_id, updateFields);
+        const targetCalendar = newCalendarId || event.calendar_id;
+        const result = await google.updateEvent(targetCalendar, event.google_id, updateFields);
         cache.upsertEvent(result);
         if (result.attendees) {
           cache.upsertAttendees(event.id, result.attendees.map(a => ({ ...a, event_id: event.id })));

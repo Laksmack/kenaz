@@ -135,6 +135,7 @@ export interface CreateEventInput {
   reminders?: ReminderOverride[];
   transparency?: 'opaque' | 'transparent';
   visibility?: string;
+  color_id?: string;
 }
 
 export interface UpdateEventInput {
@@ -149,6 +150,8 @@ export interface UpdateEventInput {
   reminders?: ReminderOverride[];
   transparency?: 'opaque' | 'transparent';
   visibility?: string;
+  color_id?: string;
+  calendar_id?: string;
 }
 
 export interface ParsedEventInput {
