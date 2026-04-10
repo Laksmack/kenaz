@@ -23,16 +23,21 @@ function EmailChipInput({
   onChange,
   placeholder,
   inputRef,
+  fieldId,
+  onChipDrop,
 }: {
   emails: string[];
   onChange: (emails: string[]) => void;
   placeholder?: string;
   inputRef?: React.RefObject<HTMLInputElement>;
+  fieldId?: string;
+  onChipDrop?: (email: string, fromField: string, toField: string) => void;
 }) {
   const [input, setInput] = useState('');
   const [suggestions, setSuggestions] = useState<ContactSuggestion[]>([]);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const internalRef = useRef<HTMLInputElement>(null);
   const ref = inputRef || internalRef;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -180,17 +185,57 @@ function EmailChipInput({
   return (
     <div className="flex-1 relative" ref={containerRef}>
       <div
-        className="flex flex-wrap items-center gap-1 bg-bg-primary border border-border-subtle rounded px-2 py-1 min-h-[28px] cursor-text focus-within:border-accent-primary"
+        className={`flex flex-wrap items-center gap-1 bg-bg-primary border rounded px-2 py-1 min-h-[28px] cursor-text focus-within:border-accent-primary transition-colors ${
+          dragOver ? 'border-accent-primary bg-accent-primary/5' : 'border-border-subtle'
+        }`}
         onClick={() => (ref as React.RefObject<HTMLInputElement>).current?.focus()}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes('application/x-email-chip')) {
+            e.preventDefault();
+            setDragOver(true);
+          }
+        }}
+        onDragEnter={(e) => {
+          if (e.dataTransfer.types.includes('application/x-email-chip')) {
+            e.preventDefault();
+            setDragOver(true);
+          }
+        }}
+        onDragLeave={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            setDragOver(false);
+          }
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          const raw = e.dataTransfer.getData('application/x-email-chip');
+          if (!raw || !fieldId || !onChipDrop) return;
+          try {
+            const { email, fromField } = JSON.parse(raw);
+            if (fromField !== fieldId) {
+              onChipDrop(email, fromField, fieldId);
+            }
+          } catch { /* ignore */ }
+        }}
       >
         {emails.map((email, i) => (
           <span
             key={`${email}-${i}`}
-            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent-primary/15 text-accent-primary text-[11px] font-medium max-w-[200px]"
+            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-accent-primary/15 text-accent-primary text-[11px] font-medium max-w-[200px] cursor-grab active:cursor-grabbing"
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData('application/x-email-chip', JSON.stringify({ email, fromField: fieldId }));
+              e.dataTransfer.effectAllowed = 'move';
+              (e.currentTarget as HTMLElement).style.opacity = '0.4';
+            }}
+            onDragEnd={(e) => {
+              (e.currentTarget as HTMLElement).style.opacity = '1';
+            }}
           >
             <span
-              className="truncate cursor-pointer select-all"
-              title={`${email} — click to copy`}
+              className="truncate cursor-grab select-all"
+              title={`${email} — drag to move, click to copy`}
               onClick={(e) => {
                 e.stopPropagation();
                 navigator.clipboard.writeText(email);
@@ -318,6 +363,28 @@ export function ComposeBar({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCountRef = useRef(0);
   const autosaveDraftIdRef = useRef<string | undefined>(initialData?.draftId);
+
+  // Handle drag-and-drop of email chips between To/Cc/Bcc fields
+  const handleChipDrop = useCallback((email: string, fromField: string, toField: string) => {
+    const fields: Record<string, { get: string[]; set: (v: string[]) => void }> = {
+      to: { get: to, set: setTo },
+      cc: { get: cc, set: setCc },
+      bcc: { get: bcc, set: setBcc },
+    };
+    const src = fields[fromField];
+    const dst = fields[toField];
+    if (!src || !dst) return;
+    // Remove from source
+    src.set(src.get.filter((e) => e.toLowerCase() !== email.toLowerCase()));
+    // Add to destination (avoid duplicates)
+    if (!dst.get.some((e) => e.toLowerCase() === email.toLowerCase())) {
+      dst.set([...dst.get, email]);
+    }
+    // Auto-show Cc/Bcc row if dropping into those fields
+    if ((toField === 'cc' || toField === 'bcc') && !showCcBcc) {
+      setShowCcBcc(true);
+    }
+  }, [to, cc, bcc, showCcBcc]);
 
   // Snapshot the initial state so we can detect real changes
   const initialSnapshot = useRef({
@@ -640,6 +707,8 @@ export function ComposeBar({
             onChange={setTo}
             placeholder="recipient@example.com"
             inputRef={toRef as React.RefObject<HTMLInputElement>}
+            fieldId="to"
+            onChipDrop={handleChipDrop}
           />
           <button
             onClick={() => setShowCcBcc(!showCcBcc)}
@@ -653,11 +722,11 @@ export function ComposeBar({
           <>
             <div className="flex items-center gap-2">
               <label className="text-xs text-text-muted w-12">Cc</label>
-              <EmailChipInput emails={cc} onChange={setCc} placeholder="cc@example.com" />
+              <EmailChipInput emails={cc} onChange={setCc} placeholder="cc@example.com" fieldId="cc" onChipDrop={handleChipDrop} />
             </div>
             <div className="flex items-center gap-2">
               <label className="text-xs text-text-muted w-12">Bcc</label>
-              <EmailChipInput emails={bcc} onChange={setBcc} placeholder="bcc@example.com" />
+              <EmailChipInput emails={bcc} onChange={setBcc} placeholder="bcc@example.com" fieldId="bcc" onChipDrop={handleChipDrop} />
             </div>
           </>
         )}
