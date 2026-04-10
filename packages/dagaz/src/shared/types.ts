@@ -230,6 +230,7 @@ export const IPC = {
 
   // Free/Busy
   FREEBUSY: 'freebusy',
+  FIND_MEETING_TIME: 'find-meeting-time',
 
   // Sync
   SYNC_STATUS: 'sync:status',

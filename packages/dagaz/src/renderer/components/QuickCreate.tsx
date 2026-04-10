@@ -175,14 +175,42 @@ const RECURRENCE_PRESETS: Array<{ value: string; label: string; rrule: string | 
   { value: 'biweekly', label: 'Every 2 weeks', rrule: 'RRULE:FREQ=WEEKLY;INTERVAL=2' },
   { value: 'monthly', label: 'Monthly', rrule: 'RRULE:FREQ=MONTHLY' },
   { value: 'yearly', label: 'Yearly', rrule: 'RRULE:FREQ=YEARLY' },
+  { value: 'custom', label: 'Custom…', rrule: null },
 ];
+
+const DAY_CODES = [
+  { code: 'MO', label: 'M' }, { code: 'TU', label: 'T' }, { code: 'WE', label: 'W' },
+  { code: 'TH', label: 'T' }, { code: 'FR', label: 'F' }, { code: 'SA', label: 'S' }, { code: 'SU', label: 'S' },
+];
+
+function buildCustomRrule(freq: string, interval: number, byDay: string[], endType: string, endCount: number, endDate: string): string {
+  let rule = `RRULE:FREQ=${freq}`;
+  if (interval > 1) rule += `;INTERVAL=${interval}`;
+  if (freq === 'WEEKLY' && byDay.length > 0) rule += `;BYDAY=${byDay.join(',')}`;
+  if (endType === 'count' && endCount > 0) rule += `;COUNT=${endCount}`;
+  if (endType === 'until' && endDate) rule += `;UNTIL=${endDate.replace(/-/g, '')}T235959Z`;
+  return rule;
+}
 
 function recurrenceRuleToPreset(rule: string): string {
   const r = rule.replace(/\n/g, '').trim().toUpperCase();
   for (const p of RECURRENCE_PRESETS) {
     if (p.rrule && r.includes(p.rrule.replace('RRULE:', ''))) return p.value;
   }
-  return 'none';
+  return 'custom';
+}
+
+function parseRrule(rule: string): { freq: string; interval: number; byDay: string[]; endType: string; endCount: number; endDate: string } {
+  const r = rule.toUpperCase();
+  const freq = r.match(/FREQ=(\w+)/)?.[1] || 'WEEKLY';
+  const interval = parseInt(r.match(/INTERVAL=(\d+)/)?.[1] || '1');
+  const byDay = r.match(/BYDAY=([A-Z,]+)/)?.[1]?.split(',') || [];
+  const count = r.match(/COUNT=(\d+)/)?.[1];
+  const until = r.match(/UNTIL=(\d{8})/)?.[1];
+  const endType = count ? 'count' : until ? 'until' : 'never';
+  const endCount = count ? parseInt(count) : 10;
+  const endDate = until ? `${until.slice(0,4)}-${until.slice(4,6)}-${until.slice(6,8)}` : '';
+  return { freq, interval, byDay, endType, endCount, endDate };
 }
 
 export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, calendars, defaultCalendarId, defaultStart, defaultEnd, defaultAttendees }: Props) {
@@ -206,6 +234,16 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
   const [reminder, setReminder] = useState('30');
   const [transparency, setTransparency] = useState<'opaque' | 'transparent'>('opaque');
   const [colorId, setColorId] = useState('');
+  // Custom recurrence state
+  const [customFreq, setCustomFreq] = useState('WEEKLY');
+  const [customInterval, setCustomInterval] = useState(1);
+  const [customByDay, setCustomByDay] = useState<string[]>([]);
+  const [customEndType, setCustomEndType] = useState('never');
+  const [customEndCount, setCustomEndCount] = useState(10);
+  const [customEndDate, setCustomEndDate] = useState('');
+  // Suggest time
+  const [timeSuggestions, setTimeSuggestions] = useState<Array<{ start: string; end: string; score: number }> | null>(null);
+  const [findingTime, setFindingTime] = useState(false);
 
   const titleRef = useRef<HTMLInputElement>(null);
 
@@ -236,8 +274,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
       }
 
       setLocation(ev.location || '');
-      // Strip HTML tags from description for plain-text editing
-      setDescription(ev.description ? ev.description.replace(/<[^>]*>/g, '') : '');
+      setDescription(ev.description || '');
       setRecurrence(ev.recurrence_rule ? recurrenceRuleToPreset(ev.recurrence_rule) : 'none');
       setAddConferencing(!!ev.conference_data || !!ev.hangout_link);
       setAttendeeInput('');
@@ -250,6 +287,15 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
       setReminder(ev.reminders && ev.reminders.length > 0 ? String(ev.reminders[0].minutes) : '30');
       setTransparency(ev.transparency === 'transparent' ? 'transparent' : 'opaque');
       setColorId(ev.color_id || '');
+      if (ev.recurrence_rule && recurrenceRuleToPreset(ev.recurrence_rule) === 'custom') {
+        const parsed = parseRrule(ev.recurrence_rule);
+        setCustomFreq(parsed.freq);
+        setCustomInterval(parsed.interval);
+        setCustomByDay(parsed.byDay);
+        setCustomEndType(parsed.endType);
+        setCustomEndCount(parsed.endCount);
+        setCustomEndDate(parsed.endDate);
+      }
     } else {
       // Create mode: use defaults
       const start = defaultStart
@@ -273,6 +319,13 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
       setReminder('30');
       setTransparency('opaque');
       setColorId('');
+      setCustomFreq('WEEKLY');
+      setCustomInterval(1);
+      setCustomByDay([]);
+      setCustomEndType('never');
+      setCustomEndCount(10);
+      setCustomEndDate('');
+      setTimeSuggestions(null);
     }
 
     setTimeout(() => titleRef.current?.focus(), 50);
@@ -299,8 +352,13 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
     if (!title.trim()) return;
     const { startD, endD } = buildDates();
 
-    const rruleEntry = RECURRENCE_PRESETS.find(p => p.value === recurrence);
-    const recurrenceRules = rruleEntry?.rrule ? [rruleEntry.rrule] : undefined;
+    let recurrenceRules: string[] | undefined;
+    if (recurrence === 'custom') {
+      recurrenceRules = [buildCustomRrule(customFreq, customInterval, customByDay, customEndType, customEndCount, customEndDate)];
+    } else {
+      const rruleEntry = RECURRENCE_PRESETS.find(p => p.value === recurrence);
+      recurrenceRules = rruleEntry?.rrule ? [rruleEntry.rrule] : undefined;
+    }
 
     const reminderOverrides: ReminderOverride[] | undefined = reminder !== 'none'
       ? [{ method: 'popup' as const, minutes: Number(reminder) }]
@@ -515,7 +573,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
 
         {/* Recurrence */}
         {!isEditing && (
-          <div className="px-4 py-2.5 border-t border-border-subtle">
+          <div className="px-4 py-2.5 border-t border-border-subtle space-y-2">
             <div className="flex items-center gap-3">
               <svg className="w-4 h-4 text-text-muted flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3" />
@@ -530,6 +588,54 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
                 ))}
               </select>
             </div>
+            {recurrence === 'custom' && (
+              <div className="ml-7 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-text-muted">Every</span>
+                  <input type="number" min={1} max={99} value={customInterval} onChange={e => setCustomInterval(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-12 bg-bg-primary border border-border-subtle rounded px-1.5 py-0.5 text-xs text-text-primary outline-none text-center" />
+                  <select value={customFreq} onChange={e => setCustomFreq(e.target.value)}
+                    className="bg-bg-primary border border-border-subtle rounded px-2 py-0.5 text-xs text-text-primary outline-none cursor-pointer">
+                    <option value="DAILY">{customInterval > 1 ? 'days' : 'day'}</option>
+                    <option value="WEEKLY">{customInterval > 1 ? 'weeks' : 'week'}</option>
+                    <option value="MONTHLY">{customInterval > 1 ? 'months' : 'month'}</option>
+                    <option value="YEARLY">{customInterval > 1 ? 'years' : 'year'}</option>
+                  </select>
+                </div>
+                {customFreq === 'WEEKLY' && (
+                  <div className="flex items-center gap-1">
+                    {DAY_CODES.map((d, i) => (
+                      <button key={d.code} type="button"
+                        onClick={() => setCustomByDay(prev => prev.includes(d.code) ? prev.filter(c => c !== d.code) : [...prev, d.code])}
+                        className={`w-6 h-6 rounded-full text-[10px] font-medium transition-colors ${
+                          customByDay.includes(d.code)
+                            ? 'bg-accent-primary text-white'
+                            : 'bg-bg-primary border border-border-subtle text-text-muted hover:border-accent-primary/40'
+                        }`}
+                      >{d.label}</button>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-text-muted">Ends</span>
+                  <select value={customEndType} onChange={e => setCustomEndType(e.target.value)}
+                    className="bg-bg-primary border border-border-subtle rounded px-2 py-0.5 text-xs text-text-primary outline-none cursor-pointer">
+                    <option value="never">Never</option>
+                    <option value="count">After</option>
+                    <option value="until">On date</option>
+                  </select>
+                  {customEndType === 'count' && (
+                    <><input type="number" min={1} max={999} value={customEndCount} onChange={e => setCustomEndCount(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-14 bg-bg-primary border border-border-subtle rounded px-1.5 py-0.5 text-xs text-text-primary outline-none text-center" />
+                    <span className="text-[11px] text-text-muted">times</span></>
+                  )}
+                  {customEndType === 'until' && (
+                    <input type="date" value={customEndDate} onChange={e => setCustomEndDate(e.target.value)}
+                      className="bg-bg-primary border border-border-subtle rounded px-2 py-0.5 text-xs text-text-primary outline-none" />
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -591,6 +697,61 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
           </div>
         </div>
 
+        {/* Find a time — shown when attendees are present */}
+        {attendees.length > 0 && (
+          <div className="px-4 py-2 border-t border-border-subtle">
+            <button
+              type="button"
+              disabled={findingTime}
+              onClick={async () => {
+                setFindingTime(true);
+                setTimeSuggestions(null);
+                try {
+                  const { startD, endD } = buildDates();
+                  const dur = Math.round((endD.getTime() - startD.getTime()) / 60000) || 60;
+                  // Search the next 5 working days from the selected date
+                  const searchStart = new Date(startD); searchStart.setHours(0, 0, 0, 0);
+                  const searchEnd = new Date(searchStart); searchEnd.setDate(searchEnd.getDate() + 7);
+                  const emails = attendees.map(a => a.email).join(',');
+                  const data = await window.dagaz.findMeetingTime(emails, dur, searchStart.toISOString(), searchEnd.toISOString());
+                  setTimeSuggestions(data?.suggestions || []);
+                } catch (e) { console.error('[QuickCreate] Find time failed:', e); setTimeSuggestions([]); }
+                setFindingTime(false);
+              }}
+              className="text-[11px] text-accent-primary hover:text-accent-primary/80 font-medium transition-colors disabled:opacity-50"
+            >
+              {findingTime ? 'Searching…' : 'Find a time that works for everyone'}
+            </button>
+            {timeSuggestions !== null && (
+              <div className="mt-1.5 max-h-[120px] overflow-y-auto space-y-0.5">
+                {timeSuggestions.length === 0 ? (
+                  <p className="text-[10px] text-text-muted">No open slots found in the next 7 days.</p>
+                ) : timeSuggestions.slice(0, 6).map((s, i) => {
+                  const d = new Date(s.start);
+                  const e = new Date(s.end);
+                  const dayStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                  const timeStr = `${d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} – ${e.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+                  return (
+                    <button key={i} type="button"
+                      onClick={() => {
+                        setDate(s.start.split('T')[0]);
+                        setEndDate(s.start.split('T')[0]);
+                        const pad = (n: number) => String(n).padStart(2, '0');
+                        setStartTime(`${pad(d.getHours())}:${pad(d.getMinutes())}`);
+                        setEndTime(`${pad(e.getHours())}:${pad(e.getMinutes())}`);
+                        setTimeSuggestions(null);
+                      }}
+                      className="w-full text-left px-2 py-1 rounded text-[11px] text-text-secondary hover:bg-accent-primary/10 hover:text-accent-primary transition-colors"
+                    >
+                      <span className="font-medium">{dayStr}</span> <span className="text-text-muted">{timeStr}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Conferencing */}
         <div
           className="px-4 py-2.5 border-t border-border-subtle flex items-center gap-3 cursor-pointer"
@@ -632,12 +793,13 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
             <svg className="w-4 h-4 text-text-muted flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
             </svg>
-            <textarea
-              value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder="Description"
-              rows={2}
-              className="flex-1 bg-transparent border-none outline-none text-xs text-text-primary placeholder-text-muted/50 resize-none"
+            <div
+              contentEditable
+              suppressContentEditableWarning
+              onBlur={e => setDescription(e.currentTarget.innerHTML)}
+              dangerouslySetInnerHTML={{ __html: description || '' }}
+              data-placeholder="Description"
+              className="flex-1 min-h-[2em] max-h-[8em] overflow-y-auto bg-transparent border-none outline-none text-xs text-text-primary [&:empty]:before:content-[attr(data-placeholder)] [&:empty]:before:text-text-muted/50"
             />
           </div>
         </div>

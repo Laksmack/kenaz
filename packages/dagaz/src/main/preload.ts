@@ -47,6 +47,8 @@ const api = {
   // Free/Busy
   getFreeBusy: (calendarIds: string[], start: string, end: string): Promise<FreeBusyResponse> =>
     ipcRenderer.invoke(IPC.FREEBUSY, calendarIds, start, end),
+  findMeetingTime: (attendees: string, durationMinutes: number, start: string, end: string): Promise<{ suggestions: Array<{ start: string; end: string; score: number }> }> =>
+    ipcRenderer.invoke(IPC.FIND_MEETING_TIME, attendees, durationMinutes, start, end),
 
   // Sync
   getSyncStatus: (): Promise<SyncState> => ipcRenderer.invoke(IPC.SYNC_STATUS),

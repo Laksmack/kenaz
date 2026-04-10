@@ -507,6 +507,51 @@ function registerIpcHandlers() {
     return google.getFreeBusy(calendarIds, start, end);
   });
 
+  ipcMain.handle(IPC.FIND_MEETING_TIME, async (_event, attendees: string, durationMinutes: number, start: string, end: string) => {
+    const attendeeEmails = attendees.split(',').filter(Boolean);
+    // Also check the organizer's calendar
+    const selfEmail = cache.getPrimaryCalendarId();
+    if (selfEmail && !attendeeEmails.includes(selfEmail)) attendeeEmails.push(selfEmail);
+
+    const freeBusy = await google.getFreeBusy(attendeeEmails, start, end);
+    const startTime = new Date(start).getTime();
+    const endTime = new Date(end).getTime();
+    const slotSize = durationMinutes * 60000;
+    const suggestions: Array<{ start: string; end: string; score: number }> = [];
+
+    for (let t = startTime; t + slotSize <= endTime; t += 15 * 60000) {
+      const slotStart = new Date(t);
+      const day = slotStart.getDay();
+      if (day === 0 || day === 6) continue;
+      const hour = slotStart.getHours();
+      if (hour < 9 || hour >= 18) continue;
+
+      let allFree = true;
+      for (const email of attendeeEmails) {
+        const calData = freeBusy.calendars[email];
+        if (calData?.busy) {
+          for (const busy of calData.busy) {
+            if (t < new Date(busy.end).getTime() && t + slotSize > new Date(busy.start).getTime()) {
+              allFree = false;
+              break;
+            }
+          }
+        }
+        if (!allFree) break;
+      }
+
+      if (allFree) {
+        let score = 100;
+        if (hour >= 10 && hour <= 14) score += 20;
+        if (hour >= 15) score -= 10;
+        suggestions.push({ start: slotStart.toISOString(), end: new Date(t + slotSize).toISOString(), score });
+      }
+    }
+
+    suggestions.sort((a, b) => b.score - a.score);
+    return { suggestions: suggestions.slice(0, 10) };
+  });
+
   // Sync
   ipcMain.handle(IPC.SYNC_STATUS, async () => ({
     status: sync.getStatus(),

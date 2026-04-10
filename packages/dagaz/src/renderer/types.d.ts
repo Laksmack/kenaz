@@ -41,6 +41,7 @@ interface DagazAPI {
 
   // Free/Busy
   getFreeBusy(calendarIds: string[], start: string, end: string): Promise<FreeBusyResponse>;
+  findMeetingTime(attendees: string, durationMinutes: number, start: string, end: string): Promise<{ suggestions: Array<{ start: string; end: string; score: number }> }>;
 
   // Sync
   getSyncStatus(): Promise<SyncState>;
