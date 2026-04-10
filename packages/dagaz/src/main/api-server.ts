@@ -19,6 +19,38 @@ export function startApiServer(
   const app = express();
   app.use(express.json());
 
+  // ── Conflict Detection ────────────────────────────────────
+
+  interface ConflictInfo {
+    id: string;
+    summary: string;
+    start: string;
+    end: string;
+    calendar_id: string;
+  }
+
+  /**
+   * Check local calendar for overlapping events in the given time range.
+   * Ignores all-day events and transparent (free) events.
+   * If excludeEventId is set, that event is excluded (for updates).
+   */
+  function detectConflicts(start: string, end: string, excludeEventId?: string): ConflictInfo[] {
+    const events = cache.getEventsInRange(start, end);
+    return events
+      .filter(e =>
+        !e.all_day &&
+        e.transparency !== 'transparent' &&
+        e.id !== excludeEventId
+      )
+      .map(e => ({
+        id: e.id,
+        summary: e.summary || '(no title)',
+        start: e.start_time,
+        end: e.end_time,
+        calendar_id: e.calendar_id,
+      }));
+  }
+
   // ── Validation Schemas ────────────────────────────────────
 
   const attendeeSchema = z.union([
@@ -40,6 +72,7 @@ export function startApiServer(
     recurrence: z.array(z.string()).optional(),
     transparency: z.enum(['opaque', 'transparent']).optional(),
     visibility: z.string().optional(),
+    force: z.boolean().optional(),
   });
 
   const updateEventSchema = z.object({
@@ -53,6 +86,7 @@ export function startApiServer(
     attendees: z.array(attendeeSchema).optional(),
     transparency: z.enum(['opaque', 'transparent']).optional(),
     visibility: z.string().optional(),
+    force: z.boolean().optional(),
   });
 
   const rsvpSchema = z.object({
@@ -162,12 +196,25 @@ export function startApiServer(
     try {
       const parsed = createEventSchema.parse(req.body);
       const calendarId = parsed.calendar_id || cache.getPrimaryCalendarId() || 'primary';
+      const force = parsed.force || false;
 
       // Auto-detect all-day if date-only strings are passed (YYYY-MM-DD, no T)
       if (parsed.all_day === undefined && parsed.start && parsed.end) {
         const dateOnly = /^\d{4}-\d{2}-\d{2}$/;
         if (dateOnly.test(parsed.start) && dateOnly.test(parsed.end)) {
           (parsed as any).all_day = true;
+        }
+      }
+
+      // Conflict detection — skip for all-day and transparent (free) events
+      if (!parsed.all_day && parsed.transparency !== 'transparent' && !force) {
+        const conflicts = detectConflicts(parsed.start, parsed.end);
+        if (conflicts.length > 0) {
+          return res.status(409).json({
+            error: 'conflict',
+            message: `This event overlaps with ${conflicts.length} existing event(s). Set force=true to create anyway.`,
+            conflicts,
+          });
         }
       }
 
@@ -184,12 +231,14 @@ export function startApiServer(
         }
       }
 
+      // Strip force from the payload before passing to Google
+      const { force: _f, ...createFields } = parsed;
       const createInput: CreateEventInput = !parsed.all_day && !parsed.time_zone
         ? {
-            ...parsed,
+            ...createFields,
             time_zone: cache.getCalendar(calendarId)?.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone,
           }
-        : parsed;
+        : createFields;
 
       if (connectivity.isOnline && google.isAuthorized()) {
         const result = await google.createEvent(calendarId, createInput);
@@ -218,18 +267,39 @@ export function startApiServer(
       const event = resolveEvent(req.params.id);
       if (!event) return res.status(404).json({ error: 'Event not found' });
 
+      const force = updates.force || false;
+
+      // Conflict detection when time is being changed
+      if ((updates.start || updates.end) && !updates.all_day && updates.transparency !== 'transparent' && !force) {
+        const newStart = updates.start || event.start_time;
+        const newEnd = updates.end || event.end_time;
+        if (newStart && newEnd) {
+          const conflicts = detectConflicts(newStart, newEnd, event.id);
+          if (conflicts.length > 0) {
+            return res.status(409).json({
+              error: 'conflict',
+              message: `This change overlaps with ${conflicts.length} existing event(s). Set force=true to update anyway.`,
+              conflicts,
+            });
+          }
+        }
+      }
+
+      // Strip force from the payload before passing on
+      const { force: _f, ...updateFields } = updates;
+
       if (connectivity.isOnline && google.isAuthorized() && event.google_id) {
-        const result = await google.updateEvent(event.calendar_id, event.google_id, updates);
+        const result = await google.updateEvent(event.calendar_id, event.google_id, updateFields);
         cache.upsertEvent(result);
         if (result.attendees) {
           cache.upsertAttendees(event.id, result.attendees.map(a => ({ ...a, event_id: event.id })));
         }
       } else if (!event.google_id && event.pending_action === 'create') {
-        let mergedPayload: Record<string, any> = { ...updates };
+        let mergedPayload: Record<string, any> = { ...updateFields };
         if (event.pending_payload) {
           try {
             const existingPayload = JSON.parse(event.pending_payload) as Record<string, any>;
-            mergedPayload = { ...existingPayload, ...updates };
+            mergedPayload = { ...existingPayload, ...updateFields };
           } catch (parseErr) {
             console.warn(`[Dagaz API] Failed to parse pending create payload for ${event.id}, overwriting with updates`, parseErr);
           }
@@ -237,9 +307,9 @@ export function startApiServer(
         cache.markEventPending(event.id, 'create', JSON.stringify(mergedPayload));
       } else {
         // Update locally and queue for sync
-        cache.markEventPending(event.id, 'update', JSON.stringify(updates));
+        cache.markEventPending(event.id, 'update', JSON.stringify(updateFields));
         if (event.google_id) {
-          cache.enqueueSync(event.google_id, event.calendar_id, 'update', updates);
+          cache.enqueueSync(event.google_id, event.calendar_id, 'update', updateFields);
         }
       }
 

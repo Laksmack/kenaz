@@ -606,8 +606,23 @@ export class GoogleCalendarService {
 
   // ── Availability ──────────────────────────────────────────
 
+  // ── FreeBusy cache (in-memory, 2 min TTL) ──────────────────
+  private freeBusyCache = new Map<string, { data: FreeBusyResponse; ts: number }>();
+  private static FREEBUSY_TTL_MS = 2 * 60 * 1000;
+
+  private freeBusyCacheKey(calendarIds: string[], timeMin: string, timeMax: string): string {
+    return `${[...calendarIds].sort().join(',')}|${timeMin}|${timeMax}`;
+  }
+
   async getFreeBusy(calendarIds: string[], timeMin: string, timeMax: string): Promise<FreeBusyResponse> {
     if (!this.calendar) throw new Error('Not authenticated');
+
+    // Check cache first
+    const cacheKey = this.freeBusyCacheKey(calendarIds, timeMin, timeMax);
+    const cached = this.freeBusyCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < GoogleCalendarService.FREEBUSY_TTL_MS) {
+      return cached.data;
+    }
 
     // Google freebusy requires RFC 3339 datetimes — normalise date-only strings
     const ensureDateTime = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) ? `${s}T00:00:00Z` : s;
@@ -622,6 +637,8 @@ export class GoogleCalendarService {
         },
       });
     } catch (e: any) {
+      // Return stale cache on API failure if available
+      if (cached) return cached.data;
       const detail = e.response?.data?.error?.message || e.response?.data?.error || e.message;
       throw new Error(`Google FreeBusy API: ${detail}`);
     }
@@ -640,7 +657,18 @@ export class GoogleCalendarService {
       };
     }
 
-    return { calendars };
+    const result: FreeBusyResponse = { calendars };
+
+    // Store in cache and evict stale entries
+    this.freeBusyCache.set(cacheKey, { data: result, ts: Date.now() });
+    if (this.freeBusyCache.size > 50) {
+      const now = Date.now();
+      for (const [k, v] of this.freeBusyCache) {
+        if (now - v.ts > GoogleCalendarService.FREEBUSY_TTL_MS) this.freeBusyCache.delete(k);
+      }
+    }
+
+    return result;
   }
 
   // ── Helpers ───────────────────────────────────────────────

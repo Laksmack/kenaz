@@ -666,7 +666,7 @@ server.tool(
 
 server.tool(
   'dagaz_find_availability',
-  'Find available time slots. For free/busy checking, pass calendar_ids. For meeting scheduling with multiple people, also pass attendees and duration_minutes to get ranked suggestions.',
+  'Check calendar availability BEFORE creating or rescheduling events. For free/busy checking, pass calendar_ids. For meeting scheduling with multiple people, also pass attendees and duration_minutes to get ranked suggestions. Always call this first when scheduling meetings with attendees.',
   {
     start: z.string().describe('Search range start (ISO datetime)'),
     end: z.string().describe('Search range end (ISO datetime)'),
@@ -701,7 +701,7 @@ async function resolveTimezone(explicit?: string): Promise<string | undefined> {
 
 server.tool(
   'dagaz_create_event',
-  'Create a new calendar event. Supports natural language input via the text field, or structured fields. For all-day events use date-only strings (YYYY-MM-DD) and set all_day=true.',
+  'Create a new calendar event. IMPORTANT: This endpoint checks for conflicts — if the time slot overlaps an existing event, it returns a 409 error with the conflicting events listed. Set force=true to create anyway. For meetings with attendees, call dagaz_find_availability first to find an open slot. Supports natural language input via the text field, or structured fields. For all-day events use date-only strings (YYYY-MM-DD) and set all_day=true.',
   {
     text: z.string().optional().describe('Natural language: "Lunch with bob@co.com tomorrow at noon for 1hr at Zocalo"'),
     summary: z.string().optional().describe('Event title (if not using text)'),
@@ -717,6 +717,7 @@ server.tool(
     visibility: z.enum(['default', 'public', 'private', 'confidential']).optional(),
     recurrence: z.array(z.string()).optional().describe('RRULE strings, e.g. ["RRULE:FREQ=WEEKLY;BYDAY=MO"]'),
     timezone: z.string().optional().describe('IANA timezone, e.g. "America/New_York". Defaults to user\'s calendar timezone if omitted.'),
+    force: z.boolean().optional().describe('Set true to create even if it conflicts with existing events'),
   },
   async (args) => {
     const time_zone = await resolveTimezone(args.timezone);
@@ -738,6 +739,7 @@ server.tool(
         ...(args.all_day !== undefined && { all_day: args.all_day }),
         ...(args.recurrence && { recurrence: args.recurrence }),
         ...(time_zone && { time_zone }),
+        ...(args.force && { force: true }),
       };
       if (args.attendees) {
         eventData.attendees = [...(parsed.attendees || []), ...args.attendees];
@@ -752,7 +754,7 @@ server.tool(
         location: args.location, description: args.description, attendees: args.attendees,
         calendar_id: args.calendar_id, add_conferencing: args.add_conferencing,
         transparency: args.transparency, visibility: args.visibility, recurrence: args.recurrence,
-        time_zone,
+        time_zone, ...(args.force && { force: true }),
       };
     }
 
@@ -766,7 +768,7 @@ server.tool(
 
 server.tool(
   'dagaz_update_event',
-  'Update an existing event. Only pass fields you want to change.',
+  'Update an existing event. Only pass fields you want to change. If changing time to a slot that conflicts with another event, returns 409 with conflicts listed. Set force=true to override.',
   {
     event_id: z.string().describe('Event ID (local UUID or Google Calendar ID)'),
     summary: z.string().optional(),
@@ -779,11 +781,12 @@ server.tool(
     transparency: z.enum(['opaque', 'transparent']).optional(),
     visibility: z.enum(['default', 'public', 'private', 'confidential']).optional(),
     timezone: z.string().optional().describe('IANA timezone for start/end, e.g. "America/New_York". Defaults to user\'s calendar timezone if omitted and start/end are provided.'),
+    force: z.boolean().optional().describe('Set true to update even if it conflicts with existing events'),
   },
-  async ({ event_id, timezone, ...updates }) => {
+  async ({ event_id, timezone, force, ...updates }) => {
     // Only resolve timezone when times are being changed
     const time_zone = (updates.start || updates.end) ? await resolveTimezone(timezone) : undefined;
-    const body = { ...updates, ...(time_zone && { time_zone }) };
+    const body = { ...updates, ...(time_zone && { time_zone }), ...(force && { force: true }) };
     const data = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}`, {
       method: 'PUT',
       body: JSON.stringify(body),
@@ -794,19 +797,20 @@ server.tool(
 
 server.tool(
   'dagaz_reschedule_event',
-  'Reschedule an event to a new time. Automatically notifies attendees.',
+  'Reschedule an event to a new time. Automatically notifies attendees. Returns 409 if new time conflicts — set force=true to override. Consider calling dagaz_find_availability first to find a clear slot.',
   {
     event_id: z.string().describe('Event ID (local UUID or Google Calendar ID)'),
     new_start: z.string().describe('New start time (ISO datetime)'),
     new_end: z.string().describe('New end time (ISO datetime)'),
     note: z.string().optional().describe('Optional note to attendees about why'),
     timezone: z.string().optional().describe('IANA timezone, e.g. "America/New_York". Defaults to existing event timezone or user\'s calendar timezone.'),
+    force: z.boolean().optional().describe('Set true to reschedule even if it conflicts with existing events'),
   },
-  async ({ event_id, new_start, new_end, note, timezone }) => {
+  async ({ event_id, new_start, new_end, note, timezone, force }) => {
     const existing = await api('dagaz', `/api/events/${encodeURIComponent(event_id)}`);
     // Preserve existing event timezone, fall back to user default
     const time_zone = await resolveTimezone(timezone || existing.time_zone || undefined);
-    const updates: any = { start: new_start, end: new_end, ...(time_zone && { time_zone }) };
+    const updates: any = { start: new_start, end: new_end, ...(time_zone && { time_zone }), ...(force && { force: true }) };
     if (note) {
       const timestamp = new Date().toLocaleString();
       updates.description = (existing.description || '') + `\n\n---\nRescheduled on ${timestamp}: ${note}`;
@@ -824,7 +828,7 @@ server.tool(
 
 server.tool(
   'dagaz_bulk_create_events',
-  'Create multiple events in one call. Returns all created events.',
+  'Create multiple events in one call. Returns all created events. Each event is checked for conflicts — failed events return 409 in their error. Set force=true to skip all conflict checks.',
   {
     events: z.array(z.object({
       summary: z.string(),
@@ -839,8 +843,9 @@ server.tool(
       transparency: z.enum(['opaque', 'transparent']).optional(),
     })).describe('Array of events to create'),
     timezone: z.string().optional().describe('IANA timezone for all events, e.g. "America/New_York". Defaults to user\'s calendar timezone.'),
+    force: z.boolean().optional().describe('Set true to skip conflict checks for all events'),
   },
-  async ({ events, timezone }) => {
+  async ({ events, timezone, force }) => {
     const time_zone = await resolveTimezone(timezone);
     const results: any[] = [];
     const errors: any[] = [];
@@ -850,7 +855,7 @@ server.tool(
         const isAllDay = evt.all_day ?? (/^\d{4}-\d{2}-\d{2}$/.test(evt.start) && /^\d{4}-\d{2}-\d{2}$/.test(evt.end));
         const data = await api('dagaz', '/api/events', {
           method: 'POST',
-          body: JSON.stringify({ ...evt, all_day: isAllDay, ...(time_zone && !isAllDay && { time_zone }) }),
+          body: JSON.stringify({ ...evt, all_day: isAllDay, ...(time_zone && !isAllDay && { time_zone }), ...(force && { force: true }) }),
         });
         results.push({ index: i, success: true, event: data });
       } catch (e: any) {
