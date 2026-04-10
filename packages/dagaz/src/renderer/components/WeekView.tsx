@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import type { CalendarEvent, OverlayEvent, PendingInvite } from '../../shared/types';
 import { EventBlock } from './EventBlock';
-import { getWeekDates, isSameDay, formatTime, dateKey, getUse24HourClock } from '../lib/utils';
+import { getWeekDates, isSameDay, formatTime, dateKey, getUse24HourClock, parseLocalDate } from '../lib/utils';
 import { useEventDrag, type DragMode } from '../hooks/useEventDrag';
 import { useNowIndicatorWeek } from '../hooks/useNowIndicator';
 import {
@@ -66,8 +66,8 @@ export function WeekView({ currentDate, events, overlayEvents = [], pendingInvit
     }
     for (const event of events) {
       if (event.all_day) {
-        const start = new Date(event.start_date || event.start_time);
-        const end = new Date(event.end_date || event.end_time);
+        const start = parseLocalDate(event.start_date || event.start_time);
+        const end = parseLocalDate(event.end_date || event.end_time);
         for (const d of weekDates) {
           if (d >= start && d < end) map.get(dateKey(d))?.allDay.push(event);
         }

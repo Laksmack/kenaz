@@ -157,3 +157,12 @@ export function snapToMinutes(date: Date, minutes: number): Date {
 export function dateKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
+
+/**
+ * Parse a YYYY-MM-DD string as a local-midnight Date.
+ * Unlike `new Date("YYYY-MM-DD")` which parses as UTC, this avoids off-by-one day errors in western timezones.
+ */
+export function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}

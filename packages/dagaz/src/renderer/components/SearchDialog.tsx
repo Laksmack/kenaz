@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { CalendarEvent } from '../../shared/types';
-import { formatTime } from '../lib/utils';
+import { formatTime, parseLocalDate } from '../lib/utils';
 
 interface Props {
   open: boolean;
@@ -60,7 +60,7 @@ export function SearchDialog({ open, onClose, onSelectEvent, onNavigateToDate }:
     } else if (e.key === 'Enter' && results[selectedIndex]) {
       e.preventDefault();
       const event = results[selectedIndex];
-      const date = new Date(event.all_day ? (event.start_date || event.start_time) : event.start_time);
+      const date = event.all_day ? parseLocalDate(event.start_date || event.start_time) : new Date(event.start_time);
       onNavigateToDate(date);
       onSelectEvent(event);
       onClose();
@@ -96,7 +96,7 @@ export function SearchDialog({ open, onClose, onSelectEvent, onNavigateToDate }:
         {results.length > 0 && (
           <div className="max-h-[300px] overflow-y-auto scrollbar-thin">
             {results.map((event, i) => {
-              const date = new Date(event.all_day ? (event.start_date || event.start_time) : event.start_time);
+              const date = event.all_day ? parseLocalDate(event.start_date || event.start_time) : new Date(event.start_time);
               return (
                 <button
                   key={event.id}

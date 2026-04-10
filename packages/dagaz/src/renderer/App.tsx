@@ -21,7 +21,7 @@ import { useConfirmDialogs } from './hooks/useConfirmDialogs';
 import { useConnectivity } from './hooks/useConnectivity';
 import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
 import { ErrorBoundary } from '@futhark/core/components/ErrorBoundary';
-import { formatDayHeader, dateKey, setUse24HourClock, getWeekStart } from './lib/utils';
+import { formatDayHeader, dateKey, setUse24HourClock, getWeekStart, parseLocalDate } from './lib/utils';
 import { buildConflictRanges, mergeConflictEvents } from './lib/response-conflict-events';
 import { inviteMatchesEvent } from './lib/event-layout';
 import type { ViewType, CalendarEvent, AppConfig, CreateEventInput, UpdateEventInput } from '../shared/types';
@@ -588,7 +588,7 @@ function AgendaView({ events, loading, selectedEvent, onSelectEvent }: {
 }) {
   const grouped = new Map<string, CalendarEvent[]>();
   for (const event of events) {
-    const start = new Date(event.all_day ? (event.start_date || event.start_time) : event.start_time);
+    const start = event.all_day ? parseLocalDate(event.start_date || event.start_time) : new Date(event.start_time);
     const key = dateKey(start);
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)!.push(event);

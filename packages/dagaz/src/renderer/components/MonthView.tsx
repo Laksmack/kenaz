@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import type { CalendarEvent } from '../../shared/types';
-import { getMonthDates, isSameDay, dateKey } from '../lib/utils';
+import { getMonthDates, isSameDay, dateKey, parseLocalDate } from '../lib/utils';
 
 interface Props {
   currentDate: Date;
@@ -22,8 +22,8 @@ export function MonthView({ currentDate, events, selectedEvent, onSelectEvent, o
 
     for (const event of events) {
       if (event.all_day) {
-        const start = new Date(event.start_date || event.start_time);
-        const end = new Date(event.end_date || event.end_time);
+        const start = parseLocalDate(event.start_date || event.start_time);
+        const end = parseLocalDate(event.end_date || event.end_time);
         for (let d = new Date(start); d < end; d.setDate(d.getDate() + 1)) {
           const key = dateKey(d);
           if (!map.has(key)) map.set(key, []);

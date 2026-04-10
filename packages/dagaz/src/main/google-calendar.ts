@@ -407,10 +407,10 @@ export class GoogleCalendarService {
     if (updates.description !== undefined) requestBody.description = updates.description;
     if (updates.location !== undefined) requestBody.location = updates.location;
 
-    if (updates.start !== undefined || updates.end !== undefined) {
+    if (updates.start !== undefined || updates.end !== undefined || updates.all_day !== undefined) {
       if (updates.all_day) {
-        if (updates.start) requestBody.start = { date: updates.start.split('T')[0] };
-        if (updates.end) requestBody.end = { date: updates.end.split('T')[0] };
+        if (updates.start) requestBody.start = { date: updates.start.split('T')[0], dateTime: null, timeZone: null };
+        if (updates.end) requestBody.end = { date: updates.end.split('T')[0], dateTime: null, timeZone: null };
       } else {
         if (updates.start) requestBody.start = this.buildTimedSlot(updates.start, updates.time_zone);
         if (updates.end) requestBody.end = this.buildTimedSlot(updates.end, updates.time_zone);

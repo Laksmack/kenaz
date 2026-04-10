@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import DOMPurify from 'dompurify';
 import type { CalendarEvent, Attendee, UpdateEventInput } from '../../shared/types';
-import { formatTime, formatTimeRange } from '../lib/utils';
+import { formatTime, formatTimeRange, parseLocalDate } from '../lib/utils';
 
 interface Props {
   event: CalendarEvent | null;
@@ -84,8 +84,8 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit, onUpdate
   // Date/time formatting — guard against empty/invalid times
   const rawStart = ev.all_day ? (ev.start_date || ev.start_time) : ev.start_time;
   const rawEnd = ev.all_day ? (ev.end_date || ev.end_time) : ev.end_time;
-  const startDate = rawStart ? new Date(rawStart) : null;
-  const endDate = rawEnd ? new Date(rawEnd) : null;
+  const startDate = rawStart ? (ev.all_day ? parseLocalDate(rawStart) : new Date(rawStart)) : null;
+  const endDate = rawEnd ? (ev.all_day ? parseLocalDate(rawEnd) : new Date(rawEnd)) : null;
   const startValid = startDate && !isNaN(startDate.getTime());
   const endValid = endDate && !isNaN(endDate.getTime());
 
