@@ -542,7 +542,7 @@ export default function App() {
           <ErrorBoundary inline>
           {selectedEvent ? (
             <EventDetail event={selectedEvent} onClose={() => { setSelectedEvent(null); if (needsActionEvents.length > 0 || dedupedPendingInvites.length > 0) setShowInvitesPanel(true); }}
-              onDelete={handleDeleteEvent} onRSVP={handleRSVP} onEdit={openEditEvent} />
+              onDelete={handleDeleteEvent} onRSVP={handleRSVP} onEdit={openEditEvent} onUpdate={handleUpdateFromEdit} />
           ) : (showInvitesPanel || needsActionEvents.length > 0 || dedupedPendingInvites.length > 0) && (
             <InviteReviewPanel events={needsActionEvents} allEvents={responseConflictEvents} isLoading={needsActionLoading}
               onRefresh={refreshNeedsAction} onRsvp={handleRSVP} onSelectEvent={selectEvent} onDateSelect={handleReviewDateSelect}

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import DOMPurify from 'dompurify';
-import type { CalendarEvent, Attendee } from '../../shared/types';
+import type { CalendarEvent, Attendee, UpdateEventInput } from '../../shared/types';
 import { formatTime, formatTimeRange } from '../lib/utils';
 
 interface Props {
@@ -9,9 +9,10 @@ interface Props {
   onDelete: (id: string) => void;
   onRSVP: (id: string, response: 'accepted' | 'declined' | 'tentative') => void | Promise<void>;
   onEdit: (event: CalendarEvent) => void;
+  onUpdate?: (id: string, updates: UpdateEventInput) => void | Promise<void>;
 }
 
-export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props) {
+export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit, onUpdate }: Props) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [fullEvent, setFullEvent] = useState<CalendarEvent | null>(null);
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
@@ -322,22 +323,42 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit }: Props)
               )}
               {/* Other attendees */}
               {otherAttendees.map((a, i) => (
-                <div key={i} className="flex items-center gap-2 py-0.5">
-                  <button
-                    type="button"
-                    onClick={() => copyEmailToClipboard(a.email)}
-                    className={`text-xs font-medium w-4 text-center ${responseStatusColor(a.response_status)} hover:opacity-80 transition-opacity`}
-                    title={copiedEmail === a.email ? 'Copied!' : `Copy ${a.email}`}
-                    aria-label={`Copy ${a.email}`}
-                  >
-                    {responseStatusIcon(a.response_status)}
-                  </button>
-                  <div className="flex-1 min-w-0">
-                    <span className="text-xs text-text-primary truncate block">
-                      {a.display_name || a.email}
-                      {a.optional && <span className="text-text-muted ml-1 text-[10px]">Optional</span>}
-                    </span>
+                <div key={i}>
+                  <div className="flex items-center gap-2 py-0.5">
+                    <button
+                      type="button"
+                      onClick={() => copyEmailToClipboard(a.email)}
+                      className={`text-xs font-medium w-4 text-center ${responseStatusColor(a.response_status)} hover:opacity-80 transition-opacity`}
+                      title={copiedEmail === a.email ? 'Copied!' : `Copy ${a.email}`}
+                      aria-label={`Copy ${a.email}`}
+                    >
+                      {responseStatusIcon(a.response_status)}
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <span className="text-xs text-text-primary truncate block">
+                        {a.display_name || a.email}
+                        {a.optional && <span className="text-text-muted ml-1 text-[10px]">Optional</span>}
+                      </span>
+                    </div>
                   </div>
+                  {a.proposed_start && a.proposed_end && (
+                    <div className="ml-6 mt-0.5 mb-1 flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded px-2 py-1">
+                      <span className="text-[10px] text-amber-400 flex-1">
+                        Proposed: {formatTimeRange(a.proposed_start, a.proposed_end)}
+                      </span>
+                      {ev.is_organizer && onUpdate && (
+                        <button
+                          onClick={async () => {
+                            await onUpdate(ev.id, { start: a.proposed_start!, end: a.proposed_end! });
+                            setRsvpVersion(v => v + 1);
+                          }}
+                          className="text-[10px] font-medium text-amber-400 hover:text-amber-300 transition-colors whitespace-nowrap"
+                        >
+                          Accept time
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

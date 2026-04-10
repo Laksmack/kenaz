@@ -91,6 +91,8 @@ export interface Attendee {
   is_organizer: boolean;
   is_self: boolean;
   optional?: boolean;
+  proposed_start?: string | null;
+  proposed_end?: string | null;
 }
 
 /** Accepts plain email string (required) or object with optional flag */

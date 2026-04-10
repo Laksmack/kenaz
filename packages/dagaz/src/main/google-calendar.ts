@@ -703,15 +703,20 @@ export class GoogleCalendarService {
 
     const selfAttendee = item.attendees?.find(a => a.self);
 
-    const attendees: Attendee[] = (item.attendees || []).map(a => ({
-      event_id: '',
-      email: a.email || '',
-      display_name: a.displayName || null,
-      response_status: (a.responseStatus as any) || 'needsAction',
-      is_organizer: a.organizer || false,
-      is_self: a.self || false,
-      optional: a.optional || false,
-    }));
+    const attendees: Attendee[] = (item.attendees || []).map(a => {
+      const proposed = (a as any).proposedNewTime;
+      return {
+        event_id: '',
+        email: a.email || '',
+        display_name: a.displayName || null,
+        response_status: (a.responseStatus as any) || 'needsAction',
+        is_organizer: a.organizer || false,
+        is_self: a.self || false,
+        optional: a.optional || false,
+        proposed_start: proposed?.start?.dateTime || proposed?.start?.date || null,
+        proposed_end: proposed?.end?.dateTime || proposed?.end?.date || null,
+      };
+    });
 
     return {
       google_id: item.id || '',

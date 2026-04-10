@@ -89,6 +89,8 @@ export class CacheStore {
         is_organizer INTEGER DEFAULT 0,
         is_self INTEGER DEFAULT 0,
         optional INTEGER DEFAULT 0,
+        proposed_start TEXT,
+        proposed_end TEXT,
         UNIQUE(event_id, email)
       );
 
@@ -115,6 +117,8 @@ export class CacheStore {
     // Migrations — add columns if missing
     try { this.db.exec('ALTER TABLE events ADD COLUMN attachments TEXT'); } catch (e) { /* column already exists */ }
     try { this.db.exec('ALTER TABLE attendees ADD COLUMN optional INTEGER DEFAULT 0'); } catch (e) { /* column already exists */ }
+    try { this.db.exec('ALTER TABLE attendees ADD COLUMN proposed_start TEXT'); } catch (e) { /* column already exists */ }
+    try { this.db.exec('ALTER TABLE attendees ADD COLUMN proposed_end TEXT'); } catch (e) { /* column already exists */ }
   }
 
   private genId(): string {
@@ -266,11 +270,11 @@ export class CacheStore {
   upsertAttendees(eventId: string, attendees: Omit<Attendee, 'id'>[]): void {
     this.db.prepare('DELETE FROM attendees WHERE event_id = ?').run(eventId);
     const insert = this.db.prepare(`
-      INSERT OR IGNORE INTO attendees (event_id, email, display_name, response_status, is_organizer, is_self, optional)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO attendees (event_id, email, display_name, response_status, is_organizer, is_self, optional, proposed_start, proposed_end)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     for (const a of attendees) {
-      insert.run(eventId, a.email, a.display_name, a.response_status, a.is_organizer ? 1 : 0, a.is_self ? 1 : 0, a.optional ? 1 : 0);
+      insert.run(eventId, a.email, a.display_name, a.response_status, a.is_organizer ? 1 : 0, a.is_self ? 1 : 0, a.optional ? 1 : 0, a.proposed_start || null, a.proposed_end || null);
     }
   }
 
@@ -332,7 +336,14 @@ export class CacheStore {
 
   getAttendees(eventId: string): Attendee[] {
     const rows = this.db.prepare('SELECT * FROM attendees WHERE event_id = ?').all(eventId) as any[];
-    return rows.map(r => ({ ...r, is_organizer: !!r.is_organizer, is_self: !!r.is_self, optional: !!r.optional }));
+    return rows.map(r => ({
+      ...r,
+      is_organizer: !!r.is_organizer,
+      is_self: !!r.is_self,
+      optional: !!r.optional,
+      proposed_start: r.proposed_start || null,
+      proposed_end: r.proposed_end || null,
+    }));
   }
 
   createLocalEvent(input: CreateEventInput): CalendarEvent {
