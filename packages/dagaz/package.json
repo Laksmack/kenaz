@@ -61,7 +61,7 @@
     },
     "publish": {
       "provider": "generic",
-      "url": "https://kenaz.app/releases/dagaz"
+      "url": "https://files.kenaz.app/releases/dagaz"
     },
     "extraResources": [
       {

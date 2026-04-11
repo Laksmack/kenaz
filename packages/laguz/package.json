@@ -55,7 +55,7 @@
     },
     "publish": {
       "provider": "generic",
-      "url": "https://kenaz.app/releases/laguz"
+      "url": "https://files.kenaz.app/releases/laguz"
     },
     "fileAssociations": [
       {

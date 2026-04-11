@@ -56,7 +56,7 @@
     },
     "publish": {
       "provider": "generic",
-      "url": "https://kenaz.app/releases/raido"
+      "url": "https://files.kenaz.app/releases/raido"
     },
     "asarUnpack": [],
     "npmRebuild": true

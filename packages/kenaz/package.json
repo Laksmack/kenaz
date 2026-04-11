@@ -62,7 +62,7 @@
     },
     "publish": {
       "provider": "generic",
-      "url": "https://kenaz.app/releases/kenaz"
+      "url": "https://files.kenaz.app/releases/kenaz"
     },
     "extraResources": [
       {
