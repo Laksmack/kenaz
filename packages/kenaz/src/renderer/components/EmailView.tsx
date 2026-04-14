@@ -984,8 +984,7 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
     const darkStyles = `
           html { color-scheme: dark; }
           html, body { color: #e2e8f0 !important; background: transparent !important; }
-          *:not(td[style*="background"] *):not(td[style*="background"]) { color: inherit !important; }
-          * { border-color: #334155 !important; }
+          * { color: inherit !important; border-color: #334155 !important; }
           div, td:not([style*="background"]), th:not([style*="background"]),
           table, tr, tbody, thead,
           p, span, li, ul, ol, h1, h2, h3, h4, h5, h6,
