@@ -58,45 +58,21 @@ APPS=(kenaz raido dagaz laguz)
 UPLOAD_PIDS=()
 
 # ── Config (override via env) ────────────────────────────────
-# Set BUILD_LOCAL_DEPLOY=true when the build server IS the web server.
-# In local mode, files are copied directly instead of uploaded via SFTP.
+# Build server IS the web server — all deploys are local cp.
 #
-# Remote mode (SFTP):
-#   BUILD_REMOTE_HOST=ubuntu@your-server.tailnet-name.ts.net
-#   BUILD_REMOTE_PATH=/var/www/kenaz.app/releases
-#   BUILD_REMOTE_HTML=/var/www/kenaz.app
-#
-# Local mode:
-#   BUILD_LOCAL_DEPLOY=true
-#   BUILD_DEPLOY_PATH=/var/www/chat/releases
-#   BUILD_DEPLOY_HTML=/var/www/chat
-LOCAL_DEPLOY="${BUILD_LOCAL_DEPLOY:-true}"
-DEPLOY_PATH="${BUILD_DEPLOY_PATH:-/var/www/chat/releases}"
-DEPLOY_HTML="${BUILD_DEPLOY_HTML:-/var/www/chat}"
-REMOTE_HOST="${BUILD_REMOTE_HOST:-ubuntu@kenaz.app}"
-REMOTE_PATH="${BUILD_REMOTE_PATH:-/var/www/kenaz.app/releases}"
-REMOTE_HTML="${BUILD_REMOTE_HTML:-/var/www/kenaz.app}"
-REMOTE_SSH_KEY="${BUILD_REMOTE_SSH_KEY:-}"
+#   BUILD_DEPLOY_PATH=/var/www/kenaz.app/releases
+#   BUILD_DEPLOY_HTML=/var/www/kenaz.app
+DEPLOY_PATH="${BUILD_DEPLOY_PATH:-/var/www/kenaz.app/releases}"
+DEPLOY_HTML="${BUILD_DEPLOY_HTML:-/var/www/kenaz.app}"
 BRANCH="main"
-
-# Build SSH/SCP option arrays (include identity file if set)
-SSH_KEY_OPTS=()
-[ -n "$REMOTE_SSH_KEY" ] && SSH_KEY_OPTS=(-i "$REMOTE_SSH_KEY")
 
 log() {
   echo "$(date '+%Y-%m-%d %H:%M:%S') — $*"
 }
 
-if [ "$LOCAL_DEPLOY" = true ]; then
-  log "local deploy mode"
-  log "deploy releases dir: $DEPLOY_PATH"
-  log "deploy web dir: $DEPLOY_HTML"
-else
-  log "remote deploy mode"
-  log "upload target host: $REMOTE_HOST"
-  log "upload releases dir: $REMOTE_PATH"
-  log "upload web dir: $REMOTE_HTML"
-fi
+log "local deploy mode"
+log "deploy releases dir: $DEPLOY_PATH"
+log "deploy web dir: $DEPLOY_HTML"
 
 # Prevent overlapping runs
 if [ -f "$LOCK_FILE" ]; then
@@ -249,89 +225,38 @@ if [ ${#APPS_TO_BUILD[@]} -gt 0 ]; then
 
   echo "  apps to build: ${APPS_TO_BUILD[*]}"
 
-  # Deploy a built app (local cp or remote sftp); logs to .upload-<app>.log
+  # Deploy a built app (local cp); logs to .upload-<app>.log
   upload_release() {
     local app="$1" name="$2" version="$3" release_dir="$4"
     local log="$REPO_ROOT/.upload-$app.log"
     {
       echo "$(date '+%H:%M:%S') starting deploy of $name v$version"
+      mkdir -p "$DEPLOY_PATH/$app"
+      local failed=false
 
-      if [ "$LOCAL_DEPLOY" = true ]; then
-        # ── Local deploy: just copy files ──
-        mkdir -p "$DEPLOY_PATH/$app"
-        local failed=false
-
-        for f in "$release_dir"/*.dmg "$release_dir"/*.zip "$release_dir"/latest-mac.yml; do
-          [ -f "$f" ] || continue
-          local basename_f="${f##*/}"
-          echo "  copying $basename_f ($(du -h "$f" | cut -f1))..."
-          if ! cp "$f" "$DEPLOY_PATH/$app/$basename_f"; then
-            echo "  error: failed to copy $basename_f"
-            failed=true
-          fi
-        done
-
-        if [ "$failed" = true ]; then
-          echo "$(date '+%H:%M:%S') deploy FAILED"
-          return 1
+      for f in "$release_dir"/*.dmg "$release_dir"/*.zip "$release_dir"/latest-mac.yml; do
+        [ -f "$f" ] || continue
+        local basename_f="${f##*/}"
+        echo "  copying $basename_f ($(du -h "$f" | cut -f1))..."
+        if ! cp "$f" "$DEPLOY_PATH/$app/$basename_f"; then
+          echo "  error: failed to copy $basename_f"
+          failed=true
         fi
+      done
 
-        # Copy latest DMG with a stable name for direct links
-        local dmg_name
-        dmg_name=$(ls -t "$release_dir"/*.dmg 2>/dev/null | head -1 | xargs basename)
-        if [ -n "$dmg_name" ]; then
-          cp "$release_dir/$dmg_name" "$DEPLOY_PATH/$app/${app}_latest.dmg"
-        fi
-
-        echo "$(date '+%H:%M:%S') deploy complete"
-      else
-        # ── Remote deploy: SFTP ──
-        local ssh_opts=("${SSH_KEY_OPTS[@]}" -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=3)
-
-        # mkdir via sftp (ignore failure - dir may already exist)
-        sftp "${ssh_opts[@]}" "$REMOTE_HOST" <<< "mkdir $REMOTE_PATH/$app" 2>/dev/null; true
-
-        local failed=false
-        local max_retries=2
-
-        for f in "$release_dir"/*.dmg "$release_dir"/*.zip "$release_dir"/latest-mac.yml; do
-          [ -f "$f" ] || continue
-          local basename_f="${f##*/}"
-          echo "  uploading $basename_f ($(du -h "$f" | cut -f1))..."
-          local attempt=0
-          while [ $attempt -le $max_retries ]; do
-            if sftp "${ssh_opts[@]}" "$REMOTE_HOST" << SFTP_EOF
-put "$f" $REMOTE_PATH/$app/$basename_f
-SFTP_EOF
-            then
-              break
-            fi
-            attempt=$((attempt + 1))
-            if [ $attempt -le $max_retries ]; then
-              echo "  retrying $basename_f (attempt $((attempt + 1))/$((max_retries + 1)))..."
-              sleep 5
-            else
-              echo "  error: failed to upload $basename_f after $((max_retries + 1)) attempts"
-              failed=true
-            fi
-          done
-        done
-
-        if [ "$failed" = true ]; then
-          echo "$(date '+%H:%M:%S') upload FAILED"
-          return 1
-        fi
-
-        local dmg_name
-        dmg_name=$(ls -t "$release_dir"/*.dmg 2>/dev/null | head -1 | xargs basename)
-        if [ -n "$dmg_name" ]; then
-          sftp "${ssh_opts[@]}" "$REMOTE_HOST" << SFTP_EOF
-put "$release_dir/$dmg_name" $REMOTE_PATH/$app/${app}_latest.dmg
-SFTP_EOF
-        fi
-
-        echo "$(date '+%H:%M:%S') upload complete"
+      if [ "$failed" = true ]; then
+        echo "$(date '+%H:%M:%S') deploy FAILED"
+        return 1
       fi
+
+      # Copy latest DMG with a stable name for direct links
+      local dmg_name
+      dmg_name=$(ls -t "$release_dir"/*.dmg 2>/dev/null | head -1 | xargs basename)
+      if [ -n "$dmg_name" ]; then
+        cp "$release_dir/$dmg_name" "$DEPLOY_PATH/$app/${app}_latest.dmg"
+      fi
+
+      echo "$(date '+%H:%M:%S') deploy complete"
     } > "$log" 2>&1
   }
 
@@ -480,25 +405,11 @@ if [ "$WEB_CHANGED" = true ] || [ "$HAS_NEW_COMMITS" = true ] || [ "$FORCE" = tr
   generate_versions
   echo ""
   echo "  syncing website..."
-  if [ "$LOCAL_DEPLOY" = true ]; then
-    # Local: copy web files directly
-    for f in "$REPO_ROOT"/web/*; do
-      [ -f "$f" ] && cp "$f" "$DEPLOY_HTML/$(basename "$f")"
-    done
-    echo "  ✓ website synced (with changelog)"
-  else
-    # Remote: SFTP web files
-    SFTP_BATCH=$(mktemp)
-    for f in "$REPO_ROOT"/web/*; do
-      [ -f "$f" ] && echo "put $f $REMOTE_HTML/$(basename $f)" >> "$SFTP_BATCH"
-    done
-    if sftp "${SSH_KEY_OPTS[@]}" -b "$SFTP_BATCH" "$REMOTE_HOST" 2>/dev/null; then
-      echo "  ✓ website synced (with changelog)"
-    else
-      echo "  ⚠ website sync failed (continuing)"
-    fi
-    rm -f "$SFTP_BATCH"
-  fi
+  mkdir -p "$DEPLOY_HTML"
+  for f in "$REPO_ROOT"/web/*; do
+    [ -f "$f" ] && cp "$f" "$DEPLOY_HTML/$(basename "$f")"
+  done
+  echo "  ✓ website synced (with changelog)"
 fi
 
 # Wait for background uploads to finish
