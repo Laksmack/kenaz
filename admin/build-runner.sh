@@ -403,19 +403,17 @@ generate_versions() {
 if [ "$WEB_CHANGED" = true ] || [ "$HAS_NEW_COMMITS" = true ] || [ "$FORCE" = true ]; then
   generate_changelog
   generate_versions
-  echo ""
-  echo "  syncing website..."
+  log "syncing website..."
   mkdir -p "$DEPLOY_HTML"
   for f in "$REPO_ROOT"/web/*; do
     [ -f "$f" ] && cp "$f" "$DEPLOY_HTML/$(basename "$f")"
   done
-  echo "  ✓ website synced (with changelog)"
+  log "✓ website synced (with changelog)"
 fi
 
 # Wait for background uploads to finish
 if [ ${#UPLOAD_PIDS[@]} -gt 0 ]; then
-  echo ""
-  echo "  waiting for ${#UPLOAD_PIDS[@]} upload(s)..."
+  log "waiting for ${#UPLOAD_PIDS[@]} upload(s)..."
   WAIT_START=$SECONDS
   UPLOAD_ERRORS=0
 
@@ -427,9 +425,9 @@ if [ ${#UPLOAD_PIDS[@]} -gt 0 ]; then
 
     if wait "$pid"; then
       ELAPSED=$(( SECONDS - WAIT_START ))
-      echo "  ✓ $name uploaded (${ELAPSED}s elapsed)"
+      log "✓ $name uploaded (${ELAPSED}s elapsed)"
     else
-      echo "  ✗ $name upload failed"
+      log "✗ $name upload failed"
       ((UPLOAD_ERRORS++))
       FAILED+=("$app")
     fi
@@ -443,21 +441,20 @@ if [ ${#UPLOAD_PIDS[@]} -gt 0 ]; then
 
   TOTAL_WAIT=$(( SECONDS - WAIT_START ))
   if [ "$UPLOAD_ERRORS" -gt 0 ]; then
-    echo "  ⚠ $UPLOAD_ERRORS upload(s) had errors (${TOTAL_WAIT}s total)"
+    log "⚠ $UPLOAD_ERRORS upload(s) had errors (${TOTAL_WAIT}s total)"
   else
-    echo "  ✓ all uploads complete (${TOTAL_WAIT}s total)"
+    log "✓ all uploads complete (${TOTAL_WAIT}s total)"
   fi
 fi
 
-echo ""
 if [ ${#FAILED[@]} -gt 0 ]; then
   # Persist failed apps so next cron run retries them
   mkdir -p "$(dirname "$RETRY_FILE")"
   printf '%s\n' "${FAILED[@]}" | awk 'NF && !seen[$0]++' > "$RETRY_FILE"
-  echo "━━━ Done (${#FAILED[@]} failed: ${FAILED[*]} - will retry next run) ━━━"
+  log "━━━ Done (${#FAILED[@]} failed: ${FAILED[*]} - will retry next run) ━━━"
 else
   rm -f "$RETRY_FILE"
-  echo "━━━ Done ━━━"
+  log "━━━ Done ━━━"
 fi
 
 }
