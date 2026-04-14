@@ -1046,6 +1046,53 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
     `);
     doc.close();
 
+    // ── Dark-mode color adaptation ──────────────────────────────
+    // The CSS dark-mode rules force all text to light (via * { color:
+    // inherit }) and strip most backgrounds to transparent. This is
+    // correct for plain-text emails on a dark body, but breaks emails
+    // that use inline backgrounds (Google Calendar invites, marketing
+    // emails, Olga reports) — the light background is preserved but
+    // text is forced white, creating light-on-light.
+    //
+    // Fix: after render, find elements with light inline backgrounds
+    // and force dark text on them. Re-apply any explicit inline colors
+    // on their children so links / colored spans aren't clobbered.
+    // This is the same strategy Apple Mail and Gmail use for dark mode.
+    if (isDark) {
+      const isLight = (cssColor: string): boolean => {
+        if (!cssColor || cssColor === 'transparent' || cssColor === 'rgba(0, 0, 0, 0)') return false;
+        const m = cssColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+        if (!m) return false;
+        const lum = (0.299 * +m[1] + 0.587 * +m[2] + 0.114 * +m[3]) / 255;
+        return lum > 0.55;
+      };
+
+      doc.querySelectorAll('[style]').forEach((el: Element) => {
+        const htmlEl = el as HTMLElement;
+        const styleAttr = htmlEl.getAttribute('style') || '';
+        if (!/background/i.test(styleAttr)) return;
+
+        const bg = doc.defaultView?.getComputedStyle(htmlEl).backgroundColor;
+        if (!bg || !isLight(bg)) return;
+
+        // This element has a light background — force dark text so
+        // content is readable, overriding the CSS * { color: inherit }.
+        htmlEl.style.setProperty('color', '#1a1a1a', 'important');
+
+        // Re-apply original inline colors on children that had them
+        // (links, colored spans) so they aren't clobbered by the
+        // dark-text cascade we just set.
+        htmlEl.querySelectorAll('[style]').forEach((child: Element) => {
+          const childEl = child as HTMLElement;
+          const childStyle = childEl.getAttribute('style') || '';
+          const colorMatch = childStyle.match(/(?:^|;)\s*color\s*:\s*([^;!]+)/i);
+          if (colorMatch) {
+            childEl.style.setProperty('color', colorMatch[1].trim(), 'important');
+          }
+        });
+      });
+    }
+
     // Collapse quoted/forwarded content:
     // Gmail wraps quoted text in .gmail_quote, .gmail_extra, or blockquote
     // Also detect "On ... wrote:" patterns
