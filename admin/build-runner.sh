@@ -62,8 +62,8 @@ UPLOAD_PIDS=()
 #
 #   BUILD_DEPLOY_PATH=/var/www/kenaz.app/releases
 #   BUILD_DEPLOY_HTML=/var/www/kenaz.app
-DEPLOY_PATH="${BUILD_DEPLOY_PATH:-/var/www/kenaz.app/releases}"
-DEPLOY_HTML="${BUILD_DEPLOY_HTML:-/var/www/kenaz.app}"
+DEPLOY_PATH="${BUILD_DEPLOY_PATH:-/var/www/chat/releases}"
+DEPLOY_HTML="${BUILD_DEPLOY_HTML:-/var/www/chat}"
 BRANCH="main"
 
 log() {
