@@ -992,13 +992,9 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
             background-color: transparent !important;
             background-image: none !important;
           }
-          a, a * { color: #5b8def !important; }
-          a[style*="background"], a[style*="padding"],
-          td[style*="background-color"] a {
-            background-color: #1e293b !important;
-            color: #5b8def !important;
-            border-radius: 4px;
-          }
+          a:not([style*="background"]),
+          a:not([style*="background"]) * { color: #5b8def !important; }
+          td[style*="background-color"] a:not([style*="background"]) { color: #5b8def !important; }
           blockquote { border-left: 3px solid #334155 !important; color: #94a3b8 !important; }
           pre, code { background: #1e293b !important; }
           hr { border-color: #334155 !important; }
