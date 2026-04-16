@@ -21,6 +21,7 @@ function event(id: string, start: string, end: string): CalendarEvent {
     organizer_email: null,
     organizer_name: null,
     is_organizer: false,
+    guests_can_invite_others: true,
     recurrence_rule: null,
     recurring_event_id: null,
     html_link: null,

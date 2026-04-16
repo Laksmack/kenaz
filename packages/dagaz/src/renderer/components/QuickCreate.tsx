@@ -215,7 +215,9 @@ function parseRrule(rule: string): { freq: string; interval: number; byDay: stri
 
 export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, calendars, defaultCalendarId, defaultStart, defaultEnd, defaultAttendees }: Props) {
   const isEditing = !!editingEvent;
-  const canEditAttendees = !isEditing || (editingEvent?.is_organizer ?? true);
+  // Google Calendar allows attendee editing if you're the organizer OR
+  // the event has guestsCanInviteOthers set (defaults to true).
+  const canEditAttendees = !isEditing || editingEvent?.is_organizer || (editingEvent?.guests_can_invite_others !== false);
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
   const [endDate, setEndDate] = useState('');

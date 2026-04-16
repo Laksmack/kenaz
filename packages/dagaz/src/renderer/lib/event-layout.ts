@@ -193,7 +193,7 @@ export function overlayToEvent(oe: OverlayEvent): CalendarEvent {
     all_day: oe.all_day, time_zone: null,
     status: oe.status as 'confirmed' | 'tentative' | 'cancelled',
     self_response: null, organizer_email: oe.personEmail, organizer_name: null,
-    is_organizer: false, recurrence_rule: null, recurring_event_id: null,
+    is_organizer: false, guests_can_invite_others: true, recurrence_rule: null, recurring_event_id: null,
     html_link: null, hangout_link: null, conference_data: null,
     transparency: 'opaque', visibility: 'default', color_id: null,
     reminders: null, etag: null, local_only: true,

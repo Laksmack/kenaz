@@ -56,6 +56,7 @@ export class CacheStore {
         organizer_email TEXT,
         organizer_name TEXT,
         is_organizer INTEGER DEFAULT 0,
+        guests_can_invite_others INTEGER DEFAULT 1,
         recurrence_rule TEXT,
         recurring_event_id TEXT,
         html_link TEXT,
@@ -119,6 +120,7 @@ export class CacheStore {
     try { this.db.exec('ALTER TABLE attendees ADD COLUMN optional INTEGER DEFAULT 0'); } catch (e) { /* column already exists */ }
     try { this.db.exec('ALTER TABLE attendees ADD COLUMN proposed_start TEXT'); } catch (e) { /* column already exists */ }
     try { this.db.exec('ALTER TABLE attendees ADD COLUMN proposed_end TEXT'); } catch (e) { /* column already exists */ }
+    try { this.db.exec('ALTER TABLE events ADD COLUMN guests_can_invite_others INTEGER DEFAULT 1'); } catch (e) { /* column already exists */ }
   }
 
   private genId(): string {
@@ -206,11 +208,11 @@ export class CacheStore {
       INSERT INTO events (
         id, google_id, calendar_id, summary, description, location,
         start_time, end_time, start_date, end_date, all_day, time_zone,
-        status, self_response, organizer_email, organizer_name, is_organizer,
+        status, self_response, organizer_email, organizer_name, is_organizer, guests_can_invite_others,
         recurrence_rule, recurring_event_id, html_link, hangout_link,
         conference_data, transparency, visibility, color_id, reminders,
         attachments, etag, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
       ON CONFLICT(id) DO UPDATE SET
         google_id = excluded.google_id,
         calendar_id = excluded.calendar_id,
@@ -233,6 +235,7 @@ export class CacheStore {
         organizer_email = excluded.organizer_email,
         organizer_name = excluded.organizer_name,
         is_organizer = excluded.is_organizer,
+        guests_can_invite_others = excluded.guests_can_invite_others,
         recurrence_rule = excluded.recurrence_rule,
         recurring_event_id = excluded.recurring_event_id,
         html_link = excluded.html_link,
@@ -254,6 +257,7 @@ export class CacheStore {
       event.status || 'confirmed', event.self_response || null,
       event.organizer_email || null, event.organizer_name || null,
       event.is_organizer ? 1 : 0,
+      event.guests_can_invite_others !== false ? 1 : 0,
       event.recurrence_rule || null, event.recurring_event_id || null,
       event.html_link || null, event.hangout_link || null,
       event.conference_data ? JSON.stringify(event.conference_data) : null,
@@ -616,6 +620,7 @@ export class CacheStore {
       organizer_email: row.organizer_email,
       organizer_name: row.organizer_name,
       is_organizer: !!row.is_organizer,
+      guests_can_invite_others: row.guests_can_invite_others !== 0,
       recurrence_rule: row.recurrence_rule,
       recurring_event_id: row.recurring_event_id,
       html_link: row.html_link,

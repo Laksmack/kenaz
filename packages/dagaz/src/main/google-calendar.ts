@@ -761,6 +761,7 @@ export class GoogleCalendarService {
       organizer_email: item.organizer?.email || null,
       organizer_name: item.organizer?.displayName || null,
       is_organizer: item.organizer?.self || false,
+      guests_can_invite_others: item.guestsCanInviteOthers !== false,
       recurrence_rule: item.recurrence?.join('\n') || null,
       recurring_event_id: item.recurringEventId || null,
       html_link: item.htmlLink || null,

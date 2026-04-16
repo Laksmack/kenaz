@@ -18,6 +18,7 @@ export interface CalendarEvent {
   organizer_email: string | null;
   organizer_name: string | null;
   is_organizer: boolean;
+  guests_can_invite_others: boolean;
   recurrence_rule: string | null;
   recurring_event_id: string | null;
   html_link: string | null;
