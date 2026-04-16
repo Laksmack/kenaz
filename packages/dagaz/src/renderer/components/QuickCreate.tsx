@@ -215,9 +215,10 @@ function parseRrule(rule: string): { freq: string; interval: number; byDay: stri
 
 export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, calendars, defaultCalendarId, defaultStart, defaultEnd, defaultAttendees }: Props) {
   const isEditing = !!editingEvent;
-  // Google Calendar allows attendee editing if you're the organizer OR
-  // the event has guestsCanInviteOthers set (defaults to true).
-  const canEditAttendees = !isEditing || editingEvent?.is_organizer || (editingEvent?.guests_can_invite_others !== false);
+  // Always allow adding attendees — even for non-organizer events. Google's
+  // web UI allows it too (sends invite, organizer gets prompted to approve).
+  // Show a hint when guests may need organizer approval.
+  const isGuestEditor = isEditing && !editingEvent?.is_organizer;
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -373,11 +374,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
         start: allDay ? date : startD.toISOString(),
         end: allDay ? addDays(endDate, 1) : endD.toISOString(),
         all_day: allDay,
-        // Google Calendar silently ignores attendee changes from non-organizers.
-        // Only include attendees in the payload when we're the organizer.
-        ...(canEditAttendees ? {
-          attendees: attendees.length > 0 ? attendees.map(a => a.optional ? { email: a.email, optional: true } : a.email) : [],
-        } : {}),
+        attendees: attendees.length > 0 ? attendees.map(a => a.optional ? { email: a.email, optional: true } : a.email) : [],
         location: location || '',
         description: description || '',
         reminders: reminderOverrides,
@@ -663,35 +660,25 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
                         : 'bg-bg-tertiary border-border-subtle text-text-secondary'
                     }`}
                   >
-                    {canEditAttendees ? (
-                      <button
-                        onClick={() => toggleOptional(a.email)}
-                        className="hover:text-text-primary transition-colors"
-                        title={a.optional ? 'Click to mark as required' : 'Click to mark as optional'}
-                      >{a.email}</button>
-                    ) : (
-                      <span>{a.email}</span>
-                    )}
+                    <button
+                      onClick={() => toggleOptional(a.email)}
+                      className="hover:text-text-primary transition-colors"
+                      title={a.optional ? 'Click to mark as required' : 'Click to mark as optional'}
+                    >{a.email}</button>
                     {a.optional && <span className="text-[9px] text-text-muted font-normal">opt</span>}
-                    {canEditAttendees && (
-                      <button onClick={() => removeAttendee(a.email)} className="text-text-muted hover:text-text-primary text-xs leading-none ml-0.5">×</button>
-                    )}
+                    <button onClick={() => removeAttendee(a.email)} className="text-text-muted hover:text-text-primary text-xs leading-none ml-0.5">×</button>
                   </span>
                 ))}
-                {canEditAttendees ? (
-                  <input
-                    type="text"
-                    value={attendeeInput}
-                    onChange={e => handleAttendeeInputChange(e.target.value)}
-                    onKeyDown={handleAttendeeKeyDown}
-                    onBlur={() => { setTimeout(() => { setContactSuggestions([]); setSuggestionIdx(-1); }, 150); if (attendeeInput.trim()) addAttendee(attendeeInput); }}
-                    placeholder={attendees.length ? 'Add another…' : 'Add participants'}
-                    className="flex-1 min-w-[120px] bg-transparent border-none outline-none text-xs text-text-primary placeholder-text-muted/50 py-0.5"
-                    autoComplete="off"
-                  />
-                ) : (
-                  <span className="text-[10px] text-text-muted/60 italic py-0.5">Only the organizer can edit attendees</span>
-                )}
+                <input
+                  type="text"
+                  value={attendeeInput}
+                  onChange={e => handleAttendeeInputChange(e.target.value)}
+                  onKeyDown={handleAttendeeKeyDown}
+                  onBlur={() => { setTimeout(() => { setContactSuggestions([]); setSuggestionIdx(-1); }, 150); if (attendeeInput.trim()) addAttendee(attendeeInput); }}
+                  placeholder={attendees.length ? 'Add another…' : 'Add participants'}
+                  className="flex-1 min-w-[120px] bg-transparent border-none outline-none text-xs text-text-primary placeholder-text-muted/50 py-0.5"
+                  autoComplete="off"
+                />
               </div>
               {contactSuggestions.length > 0 && (
                 <div className="absolute left-0 right-0 top-full mt-1 bg-bg-secondary border border-border-subtle rounded-md shadow-lg z-50 overflow-hidden">
@@ -712,6 +699,11 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
               )}
             </div>
           </div>
+          {isGuestEditor && (
+            <p className="text-[10px] text-text-muted/60 italic mt-1.5 ml-7">
+              Guests will be invited but may need organizer approval
+            </p>
+          )}
         </div>
 
         {/* Find a time — shown when attendees are present */}
