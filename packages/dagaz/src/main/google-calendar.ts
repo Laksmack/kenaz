@@ -395,7 +395,7 @@ export class GoogleCalendarService {
       calendarId,
       eventId,
       requestBody,
-      sendUpdates: updates.attendees ? 'all' : 'none',
+      sendUpdates: 'all',
     });
 
     return this.parseGoogleEvent(res.data, calendarId);
