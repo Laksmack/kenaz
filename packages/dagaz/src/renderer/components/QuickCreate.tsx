@@ -215,6 +215,7 @@ function parseRrule(rule: string): { freq: string; interval: number; byDay: stri
 
 export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, calendars, defaultCalendarId, defaultStart, defaultEnd, defaultAttendees }: Props) {
   const isEditing = !!editingEvent;
+  const canEditAttendees = !isEditing || (editingEvent?.is_organizer ?? true);
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -370,7 +371,11 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
         start: allDay ? date : startD.toISOString(),
         end: allDay ? addDays(endDate, 1) : endD.toISOString(),
         all_day: allDay,
-        attendees: attendees.length > 0 ? attendees.map(a => a.optional ? { email: a.email, optional: true } : a.email) : [],
+        // Google Calendar silently ignores attendee changes from non-organizers.
+        // Only include attendees in the payload when we're the organizer.
+        ...(canEditAttendees ? {
+          attendees: attendees.length > 0 ? attendees.map(a => a.optional ? { email: a.email, optional: true } : a.email) : [],
+        } : {}),
         location: location || '',
         description: description || '',
         reminders: reminderOverrides,
@@ -656,25 +661,35 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
                         : 'bg-bg-tertiary border-border-subtle text-text-secondary'
                     }`}
                   >
-                    <button
-                      onClick={() => toggleOptional(a.email)}
-                      className="hover:text-text-primary transition-colors"
-                      title={a.optional ? 'Click to mark as required' : 'Click to mark as optional'}
-                    >{a.email}</button>
+                    {canEditAttendees ? (
+                      <button
+                        onClick={() => toggleOptional(a.email)}
+                        className="hover:text-text-primary transition-colors"
+                        title={a.optional ? 'Click to mark as required' : 'Click to mark as optional'}
+                      >{a.email}</button>
+                    ) : (
+                      <span>{a.email}</span>
+                    )}
                     {a.optional && <span className="text-[9px] text-text-muted font-normal">opt</span>}
-                    <button onClick={() => removeAttendee(a.email)} className="text-text-muted hover:text-text-primary text-xs leading-none ml-0.5">×</button>
+                    {canEditAttendees && (
+                      <button onClick={() => removeAttendee(a.email)} className="text-text-muted hover:text-text-primary text-xs leading-none ml-0.5">×</button>
+                    )}
                   </span>
                 ))}
-                <input
-                  type="text"
-                  value={attendeeInput}
-                  onChange={e => handleAttendeeInputChange(e.target.value)}
-                  onKeyDown={handleAttendeeKeyDown}
-                  onBlur={() => { setTimeout(() => { setContactSuggestions([]); setSuggestionIdx(-1); }, 150); if (attendeeInput.trim()) addAttendee(attendeeInput); }}
-                  placeholder={attendees.length ? 'Add another…' : 'Add participants'}
-                  className="flex-1 min-w-[120px] bg-transparent border-none outline-none text-xs text-text-primary placeholder-text-muted/50 py-0.5"
-                  autoComplete="off"
-                />
+                {canEditAttendees ? (
+                  <input
+                    type="text"
+                    value={attendeeInput}
+                    onChange={e => handleAttendeeInputChange(e.target.value)}
+                    onKeyDown={handleAttendeeKeyDown}
+                    onBlur={() => { setTimeout(() => { setContactSuggestions([]); setSuggestionIdx(-1); }, 150); if (attendeeInput.trim()) addAttendee(attendeeInput); }}
+                    placeholder={attendees.length ? 'Add another…' : 'Add participants'}
+                    className="flex-1 min-w-[120px] bg-transparent border-none outline-none text-xs text-text-primary placeholder-text-muted/50 py-0.5"
+                    autoComplete="off"
+                  />
+                ) : (
+                  <span className="text-[10px] text-text-muted/60 italic py-0.5">Only the organizer can edit attendees</span>
+                )}
               </div>
               {contactSuggestions.length > 0 && (
                 <div className="absolute left-0 right-0 top-full mt-1 bg-bg-secondary border border-border-subtle rounded-md shadow-lg z-50 overflow-hidden">
