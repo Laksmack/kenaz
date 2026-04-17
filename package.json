@@ -1,12 +1,14 @@
 {
   "name": "futhark",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Futhark — Elder Futhark-themed personal productivity suite",
   "author": "Martin Stenkilde",
   "license": "UNLICENSED",
   "private": true,
   "packageManager": "npm@10.9.2",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dist:all": "turbo run dist --filter=@futhark/kenaz --filter=@futhark/raido --filter=@futhark/laguz --filter=@futhark/dagaz"
   },

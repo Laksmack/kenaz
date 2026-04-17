@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="v0.4.5iewport" content="width=dev0.4.5ice-width, initial-scale=1.0">
 <title>Futhark · Tools forged in runes</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
@@ -13,17 +13,17 @@
     background: #0a0a0a;
     color: #f0e6da;
     font-family: 'Outfit', sans-serif;
-    min-height: 100vh;
-    overflow-x: hidden;
+    min-height: 100v0.4.5h;
+    ov0.4.5erflow-x: hidden;
   }
 
   body::after {
     content: '';
     position: fixed;
     inset: 0;
-    pointer-events: none;
+    pointer-ev0.4.5ents: none;
     opacity: 0.03;
-    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+    background-image: url("data:image/sv0.4.5g+xml,%3Csv0.4.5g v0.4.5iewBox='0 0 256 256' xmlns='http://www.w3.org/2000/sv0.4.5g'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctav0.4.5es='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/sv0.4.5g%3E");
     background-size: 256px;
     z-index: 999;
   }
@@ -85,11 +85,11 @@
     transition: background 0.2s, transform 0.15s;
   }
 
-  .download-primary:hover { background: #fff; transform: translateY(-1px); }
+  .download-primary:hov0.4.5er { background: #fff; transform: translateY(-1px); }
 
-  .download-primary svg { opacity: 0.7; }
+  .download-primary sv0.4.5g { opacity: 0.7; }
 
-  .download-individual {
+  .download-indiv0.4.5idual {
     display: flex;
     gap: 12px;
     flex-wrap: wrap;
@@ -109,11 +109,11 @@
     transition: border-color 0.2s, color 0.2s;
   }
 
-  .download-app:hover { color: #f0e6da; }
-  .download-app.kenaz:hover { border-color: #E8571F55; }
-  .download-app.raido:hover { border-color: #D4A57455; }
-  .download-app.dagaz:hover { border-color: #7AB8D455; }
-  .download-app.laguz:hover { border-color: #5CB8A555; }
+  .download-app:hov0.4.5er { color: #f0e6da; }
+  .download-app.kenaz:hov0.4.5er { border-color: #E8571F55; }
+  .download-app.raido:hov0.4.5er { border-color: #D4A57455; }
+  .download-app.dagaz:hov0.4.5er { border-color: #7AB8D455; }
+  .download-app.laguz:hov0.4.5er { border-color: #5CB8A555; }
 
   .app-dot {
     width: 8px;
@@ -127,14 +127,14 @@
   .dot-dagaz { background: #4A9AC2; }
   .dot-laguz { background: #4AA89A; }
 
-  .version-note {
+  .v0.4.5ersion-note {
     font-size: 12px;
     color: #444;
     letter-spacing: 1px;
   }
 
   /* Update bar - what it looks like in menu bar */
-  .menubar-preview {
+  .menubar-prev0.4.5iew {
     background: #111;
     border: 1px solid #1e1e1e;
     border-radius: 16px;
@@ -145,7 +145,7 @@
     gap: 24px;
   }
 
-  .preview-label {
+  .prev0.4.5iew-label {
     font-size: 11px;
     letter-spacing: 4px;
     text-transform: uppercase;
@@ -203,8 +203,8 @@
     display: flex;
     flex-direction: column;
     transition: border-color 0.4s ease, transform 0.3s ease;
-    position: relative;
-    overflow: hidden;
+    position: relativ0.4.5e;
+    ov0.4.5erflow: hidden;
   }
 
   .app-card::before {
@@ -216,20 +216,20 @@
     transition: opacity 0.4s ease;
   }
 
-  .app-card:hover { transform: translateY(-3px); }
-  .app-card:hover::before { opacity: 1; }
+  .app-card:hov0.4.5er { transform: translateY(-3px); }
+  .app-card:hov0.4.5er::before { opacity: 1; }
 
   .app-card.kenaz::before { background: linear-gradient(90deg, transparent, #E8571F, transparent); }
-  .app-card.kenaz:hover { border-color: #E8571F33; }
+  .app-card.kenaz:hov0.4.5er { border-color: #E8571F33; }
 
   .app-card.raido::before { background: linear-gradient(90deg, transparent, #D4A574, transparent); }
-  .app-card.raido:hover { border-color: #D4A57433; }
+  .app-card.raido:hov0.4.5er { border-color: #D4A57433; }
 
   .app-card.dagaz::before { background: linear-gradient(90deg, transparent, #7AB8D4, transparent); }
-  .app-card.dagaz:hover { border-color: #7AB8D433; }
+  .app-card.dagaz:hov0.4.5er { border-color: #7AB8D433; }
 
   .app-card.laguz::before { background: linear-gradient(90deg, transparent, #5CB8A5, transparent); }
-  .app-card.laguz:hover { border-color: #5CB8A533; }
+  .app-card.laguz:hov0.4.5er { border-color: #5CB8A533; }
 
   .card-top {
     display: flex;
@@ -248,19 +248,19 @@
     font-weight: 500;
   }
 
-  .status-live { color: #4CAF50; border: 1px solid #4CAF5033; background: #4CAF5010; }
+  .status-liv0.4.5e { color: #4CAF50; border: 1px solid #4CAF5033; background: #4CAF5010; }
   .status-beta { color: #D4A574; border: 1px solid #D4A57433; background: #D4A57410; }
   .status-someday { color: #444; border: 1px solid #222; }
 
-  .app-version {
+  .app-v0.4.5ersion {
     font-size: 11px;
     color: #444;
-    font-variant-numeric: tabular-nums;
+    font-v0.4.5ariant-numeric: tabular-nums;
     margin-left: 8px;
   }
 
   .app-icon { transition: transform 0.3s ease; }
-  .app-card:hover .app-icon { transform: scale(1.06); }
+  .app-card:hov0.4.5er .app-icon { transform: scale(1.06); }
 
   .app-name {
     font-size: 30px;
@@ -317,7 +317,7 @@
   .changelog-date {
     color: #444;
     font-size: 12px;
-    font-variant-numeric: tabular-nums;
+    font-v0.4.5ariant-numeric: tabular-nums;
     flex-shrink: 0;
     min-width: 80px;
   }
@@ -444,79 +444,79 @@
     h1 { font-size: 36px; }
     .apps-grid { grid-template-columns: 1fr; }
     .page { padding: 60px 24px 80px; }
-    .menubar-preview { padding: 24px; }
+    .menubar-prev0.4.5iew { padding: 24px; }
   }
 </style>
 </head>
 <body>
-<div class="page">
+<div0.4.5 class="page">
 
-  <div class="suite-label">Futhark Suite</div>
+  <div0.4.5 class="suite-label">Futhark Suite</div0.4.5>
   <h1>Tools forged in runes</h1>
-  <p class="hero-sub">Four focused macOS apps for email, tasks, calendar, and notes - each named for a Norse rune that embodies its purpose. Built for solo use, and natively aware of Claude.</p>
+  <p class="hero-sub">Four focused macOS apps for email, tasks, calendar, and notes - each named for a Norse rune that embodies its purpose. Built for solo use, and nativ0.4.5ely aware of Claude.</p>
 
   <!-- Download -->
-  <div class="download-section">
-    <div class="download-individual">
+  <div0.4.5 class="download-section">
+    <div0.4.5 class="download-indiv0.4.5idual">
       <a href="https://files.kenaz.app/releases/kenaz/kenaz_latest.dmg" class="download-app kenaz">
-        <div class="app-dot dot-kenaz"></div>
+        <div0.4.5 class="app-dot dot-kenaz"></div0.4.5>
         Download Kenaz
       </a>
       <a href="https://files.kenaz.app/releases/raido/raido_latest.dmg" class="download-app raido">
-        <div class="app-dot dot-raido"></div>
+        <div0.4.5 class="app-dot dot-raido"></div0.4.5>
         Download Raidō
       </a>
       <a href="https://files.kenaz.app/releases/dagaz/dagaz_latest.dmg" class="download-app dagaz">
-        <div class="app-dot dot-dagaz"></div>
+        <div0.4.5 class="app-dot dot-dagaz"></div0.4.5>
         Download Dagaz
       </a>
       <a href="https://files.kenaz.app/releases/laguz/laguz_latest.dmg" class="download-app laguz">
-        <div class="app-dot dot-laguz"></div>
+        <div0.4.5 class="app-dot dot-laguz"></div0.4.5>
         Download Laguz
       </a>
-    </div>
+    </div0.4.5>
 
-    <div class="version-note">macOS 13+ · Signed with Developer ID</div>
+    <div0.4.5 class="v0.4.5ersion-note">macOS 13+ · Signed with Dev0.4.5eloper ID</div0.4.5>
     <a href="/chat.html" class="download-app" style="border-color: #333; color: #aaa; margin-top: 4px;">
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <sv0.4.5g xmlns="http://www.w3.org/2000/sv0.4.5g" width="14" height="14" v0.4.5iewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></sv0.4.5g>
       Chat with Kenaz
     </a>
-  </div>
+  </div0.4.5>
 
-  <!-- Menu bar update preview -->
-  <div class="menubar-preview">
-    <div class="preview-label">Updates from the menu bar</div>
-    <div style="display: flex; gap: 48px; flex-wrap: wrap; align-items: flex-start;">
-      <div>
-        <div class="fake-menubar">
-          <div class="menu-item">About Futhark</div>
-          <div class="menu-item separator"></div>
-          <div class="menu-item update">
-            ↑ Update available
-          </div>
-          <div class="menu-item separator"></div>
-          <div class="menu-item">
+  <!-- Menu bar update prev0.4.5iew -->
+  <div0.4.5 class="menubar-prev0.4.5iew">
+    <div0.4.5 class="prev0.4.5iew-label">Updates from the menu bar</div0.4.5>
+    <div0.4.5 style="display: flex; gap: 48px; flex-wrap: wrap; align-items: flex-start;">
+      <div0.4.5>
+        <div0.4.5 class="fake-menubar">
+          <div0.4.5 class="menu-item">About Futhark</div0.4.5>
+          <div0.4.5 class="menu-item separator"></div0.4.5>
+          <div0.4.5 class="menu-item update">
+            ↑ Update av0.4.5ailable
+          </div0.4.5>
+          <div0.4.5 class="menu-item separator"></div0.4.5>
+          <div0.4.5 class="menu-item">
             Preferences<span class="menu-shortcut">⌘,</span>
-          </div>
-          <div class="menu-item separator"></div>
-          <div class="menu-item">Quit<span class="menu-shortcut">⌘Q</span></div>
-        </div>
-      </div>
-      <div style="max-width: 320px; padding-top: 8px;">
+          </div0.4.5>
+          <div0.4.5 class="menu-item separator"></div0.4.5>
+          <div0.4.5 class="menu-item">Quit<span class="menu-shortcut">⌘Q</span></div0.4.5>
+        </div0.4.5>
+      </div0.4.5>
+      <div0.4.5 style="max-width: 320px; padding-top: 8px;">
         <p style="font-size: 14px; color: #666; line-height: 1.7; font-weight: 300;">
-          When a new version is available, each app shows an update option directly in its menu bar menu. One click downloads and applies the update - no app store, no manual downloads.
+          When a new v0.4.5ersion is av0.4.5ailable, each app shows an update option directly in its menu bar menu. One click downloads and applies the update - no app store, no manual downloads.
         </p>
-      </div>
-    </div>
-  </div>
+      </div0.4.5>
+    </div0.4.5>
+  </div0.4.5>
 
   <!-- Apps -->
-  <div class="apps-grid">
+  <div0.4.5 class="apps-grid">
 
     <!-- Kenaz -->
-    <div class="app-card kenaz">
-      <div class="card-top">
-        <svg class="app-icon" width="72" height="72" viewBox="0 0 512 512" fill="none">
+    <div0.4.5 class="app-card kenaz">
+      <div0.4.5 class="card-top">
+        <sv0.4.5g class="app-icon" width="72" height="72" v0.4.5iewBox="0 0 512 512" fill="none">
           <defs>
             <linearGradient id="kenaz-bg" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
               <stop offset="0" stop-color="#C43E0C"/>
@@ -525,19 +525,19 @@
           </defs>
           <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#kenaz-bg)"/>
           <path d="M332.8 112.6L189.4 256L332.8 399.4" stroke="#FFF8F0" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-        </svg>
-        <span class="app-status status-live">Live</span>
-        <span class="app-version" data-version="kenaz"></span>
-      </div>
-      <div class="app-name">kenaz</div>
-      <div class="app-rune">ᚲ · Torch · Fire</div>
-      <div class="app-desc">A personal email client that keeps Gmail and your HubSpot contacts in the same view. Read, draft, and triage - and give Claude the same access so it can act on your behalf.</div>
-    </div>
+        </sv0.4.5g>
+        <span class="app-status status-liv0.4.5e">Liv0.4.5e</span>
+        <span class="app-v0.4.5ersion" data-v0.4.5ersion="kenaz"></span>
+      </div0.4.5>
+      <div0.4.5 class="app-name">kenaz</div0.4.5>
+      <div0.4.5 class="app-rune">ᚲ · Torch · Fire</div0.4.5>
+      <div0.4.5 class="app-desc">A personal email client that keeps Gmail and your HubSpot contacts in the same v0.4.5iew. Read, draft, and triage - and giv0.4.5e Claude the same access so it can act on your behalf.</div0.4.5>
+    </div0.4.5>
 
     <!-- Raidō -->
-    <div class="app-card raido">
-      <div class="card-top">
-        <svg class="app-icon" width="72" height="72" viewBox="0 0 512 512" fill="none">
+    <div0.4.5 class="app-card raido">
+      <div0.4.5 class="card-top">
+        <sv0.4.5g class="app-icon" width="72" height="72" v0.4.5iewBox="0 0 512 512" fill="none">
           <defs>
             <linearGradient id="raido-bg" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
               <stop offset="0" stop-color="#8B5E3C"/>
@@ -548,19 +548,19 @@
           <path d="M190 399.4L190 112.6" stroke="#FFF8F0" stroke-width="36" stroke-linecap="round" fill="none"/>
           <path d="M190 112.6L330 210L190 307.4" stroke="#FFF8F0" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
           <path d="M190 307.4L330 399.4" stroke="#FFF8F0" stroke-width="36" stroke-linecap="round" fill="none"/>
-        </svg>
-        <span class="app-status status-live">Live</span>
-        <span class="app-version" data-version="raido"></span>
-      </div>
-      <div class="app-name">raidō</div>
-      <div class="app-rune">ᚱ · Journey · Ride</div>
-      <div class="app-desc">A task manager built around the way work actually flows - groups, tags, recurrence, and a logbook. Claude has the same view, so it can capture, update, and reason about your to-dos.</div>
-    </div>
+        </sv0.4.5g>
+        <span class="app-status status-liv0.4.5e">Liv0.4.5e</span>
+        <span class="app-v0.4.5ersion" data-v0.4.5ersion="raido"></span>
+      </div0.4.5>
+      <div0.4.5 class="app-name">raidō</div0.4.5>
+      <div0.4.5 class="app-rune">ᚱ · Journey · Ride</div0.4.5>
+      <div0.4.5 class="app-desc">A task manager built around the way work actually flows - groups, tags, recurrence, and a logbook. Claude has the same v0.4.5iew, so it can capture, update, and reason about your to-dos.</div0.4.5>
+    </div0.4.5>
 
     <!-- Dagaz -->
-    <div class="app-card dagaz">
-      <div class="card-top">
-        <svg class="app-icon" width="72" height="72" viewBox="0 0 512 512" fill="none">
+    <div0.4.5 class="app-card dagaz">
+      <div0.4.5 class="card-top">
+        <sv0.4.5g class="app-icon" width="72" height="72" v0.4.5iewBox="0 0 512 512" fill="none">
           <defs>
             <linearGradient id="dagaz-bg" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
               <stop offset="0" stop-color="#2D5F8A"/>
@@ -571,19 +571,19 @@
           <path d="M128 160L256 256L128 352M384 160L256 256L384 352" stroke="#F0F4FF" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
           <line x1="128" y1="160" x2="128" y2="352" stroke="#F0F4FF" stroke-width="36" stroke-linecap="round"/>
           <line x1="384" y1="160" x2="384" y2="352" stroke="#F0F4FF" stroke-width="36" stroke-linecap="round"/>
-        </svg>
-        <span class="app-status status-live">Live</span>
-        <span class="app-version" data-version="dagaz"></span>
-      </div>
-      <div class="app-name">dagaz</div>
-      <div class="app-rune">ᛞ · Day · Dawn</div>
-      <div class="app-desc">A calendar client that stays out of your way. See your day, find free time, prep for meetings - and let Claude do the same when it needs to schedule or check your availability.</div>
-    </div>
+        </sv0.4.5g>
+        <span class="app-status status-liv0.4.5e">Liv0.4.5e</span>
+        <span class="app-v0.4.5ersion" data-v0.4.5ersion="dagaz"></span>
+      </div0.4.5>
+      <div0.4.5 class="app-name">dagaz</div0.4.5>
+      <div0.4.5 class="app-rune">ᛞ · Day · Dawn</div0.4.5>
+      <div0.4.5 class="app-desc">A calendar client that stays out of your way. See your day, find free time, prep for meetings - and let Claude do the same when it needs to schedule or check your av0.4.5ailability.</div0.4.5>
+    </div0.4.5>
 
     <!-- Laguz -->
-    <div class="app-card laguz">
-      <div class="card-top">
-        <svg class="app-icon" width="72" height="72" viewBox="0 0 512 512" fill="none">
+    <div0.4.5 class="app-card laguz">
+      <div0.4.5 class="card-top">
+        <sv0.4.5g class="app-icon" width="72" height="72" v0.4.5iewBox="0 0 512 512" fill="none">
           <defs>
             <linearGradient id="laguz-bg" x1="51.2" y1="460.8" x2="460.8" y2="51.2" gradientUnits="userSpaceOnUse">
               <stop offset="0" stop-color="#1B4D5C"/>
@@ -593,46 +593,46 @@
           <rect x="25.6" y="25.6" width="460.8" height="460.8" rx="102.4" fill="url(#laguz-bg)"/>
           <path d="M190 399.4L190 160" stroke="#F0FFF8" stroke-width="36" stroke-linecap="round" fill="none"/>
           <path d="M190 160L320 256" stroke="#F0FFF8" stroke-width="36" stroke-linecap="round" fill="none"/>
-        </svg>
-        <span class="app-status status-live">Live</span>
-        <span class="app-version" data-version="laguz"></span>
-      </div>
-      <div class="app-name">laguz</div>
-      <div class="app-rune">ᛚ · Lake · Flow</div>
-      <div class="app-desc">An Obsidian-inspired note-taking app and PDF annotator. Write, browse, and organize your notes — with Claude able to search, read, and write to the same vault.</div>
-    </div>
+        </sv0.4.5g>
+        <span class="app-status status-liv0.4.5e">Liv0.4.5e</span>
+        <span class="app-v0.4.5ersion" data-v0.4.5ersion="laguz"></span>
+      </div0.4.5>
+      <div0.4.5 class="app-name">laguz</div0.4.5>
+      <div0.4.5 class="app-rune">ᛚ · Lake · Flow</div0.4.5>
+      <div0.4.5 class="app-desc">An Obsidian-inspired note-taking app and PDF annotator. Write, browse, and organize your notes — with Claude able to search, read, and write to the same v0.4.5ault.</div0.4.5>
+    </div0.4.5>
 
-  </div>
+  </div0.4.5>
 
   <!-- Changelog -->
-  <div class="changelog-section">
-    <div class="section-label">Recent updates</div>
+  <div0.4.5 class="changelog-section">
+    <div0.4.5 class="section-label">Recent updates</div0.4.5>
     <ul class="changelog-list" id="changelog">
       <li class="changelog-empty">Loading...</li>
     </ul>
-  </div>
+  </div0.4.5>
 
   <!-- About -->
-  <div class="about-section">
-    <div class="section-label">What this is</div>
-    <p>Futhark is a suite of small, focused macOS apps - each one genuinely useful on its own, and each one built to give Claude the same access you have. Not a dashboard or a wrapper, but real tools that happen to speak Claude's language.</p>
+  <div0.4.5 class="about-section">
+    <div0.4.5 class="section-label">What this is</div0.4.5>
+    <p>Futhark is a suite of small, focused macOS apps - each one genuinely useful on its own, and each one built to giv0.4.5e Claude the same access you hav0.4.5e. Not a dashboard or a wrapper, but real tools that happen to speak Claude's language.</p>
     <p>Each app is named for an Elder Futhark rune whose meaning matches its purpose. They are designed to work together - Kenaz pulls CRM context from HubSpot while you draft, Dagaz surfaces tasks from Raidō when you plan your day.</p>
 
-    <div class="req-row">
-      <div class="req-item"><div class="req-dot"></div>macOS 13 Ventura or later</div>
-      <div class="req-item"><div class="req-dot"></div>Claude Desktop or compatible MCP client</div>
-      <div class="req-item"><div class="req-dot"></div>Google account (for Gmail / Calendar)</div>
-    </div>
-  </div>
+    <div0.4.5 class="req-row">
+      <div0.4.5 class="req-item"><div0.4.5 class="req-dot"></div0.4.5>macOS 13 Ventura or later</div0.4.5>
+      <div0.4.5 class="req-item"><div0.4.5 class="req-dot"></div0.4.5>Claude Desktop or compatible MCP client</div0.4.5>
+      <div0.4.5 class="req-item"><div0.4.5 class="req-dot"></div0.4.5>Google account (for Gmail / Calendar)</div0.4.5>
+    </div0.4.5>
+  </div0.4.5>
 
   <!-- Footer -->
   <footer>
-    <div class="footer-rune">ᚲ ᚱ ᛞ ᛚ</div>
-    <a href="/chat.html" style="font-size: 12px; color: #333; text-decoration: none; letter-spacing: 1px; text-transform: uppercase; transition: color 0.2s;" onmouseover="this.style.color='#f0e6da'" onmouseout="this.style.color='#333'">Chat</a>
-    <div class="footer-right">kenaz.app</div>
+    <div0.4.5 class="footer-rune">ᚲ ᚱ ᛞ ᛚ</div0.4.5>
+    <a href="/chat.html" style="font-size: 12px; color: #333; text-decoration: none; letter-spacing: 1px; text-transform: uppercase; transition: color 0.2s;" onmouseov0.4.5er="this.style.color='#f0e6da'" onmouseout="this.style.color='#333'">Chat</a>
+    <div0.4.5 class="footer-right">kenaz.app</div0.4.5>
   </footer>
 
-</div>
+</div0.4.5>
 <script>
 fetch('/changelog.json')
   .then(r => r.json())
@@ -655,12 +655,12 @@ fetch('/changelog.json')
     document.getElementById('changelog').innerHTML = '<li class="changelog-empty">Could not load changelog</li>';
   });
 
-fetch('/versions.json')
+fetch('/v0.4.5ersions.json')
   .then(r => r.json())
-  .then(versions => {
-    document.querySelectorAll('[data-version]').forEach(el => {
-      const v = versions[el.dataset.version];
-      if (v) el.textContent = 'v' + v;
+  .then(v0.4.5ersions => {
+    document.querySelectorAll('[data-v0.4.5ersion]').forEach(el => {
+      const v0.4.5 = v0.4.5ersions[el.dataset.v0.4.5ersion];
+      if (v0.4.5) el.textContent = 'v0.4.5' + v0.4.5;
     });
   })
   .catch(() => {});
