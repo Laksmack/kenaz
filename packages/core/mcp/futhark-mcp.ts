@@ -762,6 +762,21 @@ server.tool(
       method: 'POST',
       body: JSON.stringify(eventData),
     });
+
+    // Google Calendar doesn't auto-accept for the organizer when an event is
+    // created via the API, so RSVP 'accepted' on their behalf.
+    if (data?.id && data.is_organizer && data.attendees?.length > 0 && data.self_response !== 'accepted') {
+      try {
+        await api('dagaz', `/api/events/${encodeURIComponent(data.id)}/rsvp`, {
+          method: 'POST',
+          body: JSON.stringify({ response: 'accepted' }),
+        });
+        data.self_response = 'accepted';
+        const selfAttendee = data.attendees.find((a: any) => a.is_self);
+        if (selfAttendee) selfAttendee.response_status = 'accepted';
+      } catch { /* non-fatal: event was created successfully */ }
+    }
+
     return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
   }
 );
