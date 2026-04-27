@@ -948,16 +948,6 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
   // Newest message shows everything by default; older messages collapse quotes
   const [showQuoted, setShowQuoted] = useState(isNewest);
 
-  // Track theme so iframe re-renders when it changes
-  const [currentTheme, setCurrentTheme] = useState(document.documentElement.dataset.theme || 'dark');
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setCurrentTheme(document.documentElement.dataset.theme || 'dark');
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => observer.disconnect();
-  }, []);
-
   useEffect(() => {
     if (!iframeRef.current) return;
 
@@ -979,36 +969,20 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
       return `url(${quote}https://`;
     });
 
-    const isDark = document.documentElement.dataset.theme !== 'light';
-
-    const darkStyles = `
-          html { color-scheme: dark; }
-          html, body { color: #e2e8f0 !important; background: transparent !important; }
-          * { color: inherit !important; border-color: #334155 !important; }
-          div, td:not([style*="background"]), th:not([style*="background"]),
-          table, tr, tbody, thead,
-          p, span, li, ul, ol, h1, h2, h3, h4, h5, h6,
-          section, article, header, footer, main, aside, nav {
-            background-color: transparent !important;
-            background-image: none !important;
-          }
-          a:not([style*="background"]),
-          a:not([style*="background"]) * { color: #5b8def !important; }
-          td[style*="background-color"] a:not([style*="background"]) { color: #5b8def !important; }
-          blockquote { border-left: 3px solid #334155 !important; color: #94a3b8 !important; }
-          pre, code { background: #1e293b !important; }
-          hr { border-color: #334155 !important; }
-    `;
-
-    const lightStyles = `
+    // Always use a light reading pane inside the iframe (Mail / Gmail web style):
+    // dark app chrome + message rendered as-authored on white. Recoloring HTML with
+    // * { color: inherit }, stripping backgrounds, or blindly restoring inline colors
+    // breaks newsletters, Gemini/Calendly blocks, and CTAs.
+    const readingPaneBase = `
           html { color-scheme: light; }
-          html, body { color: #1c1917 !important; background: transparent !important; }
-          /* No !important — marketing CTAs use inline color:#fff on dark backgrounds; !important
-             forced blue-on-teal and looked like a blank button. */
+          html, body {
+            color: #1c1917;
+            background: #ffffff !important;
+          }
           a { color: #2563eb; }
-          blockquote { border-left: 3px solid #d6d3d1 !important; color: #57534e !important; }
-          pre, code { background: #f5f5f4 !important; }
-          hr { border-color: #e7e5e4 !important; }
+          blockquote { border-left: 3px solid #d6d3d1; color: #57534e; }
+          pre, code { background: #f5f5f4; }
+          hr { border-color: #e7e5e4; }
     `;
 
     doc.open();
@@ -1026,83 +1000,21 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
             padding: 0;
             word-wrap: break-word;
             overflow-wrap: break-word;
-            overflow: hidden;
           }
-          img { max-width: 100% !important; height: auto !important; width: auto !important; }
-          /* max-width only — width:auto !important broke fixed-width (e.g. 600px) newsletter layouts */
-          table { max-width: 100% !important; }
-          /* overflow:hidden on every cell clipped bulletproof buttons; clip horizontally only */
-          div, td, th { max-width: 100% !important; overflow-x: hidden; }
           body { overflow-x: hidden !important; }
+          img { max-width: 100% !important; height: auto !important; width: auto !important; }
+          table { max-width: 100% !important; }
           blockquote { margin: 8px 0; padding-left: 12px; }
           pre, code { border-radius: 4px; padding: 2px 4px; font-size: 13px; }
           pre { padding: 12px; overflow-x: auto; }
           .kenaz-quoted { display: ${showQuoted ? 'block' : 'none'}; }
-          ${isDark ? darkStyles : lightStyles}
+          ${readingPaneBase}
         </style>
       </head>
       <body>${bodyHtml}</body>
       </html>
     `);
     doc.close();
-
-    // ── Dark-mode color adaptation ──────────────────────────────
-    // The CSS dark-mode rules force all text to light (via * { color:
-    // inherit }) and strip most backgrounds to transparent. This is
-    // correct for plain-text emails on a dark body, but breaks emails
-    // that use inline backgrounds (Google Calendar invites, marketing
-    // emails, Olga reports) — the light background is preserved but
-    // text is forced white, creating light-on-light.
-    //
-    // Fix: after render, find elements with light inline backgrounds
-    // and force dark text on them. Re-apply any explicit inline colors
-    // on their children so links / colored spans aren't clobbered.
-    // This is the same strategy Apple Mail and Gmail use for dark mode.
-    if (isDark) {
-      const isLight = (cssColor: string): boolean => {
-        if (!cssColor || cssColor === 'transparent' || cssColor === 'rgba(0, 0, 0, 0)') return false;
-        const m = cssColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-        if (!m) return false;
-        const lum = (0.299 * +m[1] + 0.587 * +m[2] + 0.114 * +m[3]) / 255;
-        return lum > 0.55;
-      };
-
-      doc.querySelectorAll('[style]').forEach((el: Element) => {
-        const htmlEl = el as HTMLElement;
-        const styleAttr = htmlEl.getAttribute('style') || '';
-        if (!/background/i.test(styleAttr)) return;
-
-        const bg = doc.defaultView?.getComputedStyle(htmlEl).backgroundColor;
-        if (!bg || !isLight(bg)) return;
-
-        // This element has a light background — force dark text so
-        // content is readable, overriding the CSS * { color: inherit }.
-        htmlEl.style.setProperty('color', '#1a1a1a', 'important');
-
-        // Re-apply original inline colors on children that had them
-        // (links, colored spans) so they aren't clobbered by the
-        // dark-text cascade we just set.
-        htmlEl.querySelectorAll('[style]').forEach((child: Element) => {
-          const childEl = child as HTMLElement;
-          const childStyle = childEl.getAttribute('style') || '';
-          const colorMatch = childStyle.match(/(?:^|;)\s*color\s*:\s*([^;!]+)/i);
-          if (colorMatch) {
-            childEl.style.setProperty('color', colorMatch[1].trim(), 'important');
-          }
-        });
-      });
-
-      // Restore any inline author colors (e.g. white CTA text) clobbered by * { color: inherit
-      // !important } and link tint rules. Runs after light-bg fixes so intentional overrides win.
-      doc.querySelectorAll('[style*="color"]').forEach((el: Element) => {
-        const htmlEl = el as HTMLElement;
-        const styleAttr = htmlEl.getAttribute('style') || '';
-        const colorMatch = styleAttr.match(/(?:^|;)\s*color\s*:\s*([^;!]+)/i);
-        if (colorMatch) {
-          htmlEl.style.setProperty('color', colorMatch[1].trim(), 'important');
-        }
-      });
-    }
 
     // Collapse quoted/forwarded content:
     // Gmail wraps quoted text in .gmail_quote, .gmail_extra, or blockquote
@@ -1219,7 +1131,7 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
       if (resizeObserver) resizeObserver.disconnect();
       doc.removeEventListener('keydown', bridgeKeydown);
     };
-  }, [message.body, showQuoted, currentTheme]);
+  }, [message.body, showQuoted]);
 
   // Detect if this message has quoted content (for showing the toggle)
   const hasQuotedContent = /gmail_quote|gmail_extra|blockquote.*?type="cite"|Forwarded message|On .+ wrote:/i.test(message.body);
@@ -1270,7 +1182,7 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
           className="w-full border-0"
           sandbox="allow-same-origin"
           scrolling="no"
-          style={{ minHeight: '60px', background: 'transparent', overflow: 'hidden' }}
+          style={{ minHeight: '60px', background: '#ffffff', overflow: 'hidden' }}
           title={`Email from ${message.from.email}`}
         />
       </div>
