@@ -961,14 +961,16 @@ export default function App() {
 
   const handleSearch = useCallback((query: string) => {
     const trimmed = query.trim();
-    setSearchQuery(trimmed);
-    if (trimmed) {
-      setCurrentView('search');
-    } else {
+    // Keep raw query in state so spaces work while typing; useEmails trims for the API.
+    if (!trimmed) {
+      setSearchQuery('');
       setCurrentView('inbox');
       setSelectedThread(null);
       setSelectedIds(new Set());
+      return;
     }
+    setSearchQuery(query);
+    setCurrentView('search');
   }, []);
 
   const handleClearSearch = useCallback(() => {

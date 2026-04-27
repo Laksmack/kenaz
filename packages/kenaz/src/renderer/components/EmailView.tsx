@@ -1003,7 +1003,9 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
     const lightStyles = `
           html { color-scheme: light; }
           html, body { color: #1c1917 !important; background: transparent !important; }
-          a, a * { color: #2563eb !important; }
+          /* No !important — marketing CTAs use inline color:#fff on dark backgrounds; !important
+             forced blue-on-teal and looked like a blank button. */
+          a { color: #2563eb; }
           blockquote { border-left: 3px solid #d6d3d1 !important; color: #57534e !important; }
           pre, code { background: #f5f5f4 !important; }
           hr { border-color: #e7e5e4 !important; }
@@ -1027,8 +1029,10 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
             overflow: hidden;
           }
           img { max-width: 100% !important; height: auto !important; width: auto !important; }
-          table { max-width: 100% !important; width: auto !important; }
-          div, td, th { max-width: 100% !important; overflow: hidden; }
+          /* max-width only — width:auto !important broke fixed-width (e.g. 600px) newsletter layouts */
+          table { max-width: 100% !important; }
+          /* overflow:hidden on every cell clipped bulletproof buttons; clip horizontally only */
+          div, td, th { max-width: 100% !important; overflow-x: hidden; }
           body { overflow-x: hidden !important; }
           blockquote { margin: 8px 0; padding-left: 12px; }
           pre, code { border-radius: 4px; padding: 2px 4px; font-size: 13px; }
@@ -1086,6 +1090,17 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
             childEl.style.setProperty('color', colorMatch[1].trim(), 'important');
           }
         });
+      });
+
+      // Restore any inline author colors (e.g. white CTA text) clobbered by * { color: inherit
+      // !important } and link tint rules. Runs after light-bg fixes so intentional overrides win.
+      doc.querySelectorAll('[style*="color"]').forEach((el: Element) => {
+        const htmlEl = el as HTMLElement;
+        const styleAttr = htmlEl.getAttribute('style') || '';
+        const colorMatch = styleAttr.match(/(?:^|;)\s*color\s*:\s*([^;!]+)/i);
+        if (colorMatch) {
+          htmlEl.style.setProperty('color', colorMatch[1].trim(), 'important');
+        }
       });
     }
 
