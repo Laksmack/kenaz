@@ -93,7 +93,7 @@ function cleanSnippet(text: string): string {
 interface ContextMenuAction {
   label: string;
   icon?: string;
-  onClick: () => void;
+  onClick: () => void | Promise<void>;
   danger?: boolean;
   separator?: boolean;
 }
@@ -113,6 +113,7 @@ interface Props {
   linearEnabled?: boolean;
   views?: View[];
   onArchive?: (threadId: string) => void;
+  onSpam?: (threadId: string) => void | Promise<void>;
   onLabel?: (threadId: string, label: string) => void;
   onStar?: (threadId: string) => void;
   onCreateRule?: (senderEmail: string, senderName: string) => void;
@@ -120,7 +121,7 @@ interface Props {
   userDisplayName?: string;
 }
 
-export function EmailList({ threads, selectedId, selectedIds, loading, loadingMore, hasMore, onSelect, onMultiSelect, onLoadMore, currentView, userEmail, linearEnabled = false, userDisplayName, views = [], onArchive, onLabel, onStar, onCreateRule, onDoubleClick }: Props) {
+export function EmailList({ threads, selectedId, selectedIds, loading, loadingMore, hasMore, onSelect, onMultiSelect, onLoadMore, currentView, userEmail, linearEnabled = false, userDisplayName, views = [], onArchive, onSpam, onLabel, onStar, onCreateRule, onDoubleClick }: Props) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; thread: EmailThread } | null>(null);
   const [dueDatePicker, setDueDatePicker] = useState<{ x: number; y: number; ctx: EmailContext } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -294,6 +295,22 @@ export function EmailList({ threads, selectedId, selectedIds, loading, loadingMo
         onMultiSelect(new Set());
       },
     });
+
+    const canSpam = currentView !== 'drafts'
+      && targetIds.every((id) => {
+        const t = threads.find((x) => x.id === id);
+        return t && !t.labels.includes('SPAM') && !t.labels.includes('DRAFT');
+      });
+    if (canSpam && onSpam) {
+      actions.push({
+        label: `Report spam${plural}`,
+        icon: '🚫',
+        onClick: async () => {
+          for (const id of targetIds) await onSpam(id);
+          onMultiSelect(new Set());
+        },
+      });
+    }
 
     // Star/Unstar (only for single thread)
     if (count === 1) {

@@ -216,6 +216,19 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
     }
   });
 
+  app.post('/api/spam/:id', async (req, res) => {
+    try {
+      const id = req.params.id;
+      cs()?.markThreadDone(id);
+      cs()?.updateThreadLabels(id, ['SPAM'], ['INBOX', 'UNREAD']);
+      await g().reportSpamThread(id);
+      notifyThreadsUpdated();
+      res.json({ success: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.delete('/api/thread/:id', async (req, res) => {
     try {
       await g().trashThread(req.params.id);
@@ -640,6 +653,9 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
         },
         '/api/archive/{id}': {
           post: { summary: 'Archive a thread (remove from inbox)', operationId: 'archiveThread', tags: ['Gmail'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Success' } } },
+        },
+        '/api/spam/{id}': {
+          post: { summary: 'Report spam (add SPAM, remove from Inbox)', operationId: 'reportSpamThread', tags: ['Gmail'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' }, description: 'Thread ID' }], responses: { '200': { description: 'Success' } } },
         },
         '/api/thread/{id}': {
           delete: { summary: 'Trash a thread', operationId: 'trashThread', tags: ['Gmail'], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }], responses: { '200': { description: 'Success' } } },

@@ -683,6 +683,19 @@ export class GmailService {
     });
   }
 
+  /** Gmail "Report spam": move to Spam (adds SPAM, removes from Inbox and unread). */
+  async reportSpamThread(threadId: string): Promise<void> {
+    if (!this.gmail) throw new Error('Not authenticated');
+    await this.gmail.users.threads.modify({
+      userId: 'me',
+      id: threadId,
+      requestBody: {
+        addLabelIds: ['SPAM'],
+        removeLabelIds: ['INBOX', 'UNREAD'],
+      },
+    });
+  }
+
   async trashThread(threadId: string): Promise<void> {
     if (!this.gmail) throw new Error('Not authenticated');
     await this.gmail.users.threads.trash({

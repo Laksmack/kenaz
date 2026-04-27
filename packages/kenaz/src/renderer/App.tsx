@@ -100,6 +100,7 @@ export default function App() {
     refresh,
     loadMore,
     archiveThread,
+    reportSpamThread,
     removeThread,
     labelThread,
     markRead,
@@ -622,6 +623,50 @@ export default function App() {
     });
   }, [getTargetThreads, threads, archiveThread, labelThread, markRead, currentView, views, refresh, getManagedLabels, addUndo, selectedThread]);
 
+  const handleSpam = useCallback(async () => {
+    const targets = getTargetThreads();
+    if (targets.length === 0) return;
+    if (currentView === 'drafts') return;
+    if (targets.some((t) => t.labels.includes('DRAFT') || t.labels.includes('SPAM'))) return;
+
+    const targetIds = targets.map((t) => t.id);
+    const viewAtSpam = currentView;
+    const managedLabels = getManagedLabels();
+
+    if (selectedThread && targetIds.includes(selectedThread.id)) {
+      const idx = threads.findIndex((t) => t.id === selectedThread.id);
+      const nextThread = findNextThread(idx, targetIds);
+      pendingSelectIdRef.current = nextThread?.id ?? null;
+      setSelectedThread(nextThread);
+    }
+    setSelectedIds(new Set());
+
+    for (const t of targets) {
+      if (t.isUnread) await markRead(t.id);
+      for (const label of managedLabels) {
+        if (t.labels.includes(label)) {
+          await labelThread(t.id, null, label);
+        }
+      }
+      await reportSpamThread(t.id);
+    }
+
+    const undoMsg = targets.length === 1
+      ? `"${targets[0].subject.slice(0, 40)}${targets[0].subject.length > 40 ? '…' : ''}" marked as spam`
+      : `${targets.length} conversations marked as spam`;
+    addUndo(undoMsg, () => {
+      for (const id of targetIds) {
+        labelThread(id, 'INBOX', 'SPAM');
+        const viewDef = views.find((v) => v.id === viewAtSpam);
+        const labelMatch = viewDef?.query.match(/^label:(\S+)$/);
+        if (labelMatch) {
+          labelThread(id, labelMatch[1], null);
+        }
+      }
+      setTimeout(() => refresh(), 500);
+    });
+  }, [getTargetThreads, threads, reportSpamThread, labelThread, markRead, currentView, views, refresh, getManagedLabels, addUndo, selectedThread, findNextThread]);
+
   const handleLabel = useCallback(async (label: string) => {
     const targets = getTargetThreads();
     if (targets.length === 0) return;
@@ -1005,6 +1050,25 @@ export default function App() {
     await archiveThread(threadId);
   }, [archiveThread, labelThread, markRead, getManagedLabels, selectedThread, threads, findNextThread]);
 
+  const handleContextSpam = useCallback(async (threadId: string) => {
+    if (currentView === 'drafts') return;
+    const thread = threads.find((t) => t.id === threadId);
+    if (!thread || thread.labels.includes('SPAM') || thread.labels.includes('DRAFT')) return;
+    if (thread.isUnread) await markRead(threadId);
+    for (const label of getManagedLabels()) {
+      if (thread.labels.includes(label)) {
+        await labelThread(threadId, null, label);
+      }
+    }
+    if (selectedThread?.id === threadId) {
+      const idx = threads.findIndex((t) => t.id === threadId);
+      const next = findNextThread(idx, [threadId]);
+      pendingSelectIdRef.current = next?.id ?? null;
+      setSelectedThread(next);
+    }
+    await reportSpamThread(threadId);
+  }, [currentView, reportSpamThread, labelThread, markRead, getManagedLabels, selectedThread, threads, findNextThread]);
+
   const handleContextLabel = useCallback(async (threadId: string, label: string) => {
     // Mark as read
     const thread = threads.find((t) => t.id === threadId);
@@ -1220,6 +1284,7 @@ export default function App() {
             userDisplayName={appConfig?.displayName}
             views={visibleViews}
             onArchive={handleContextArchive}
+            onSpam={handleContextSpam}
             onLabel={handleContextLabel}
             onStar={handleContextStar}
             onCreateRule={handleCreateRule}
@@ -1245,6 +1310,7 @@ export default function App() {
               thread={selectedThread}
               onReply={handleReply}
               onArchive={handleArchive}
+              onSpam={handleSpam}
               onLabel={handleLabel}
               onStar={handleStar}
               onDeleteDraft={currentView === 'drafts' ? handleDeleteDraft : undefined}

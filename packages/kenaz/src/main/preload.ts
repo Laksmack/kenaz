@@ -10,6 +10,7 @@ const IPC = {
   GMAIL_SEARCH: 'gmail:search',
   GMAIL_SEND: 'gmail:send',
   GMAIL_ARCHIVE: 'gmail:archive',
+  GMAIL_SPAM: 'gmail:spam',
   GMAIL_LABEL: 'gmail:label',
   GMAIL_MARK_READ: 'gmail:mark-read',
   GMAIL_DOWNLOAD_ATTACHMENT: 'gmail:download-attachment',
@@ -88,6 +89,8 @@ const api = {
     ipcRenderer.invoke(IPC.GMAIL_SEND, payload),
   archiveThread: (threadId: string) =>
     ipcRenderer.invoke(IPC.GMAIL_ARCHIVE, threadId),
+  reportSpam: (threadId: string) =>
+    ipcRenderer.invoke(IPC.GMAIL_SPAM, threadId),
   modifyLabels: (threadId: string, add: string | null, remove: string | null) =>
     ipcRenderer.invoke(IPC.GMAIL_LABEL, threadId, add, remove),
   markAsRead: (threadId: string) =>

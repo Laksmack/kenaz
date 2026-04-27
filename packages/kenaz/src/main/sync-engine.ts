@@ -84,6 +84,9 @@ export class SyncEngine {
           case 'archive':
             await this.gmail.archiveThread(action.threadId);
             break;
+          case 'spam':
+            await this.gmail.reportSpamThread(action.threadId);
+            break;
           case 'label':
             await this.gmail.modifyLabels(action.threadId, action.payload?.add ?? null, action.payload?.remove ?? null);
             break;

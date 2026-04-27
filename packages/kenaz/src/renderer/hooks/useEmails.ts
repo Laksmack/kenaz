@@ -289,6 +289,17 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     }
   }, [fetchThreads]);
 
+  const reportSpamThread = useCallback(async (threadId: string) => {
+    recentDoneRef.current.set(threadId, Date.now() + RECENT_DONE_SUPPRESS_MS);
+    setThreads((prev) => prev.filter((t) => t.id !== threadId));
+    try {
+      await window.kenaz.reportSpam(threadId);
+    } catch (e) {
+      console.error('Failed to report spam:', e);
+      fetchThreads();
+    }
+  }, [fetchThreads]);
+
   const labelThread = useCallback(async (threadId: string, add: string | null, remove: string | null) => {
     // Optimistic: update labels in list immediately
     setThreads((prev) =>
@@ -343,6 +354,7 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
     refresh: fetchThreads,
     loadMore,
     archiveThread,
+    reportSpamThread,
     removeThread,
     labelThread,
     markRead,

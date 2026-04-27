@@ -9,6 +9,7 @@ declare global {
       search: (query: string) => Promise<import('@shared/types').EmailThread[]>;
       sendEmail: (payload: any) => Promise<any>;
       archiveThread: (threadId: string) => Promise<void>;
+      reportSpam: (threadId: string) => Promise<void>;
       modifyLabels: (threadId: string, add: string | null, remove: string | null) => Promise<void>;
       markAsRead: (threadId: string) => Promise<void>;
       createDraft: (payload: any) => Promise<string>;

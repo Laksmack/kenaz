@@ -535,6 +535,29 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle(IPC.GMAIL_SPAM, async (_event, threadId: string) => {
+    const { gmail, cache } = active();
+    cache.markThreadDone(threadId);
+    cache.updateThreadLabels(threadId, ['SPAM'], ['INBOX', 'UNREAD']);
+
+    if (!connectivity.isOnline) {
+      cache.enqueuePendingAction('spam', threadId, {});
+      return;
+    }
+
+    try {
+      await withOfflineAwareness(() => gmail.reportSpamThread(threadId));
+    } catch (e: any) {
+      const msg = (e.message || '').toLowerCase();
+      if (msg.includes('enotfound') || msg.includes('enetunreach') ||
+          msg.includes('econnrefused') || msg.includes('etimedout')) {
+        cache.enqueuePendingAction('spam', threadId, {});
+      } else {
+        throw e;
+      }
+    }
+  });
+
   ipcMain.handle(IPC.GMAIL_LABEL, async (_event, threadId: string, labelToAdd: string | null, labelToRemove: string | null) => {
     const { gmail, cache } = active();
     const addLabels = labelToAdd ? [labelToAdd] : [];

@@ -121,6 +121,8 @@ interface Props {
   thread: EmailThread | null;
   onReply: () => void;
   onArchive: () => void;
+  /** Gmail-style report spam (moves to Spam, marks read, removes from Inbox). */
+  onSpam?: () => void;
   onLabel: (label: string) => void;
   onStar: () => void;
   onDeleteDraft?: (thread: EmailThread) => void;
@@ -135,7 +137,7 @@ interface Props {
   onTogglePrintMenu?: () => void;
 }
 
-export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDeleteDraft, onEditDraft, onSendDraft, threadUpdateAvailable, onRefreshThread, userEmail, currentView, linearEnabled = false, printMenuOpen, onTogglePrintMenu }: Props) {
+export function EmailView({ thread, onReply, onArchive, onSpam, onLabel, onStar, onDeleteDraft, onEditDraft, onSendDraft, threadUpdateAvailable, onRefreshThread, userEmail, currentView, linearEnabled = false, printMenuOpen, onTogglePrintMenu }: Props) {
   const [showDetails, setShowDetails] = useState(false);
   const [labelMap, setLabelMap] = useState<Record<string, string>>({});
   const [linearIssue, setLinearIssue] = useState<any | null>(null);
@@ -306,6 +308,19 @@ export function EmailView({ thread, onReply, onArchive, onLabel, onStar, onDelet
                 </svg>
               }
             />
+            {onSpam && currentView !== 'drafts' && !thread.labels.includes('SPAM') && !thread.labels.includes('DRAFT') && (
+              <ActionButton
+                label="Spam"
+                onClick={onSpam}
+                color="text-orange-400"
+                title="Report spam — moves to Gmail Spam, removes from Inbox (not Trash)"
+                icon={
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                  </svg>
+                }
+              />
+            )}
             <ActionButton
               label="Pending"
               shortcut="P"
@@ -970,14 +985,12 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
     });
 
     // Always use a light reading pane inside the iframe (Mail / Gmail web style):
-    // dark app chrome + message rendered as-authored on white. Recoloring HTML with
-    // * { color: inherit }, stripping backgrounds, or blindly restoring inline colors
-    // breaks newsletters, Gemini/Calendly blocks, and CTAs.
+    // Slightly warm off-white (#f9f8f6) reads softer than pure #fff against dark chrome.
     const readingPaneBase = `
           html { color-scheme: light; }
           html, body {
-            color: #1c1917;
-            background: #ffffff !important;
+            color: #292524;
+            background: #f9f8f6 !important;
           }
           a { color: #2563eb; }
           blockquote { border-left: 3px solid #d6d3d1; color: #57534e; }
@@ -1175,16 +1188,18 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
       {/* Calendar invite RSVP bar */}
       <RsvpBar message={message} onArchive={onArchive} />
 
-      {/* Message body - sandboxed iframe */}
+      {/* Message body — rounded “paper” so the light pane doesn’t read as a harsh white slab */}
       <div className="px-4 py-3 selectable">
-        <iframe
-          ref={iframeRef}
-          className="w-full border-0"
-          sandbox="allow-same-origin"
-          scrolling="no"
-          style={{ minHeight: '60px', background: '#ffffff', overflow: 'hidden' }}
-          title={`Email from ${message.from.email}`}
-        />
+        <div className="rounded-xl overflow-hidden border border-stone-300/50 dark:border-stone-600/35 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2),0_4px_14px_rgba(0,0,0,0.25)] bg-[#f4f3f1]">
+          <iframe
+            ref={iframeRef}
+            className="w-full border-0 block"
+            sandbox="allow-same-origin"
+            scrolling="no"
+            style={{ minHeight: '60px', background: '#f9f8f6', overflow: 'hidden' }}
+            title={`Email from ${message.from.email}`}
+          />
+        </div>
       </div>
 
       {/* Show quoted text toggle */}
@@ -1310,18 +1325,22 @@ function ActionButton({
   onClick,
   icon,
   color,
+  title: titleOverride,
 }: {
   label: string;
   shortcut?: string;
   onClick: () => void;
   icon: React.ReactNode;
   color?: string;
+  /** Native tooltip (defaults to label ± shortcut). */
+  title?: string;
 }) {
+  const title = titleOverride ?? (shortcut ? `${label} (${shortcut})` : label);
   return (
     <button
       onClick={onClick}
       className={`flex items-center gap-1 px-2 py-1.5 rounded text-xs transition-colors hover:bg-bg-hover ${color || 'text-text-secondary hover:text-text-primary'}`}
-      title={shortcut ? `${label} (${shortcut})` : label}
+      title={title}
     >
       {icon}
       <span className="hidden lg:inline">{label}</span>

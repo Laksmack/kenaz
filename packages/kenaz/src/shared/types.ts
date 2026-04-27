@@ -170,6 +170,7 @@ export const IPC = {
   GMAIL_SEARCH: 'gmail:search',
   GMAIL_SEND: 'gmail:send',
   GMAIL_ARCHIVE: 'gmail:archive',
+  GMAIL_SPAM: 'gmail:spam',
   GMAIL_LABEL: 'gmail:label',
   GMAIL_MARK_READ: 'gmail:mark-read',
   GMAIL_DOWNLOAD_ATTACHMENT: 'gmail:download-attachment',
