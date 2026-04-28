@@ -1010,11 +1010,15 @@ function MessageBubble({ message, isNewest, onArchive }: { message: Email; isNew
             font-size: 14px;
             line-height: 1.5;
             margin: 0;
-            padding: 0;
             word-wrap: break-word;
             overflow-wrap: break-word;
           }
-          body { overflow-x: hidden !important; }
+          html { padding: 0; }
+          /* Inset so type isn’t flush against the rounded chrome */
+          body {
+            overflow-x: hidden !important;
+            padding: 14px 18px 16px 18px;
+          }
           img { max-width: 100% !important; height: auto !important; width: auto !important; }
           table { max-width: 100% !important; }
           blockquote { margin: 8px 0; padding-left: 12px; }
