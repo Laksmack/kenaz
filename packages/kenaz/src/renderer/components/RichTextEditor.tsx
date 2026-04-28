@@ -78,7 +78,8 @@ export function RichTextEditor({ content, onChange, placeholder, autoFocus, onCm
         return false;
       },
       attributes: {
-        class: 'max-w-none focus:outline-none min-h-[200px] px-4 py-3 text-sm text-text-primary',
+        class:
+          'max-w-none focus:outline-none min-h-[220px] px-4 py-3 text-sm text-stone-800 [&_*]:max-w-none',
         spellcheck: 'true',
       },
     },
@@ -268,11 +269,11 @@ export function RichTextEditor({ content, onChange, placeholder, autoFocus, onCm
             <input
               type="color"
               className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-              value={editor.getAttributes('textStyle').color || '#ffffff'}
+              value={editor.getAttributes('textStyle').color || '#292524'}
               onChange={(e) => editor.chain().focus().setColor(e.target.value).run()}
             />
-            <span className="flex items-center justify-center w-6 h-6 rounded text-[11px] font-bold hover:bg-bg-hover transition-colors cursor-pointer"
-              style={{ color: editor.getAttributes('textStyle').color || 'var(--color-text-primary)' }}
+            <span className="flex items-center justify-center w-6 h-6 rounded text-[11px] font-bold hover:bg-stone-200/80 transition-colors cursor-pointer"
+              style={{ color: editor.getAttributes('textStyle').color || '#292524' }}
             >
               A
             </span>
@@ -338,9 +339,13 @@ export function RichTextEditor({ content, onChange, placeholder, autoFocus, onCm
         )}
       </div>
 
-      {/* Editor area */}
-      <div className="flex-1 overflow-y-auto bg-bg-primary selectable">
-        <EditorContent editor={editor} className="h-full" />
+      {/* Editor — same warm paper card as message view so quotes / pasted HTML read clearly */}
+      <div className="flex-1 overflow-y-auto bg-bg-secondary px-3 py-2 min-h-0 selectable">
+        <div className="rounded-xl overflow-hidden border border-stone-300/50 dark:border-stone-600/35 bg-[#f4f3f1] shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.06)] dark:shadow-[0_1px_2px_rgba(0,0,0,0.2),0_4px_14px_rgba(0,0,0,0.25)] ring-1 ring-black/[0.03] dark:ring-white/[0.04]">
+          <div className="bg-[#f9f8f6]">
+            <EditorContent editor={editor} className="h-full [&_.ProseMirror]:min-h-[220px]" />
+          </div>
+        </div>
       </div>
     </div>
   );

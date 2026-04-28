@@ -753,12 +753,12 @@ export function ComposeBar({
           onCmdEnter={handleSend}
         />
       ) : (
-        <div className="flex-1 flex flex-col px-4 pb-3 overflow-hidden">
+        <div className="flex-1 flex flex-col px-3 py-2 pb-3 overflow-hidden min-h-0 bg-bg-secondary">
           <textarea
             ref={bodyRef}
             value={bodyMarkdown}
             onChange={(e) => setBodyMarkdown(e.target.value)}
-            className="flex-1 w-full bg-bg-primary border border-border-subtle rounded px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary resize-none font-mono selectable"
+            className="flex-1 w-full min-h-[220px] rounded-xl border border-stone-300/50 dark:border-stone-600/35 bg-[#f9f8f6] px-3 py-3 text-sm text-stone-800 outline-none focus:border-accent-primary focus:ring-1 focus:ring-accent-primary/30 resize-none font-mono selectable shadow-[0_1px_2px_rgba(0,0,0,0.04)]"
             placeholder="Write in markdown..."
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
