@@ -105,6 +105,8 @@ interface Props {
   loading: boolean;
   loadingMore?: boolean;
   hasMore?: boolean;
+  /** Search box has text but the list has not run for that query yet (debounce). */
+  searchAwaitingCommit?: boolean;
   onSelect: (thread: EmailThread) => void;
   onMultiSelect: (ids: Set<string>) => void;
   onLoadMore?: () => void;
@@ -121,7 +123,7 @@ interface Props {
   userDisplayName?: string;
 }
 
-export function EmailList({ threads, selectedId, selectedIds, loading, loadingMore, hasMore, onSelect, onMultiSelect, onLoadMore, currentView, userEmail, linearEnabled = false, userDisplayName, views = [], onArchive, onSpam, onLabel, onStar, onCreateRule, onDoubleClick }: Props) {
+export function EmailList({ threads, selectedId, selectedIds, loading, loadingMore, hasMore, searchAwaitingCommit = false, onSelect, onMultiSelect, onLoadMore, currentView, userEmail, linearEnabled = false, userDisplayName, views = [], onArchive, onSpam, onLabel, onStar, onCreateRule, onDoubleClick }: Props) {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; thread: EmailThread } | null>(null);
   const [dueDatePicker, setDueDatePicker] = useState<{ x: number; y: number; ctx: EmailContext } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -401,7 +403,20 @@ export function EmailList({ threads, selectedId, selectedIds, loading, loadingMo
   if (loading && threads.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="text-text-muted text-sm">Loading emails...</div>
+        <div className="text-text-muted text-sm">{currentView === 'search' ? 'Searching…' : 'Loading emails…'}</div>
+      </div>
+    );
+  }
+
+  if (searchAwaitingCommit && threads.length === 0 && !loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-4">
+        <div className="text-center max-w-[220px]">
+          <div className="text-text-secondary text-sm mb-1">Ready when you are</div>
+          <div className="text-text-muted text-xs leading-relaxed">
+            Pause typing or press Enter in the search field to run this search against your mailbox.
+          </div>
+        </div>
       </div>
     );
   }
@@ -409,10 +424,16 @@ export function EmailList({ threads, selectedId, selectedIds, loading, loadingMo
   if (threads.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center p-4">
-        <div className="text-center">
-          <div className="text-text-muted text-sm mb-1">No emails</div>
-          <div className="text-text-muted text-xs">
-            {currentView === 'inbox' ? 'Inbox zero!' : `No ${currentView} emails`}
+        <div className="text-center max-w-[240px]">
+          <div className="text-text-muted text-sm mb-1">
+            {currentView === 'search' ? 'No matching messages' : 'No emails'}
+          </div>
+          <div className="text-text-muted text-xs leading-relaxed">
+            {currentView === 'search'
+              ? 'Try different words, fewer filters, or open Advanced search for field-specific queries.'
+              : currentView === 'inbox'
+                ? 'Inbox zero!'
+                : `No ${currentView} emails`}
           </div>
         </div>
       </div>

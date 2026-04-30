@@ -4,7 +4,7 @@ import { EmailView } from './components/EmailView';
 import { Sidebar } from './components/Sidebar';
 import { ComposeBar } from './components/ComposeBar';
 import { ViewNav } from './components/ViewNav';
-import { SearchBar } from './components/SearchBar';
+import { SearchBar, type SearchBarHandle } from './components/SearchBar';
 import { AuthScreen } from './components/AuthScreen';
 import { SettingsModal } from './components/SettingsModal';
 import { AdvancedSearch } from './components/AdvancedSearch';
@@ -18,6 +18,8 @@ import { AccountSwitcher } from './components/AccountSwitcher';
 import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
 import type { ViewType, ComposeData, SendEmailPayload, EmailThread, AppConfig, View, Rule, AccountInfo } from '@shared/types';
 
+const SEARCH_DEBOUNCE_MS = 320;
+
 export default function App() {
   const [authenticated, setAuthenticated] = useState<boolean | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('inbox');
@@ -25,7 +27,13 @@ export default function App() {
   const [threadUpdateAvailable, setThreadUpdateAvailable] = useState(false);
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeData, setComposeData] = useState<Partial<ComposeData> | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  /** Text in the search field (may differ from the last run search while typing). */
+  const [searchInput, setSearchInput] = useState('');
+  /** Query passed to Gmail / cache — updated after debounce or Enter (reduces API spam). */
+  const [committedSearch, setCommittedSearch] = useState('');
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchBarRef = useRef<SearchBarHandle>(null);
+  const prevCommittedSearchRef = useRef<string | null>(null);
   const [advancedSearchOpen, setAdvancedSearchOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [printMenuOpen, setPrintMenuOpen] = useState(false);
@@ -104,7 +112,7 @@ export default function App() {
     removeThread,
     labelThread,
     markRead,
-  } = useEmails(currentView, searchQuery, authenticated === true, visibleViews, appConfig?.inboxSort ?? 'newest', userEmail, isOnline);
+  } = useEmails(currentView, committedSearch, authenticated === true, visibleViews, appConfig?.inboxSort ?? 'newest', userEmail, isOnline);
 
   // ── View counts (background fetch) ──────────────────────
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
@@ -250,7 +258,8 @@ export default function App() {
         // Reset all state for the new account
         setSelectedThread(null);
         setSelectedIds(new Set());
-        setSearchQuery('');
+        setSearchInput('');
+        setCommittedSearch('');
         setCurrentView('inbox');
         setComposeOpen(false);
 
@@ -1004,32 +1013,103 @@ export default function App() {
     });
   }, [selectedThread, handleCompose]);
 
-  const handleSearch = useCallback((query: string) => {
-    const trimmed = query.trim();
-    // Keep raw query in state so spaces work while typing; useEmails trims for the API.
-    if (!trimmed) {
-      setSearchQuery('');
-      setCurrentView('inbox');
-      setSelectedThread(null);
-      setSelectedIds(new Set());
-      return;
+  const clearSearchDebounce = useCallback(() => {
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
     }
-    setSearchQuery(query);
-    setCurrentView('search');
   }, []);
+
+  useEffect(() => () => clearSearchDebounce(), [clearSearchDebounce]);
+
+  const scheduleCommittedSearch = useCallback(
+    (trimmed: string) => {
+      clearSearchDebounce();
+      searchDebounceRef.current = setTimeout(() => {
+        searchDebounceRef.current = null;
+        setCommittedSearch(trimmed);
+      }, SEARCH_DEBOUNCE_MS);
+    },
+    [clearSearchDebounce],
+  );
+
+  const commitSearchNow = useCallback(() => {
+    clearSearchDebounce();
+    const trimmed = searchInput.trim();
+    if (!trimmed) return;
+    setCommittedSearch(trimmed);
+  }, [searchInput, clearSearchDebounce]);
+
+  const handleSearchInputChange = useCallback(
+    (value: string) => {
+      setSearchInput(value);
+      const trimmed = value.trim();
+      if (!trimmed) {
+        clearSearchDebounce();
+        setCommittedSearch('');
+        setCurrentView('inbox');
+        setSelectedThread(null);
+        setSelectedIds(new Set());
+        return;
+      }
+      setCurrentView('search');
+      scheduleCommittedSearch(trimmed);
+    },
+    [clearSearchDebounce, scheduleCommittedSearch],
+  );
 
   const handleClearSearch = useCallback(() => {
-    setSearchQuery('');
+    clearSearchDebounce();
+    setSearchInput('');
+    setCommittedSearch('');
     setCurrentView('inbox');
     setSelectedThread(null);
-  }, []);
-
-  const handleViewChange = useCallback((view: ViewType) => {
-    setCurrentView(view);
-    setSelectedThread(null);
     setSelectedIds(new Set());
-    setSearchQuery('');
-  }, []);
+  }, [clearSearchDebounce]);
+
+  /** Advanced search modal — run immediately (no debounce). */
+  const applyBuiltSearch = useCallback(
+    (query: string) => {
+      const trimmed = query.trim();
+      clearSearchDebounce();
+      setSearchInput(trimmed ? query : '');
+      if (!trimmed) {
+        setCommittedSearch('');
+        return;
+      }
+      setCommittedSearch(trimmed);
+      setCurrentView('search');
+      setSelectedThread(null);
+      setSelectedIds(new Set());
+    },
+    [clearSearchDebounce],
+  );
+
+  const handleViewChange = useCallback(
+    (view: ViewType) => {
+      clearSearchDebounce();
+      setCurrentView(view);
+      setSelectedThread(null);
+      setSelectedIds(new Set());
+      setSearchInput('');
+      setCommittedSearch('');
+    },
+    [clearSearchDebounce],
+  );
+
+  // New committed query = new result set — avoid reader pane showing an unrelated thread.
+  useEffect(() => {
+    if (currentView !== 'search') {
+      prevCommittedSearchRef.current = null;
+      return;
+    }
+    const prev = prevCommittedSearchRef.current;
+    prevCommittedSearchRef.current = committedSearch;
+    if (prev !== null && prev !== committedSearch) {
+      setSelectedThread(null);
+      setSelectedIds(new Set());
+    }
+  }, [committedSearch, currentView]);
 
   // ── Context menu handlers ───────────────────────────────
 
@@ -1142,7 +1222,7 @@ export default function App() {
     onForward: handleForward,
     onNavigateUp: () => navigateList('up'),
     onNavigateDown: () => navigateList('down'),
-    onSearch: () => setAdvancedSearchOpen(true),
+    onSearch: () => searchBarRef.current?.focus(),
     onEscape: () => {
       if (settingsOpen) setSettingsOpen(false);
       else if (advancedSearchOpen) setAdvancedSearchOpen(false);
@@ -1216,10 +1296,17 @@ export default function App() {
             </div>
           )}
           <SearchBar
-            query={searchQuery}
-            onSearch={handleSearch}
+            ref={searchBarRef}
+            query={searchInput}
+            onChange={handleSearchInputChange}
+            onCommit={commitSearchNow}
             onAdvancedSearch={() => setAdvancedSearchOpen(true)}
             onClear={handleClearSearch}
+            pendingCommit={
+              currentView === 'search' &&
+              !!searchInput.trim() &&
+              searchInput.trim() !== committedSearch.trim()
+            }
           />
           <button
             onClick={refresh}
@@ -1275,6 +1362,11 @@ export default function App() {
             loading={loading}
             loadingMore={loadingMore}
             hasMore={hasMore}
+            searchAwaitingCommit={
+              currentView === 'search' &&
+              !!searchInput.trim() &&
+              searchInput.trim() !== committedSearch.trim()
+            }
             onSelect={handleSelectThread}
             onMultiSelect={setSelectedIds}
             onLoadMore={loadMore}
@@ -1369,7 +1461,10 @@ export default function App() {
       {/* Advanced Search Modal */}
       {advancedSearchOpen && (
         <AdvancedSearch
-          onSearch={(query) => { handleSearch(query); setAdvancedSearchOpen(false); }}
+          onSearch={(query) => {
+            applyBuiltSearch(query);
+            setAdvancedSearchOpen(false);
+          }}
           onClose={() => setAdvancedSearchOpen(false)}
         />
       )}

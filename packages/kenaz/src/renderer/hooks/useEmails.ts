@@ -157,18 +157,20 @@ export function useEmails(
 
   const fetchThreads = useCallback(async () => {
     if (!enabled) return;
+    // Search view with no committed query yet (typing before debounce / Enter) — no network call.
+    if (currentView === 'search' && !query.trim()) {
+      setHasMore(false);
+      nextPageTokenRef.current = undefined;
+      setThreads([]);
+      setLoading(false);
+      return;
+    }
+
     const requestSeq = ++requestSeqRef.current;
     setLoading(true);
     nextPageTokenRef.current = undefined;
     try {
       if (currentView === 'search') {
-        if (!query) {
-          if (requestSeq !== requestSeqRef.current) return;
-          setHasMore(false);
-          cacheRef.current[query] = [];
-          setThreads([]);
-          return;
-        }
         const searchResults = await window.kenaz.search(query);
         if (requestSeq !== requestSeqRef.current) return;
         setHasMore(false);
@@ -197,16 +199,16 @@ export function useEmails(
 
   const refreshFromCache = useCallback(async () => {
     if (!enabled) return;
+    if (currentView === 'search' && !query.trim()) {
+      setHasMore(false);
+      nextPageTokenRef.current = undefined;
+      setThreads([]);
+      return;
+    }
+
     const requestSeq = ++requestSeqRef.current;
     try {
       if (currentView === 'search') {
-        if (!query) {
-          if (requestSeq !== requestSeqRef.current) return;
-          setHasMore(false);
-          cacheRef.current[query] = [];
-          setThreads([]);
-          return;
-        }
         const searchResults = await window.kenaz.search(query);
         if (requestSeq !== requestSeqRef.current) return;
         setHasMore(false);
