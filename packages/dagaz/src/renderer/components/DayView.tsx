@@ -26,8 +26,7 @@ interface Props {
 
 export function DayView({ currentDate, events, overlayEvents = [], pendingInvites = [], selectedEvent, onSelectEvent, onCreateEvent, onUpdateEvent, onRSVP, onDeleteEvent, defaultEventDurationMinutes = 60 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const today = useMemo(() => new Date(), []);
-  const isToday = isSameDay(currentDate, today);
+  const isToday = isSameDay(currentDate, new Date());
 
   // Drag-to-move / resize
   const handleDragEnd = useCallback((event: CalendarEvent, newStart: Date, newEnd: Date, _dayIndex: number) => {

@@ -9,10 +9,11 @@ import type {
 
 export class CacheStore {
   private db: Database.Database;
+  private readonly dbPath: string;
 
   constructor() {
-    const dbPath = path.join(app.getPath('userData'), 'dagaz.db');
-    this.db = new Database(dbPath);
+    this.dbPath = path.join(app.getPath('userData'), 'dagaz.db');
+    this.db = new Database(this.dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
     this.init();
@@ -121,6 +122,28 @@ export class CacheStore {
     try { this.db.exec('ALTER TABLE attendees ADD COLUMN proposed_start TEXT'); } catch (e) { /* column already exists */ }
     try { this.db.exec('ALTER TABLE attendees ADD COLUMN proposed_end TEXT'); } catch (e) { /* column already exists */ }
     try { this.db.exec('ALTER TABLE events ADD COLUMN guests_can_invite_others INTEGER DEFAULT 1'); } catch (e) { /* column already exists */ }
+  }
+
+  getDbPath(): string {
+    return this.dbPath;
+  }
+
+  /** JSON snapshot for user backup (restore not implemented). */
+  exportBackupPayload(): Record<string, unknown> {
+    return {
+      exported_at: new Date().toISOString(),
+      version: 1,
+      app: 'dagaz',
+      calendars: this.db.prepare('SELECT * FROM calendars').all(),
+      events: this.db.prepare('SELECT * FROM events').all(),
+      attendees: this.db.prepare('SELECT * FROM attendees').all(),
+      sync_queue: this.db.prepare('SELECT * FROM sync_queue').all(),
+      settings: this.db.prepare('SELECT * FROM settings').all(),
+    };
+  }
+
+  private static escapeLikeLiteral(raw: string): string {
+    return raw.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
   }
 
   private genId(): string {
@@ -311,6 +334,62 @@ export class CacheStore {
     return rows.map(r => this.rowToEvent(r));
   }
 
+  /**
+   * Full-text-ish search over a fixed window (±6 months), using SQL LIKE with
+   * wildcard escaping so % and _ in the query are literal.
+   */
+  searchEvents(query: string, limit: number = 20): CalendarEvent[] {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+
+    const now = new Date();
+    const rangeStart = new Date(now);
+    rangeStart.setMonth(rangeStart.getMonth() - 6);
+    const rangeEnd = new Date(now);
+    rangeEnd.setMonth(rangeEnd.getMonth() + 6);
+    const start = rangeStart.toISOString();
+    const end = rangeEnd.toISOString();
+
+    const lit = CacheStore.escapeLikeLiteral(trimmed);
+    const pattern = `%${lit}%`;
+
+    const sql = `
+      SELECT e.*, c.background_color as calendar_bg_color, c.color_override as calendar_color_override
+      FROM events e
+      JOIN calendars c ON e.calendar_id = c.id
+      WHERE c.visible = 1
+        AND e.status != 'cancelled'
+        AND (e.self_response IS NULL OR e.self_response != 'declined')
+        AND (
+          (e.all_day = 0 AND e.start_time < ? AND e.end_time > ?)
+          OR (e.all_day = 1 AND e.start_date < ? AND e.end_date > ?)
+        )
+        AND NOT (e.all_day = 0 AND (e.start_time IS NULL OR e.start_time = ''))
+        AND (
+          COALESCE(e.summary, '') LIKE ? ESCAPE '\\'
+          OR COALESCE(e.description, '') LIKE ? ESCAPE '\\'
+          OR COALESCE(e.location, '') LIKE ? ESCAPE '\\'
+          OR EXISTS (
+            SELECT 1 FROM attendees a
+            WHERE a.event_id = e.id
+              AND (
+                COALESCE(a.email, '') LIKE ? ESCAPE '\\'
+                OR COALESCE(a.display_name, '') LIKE ? ESCAPE '\\'
+              )
+          )
+        )
+      ORDER BY e.all_day DESC, e.start_time ASC
+      LIMIT ?
+    `;
+
+    const rows = this.db.prepare(sql).all(
+      end, start, end, start,
+      pattern, pattern, pattern, pattern, pattern,
+      limit,
+    ) as any[];
+    return rows.map(r => this.rowToEvent(r));
+  }
+
   getEvent(id: string): CalendarEvent | null {
     const row = this.db.prepare(`
       SELECT e.*, c.background_color as calendar_bg_color, c.color_override as calendar_color_override
@@ -359,9 +438,9 @@ export class CacheStore {
       INSERT INTO events (
         id, google_id, calendar_id, summary, description, location,
         start_time, end_time, start_date, end_date, all_day, time_zone,
-        status, is_organizer, transparency, visibility, local_only,
+        status, is_organizer, transparency, visibility, color_id, local_only,
         pending_action, pending_payload, created_at, updated_at
-      ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 1, ?, ?, 1, 'create', ?, ?, ?)
+      ) VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', 1, ?, ?, ?, 1, 'create', ?, ?, ?)
     `).run(
       id, calendarId,
       input.summary, input.description || null, input.location || null,
@@ -369,6 +448,7 @@ export class CacheStore {
       input.all_day ? input.start : null, input.all_day ? input.end : null,
       input.all_day ? 1 : 0, input.time_zone || null,
       input.transparency || 'opaque', input.visibility || 'default',
+      input.color_id || null,
       JSON.stringify(input), now, now,
     );
 
@@ -523,11 +603,14 @@ export class CacheStore {
 
   /** Search attendees by name or email for contact autocomplete */
   searchContacts(query: string, limit: number = 10): Array<{ email: string; display_name: string | null; count: number }> {
-    const pattern = `%${query}%`;
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+    const lit = CacheStore.escapeLikeLiteral(trimmed);
+    const pattern = `%${lit}%`;
     return this.db.prepare(`
       SELECT email, display_name, COUNT(*) as count
       FROM attendees
-      WHERE (email LIKE ? OR display_name LIKE ?)
+      WHERE (email LIKE ? ESCAPE '\\' OR display_name LIKE ? ESCAPE '\\')
         AND is_self = 0
       GROUP BY email
       ORDER BY count DESC

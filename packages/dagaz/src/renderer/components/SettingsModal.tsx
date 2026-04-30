@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { AppConfig } from '../../shared/types';
 import { setUse24HourClock } from '../lib/utils';
 import { useFocusTrap } from '../hooks/useFocusTrap';
@@ -25,6 +25,27 @@ export function SettingsModal({ onClose }: Props) {
       setUse24HourClock(updates.use24HourClock);
     }
   };
+
+  const handleExportBackup = useCallback(async () => {
+    try {
+      const r = await window.dagaz.exportBackup();
+      if (r.ok && r.filePath) window.dagaz.notify('Dagaz', 'Backup saved');
+      else if (!r.canceled) window.dagaz.notify('Dagaz', r.error || 'Export failed');
+    } catch (e: any) {
+      console.error('[Settings] Export backup failed:', e);
+      window.dagaz.notify('Dagaz', e?.message || 'Export failed');
+    }
+  }, []);
+
+  const handleRevealData = useCallback(async () => {
+    try {
+      const r = await window.dagaz.revealDataFolder();
+      if (!r.ok) window.dagaz.notify('Dagaz', r.error || 'Could not open folder');
+    } catch (e: any) {
+      console.error('[Settings] Reveal data failed:', e);
+      window.dagaz.notify('Dagaz', e?.message || 'Could not open folder');
+    }
+  }, []);
 
   if (!config) return null;
 
@@ -53,6 +74,29 @@ export function SettingsModal({ onClose }: Props) {
         </div>
 
         <div className="p-4 space-y-5">
+          <section>
+            <h3 className="text-xs font-medium text-text-primary mb-3">Data</h3>
+            <p className="text-[10px] text-text-muted mb-2">
+              Export calendars, events, attendees, and sync queue as JSON. Opens the folder with your local Dagaz database.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleExportBackup}
+                className="px-3 py-2 text-xs font-medium rounded-lg bg-bg-primary border border-border-subtle text-text-primary hover:bg-bg-hover transition-colors"
+              >
+                Export backup…
+              </button>
+              <button
+                type="button"
+                onClick={handleRevealData}
+                className="px-3 py-2 text-xs font-medium rounded-lg bg-bg-primary border border-border-subtle text-text-primary hover:bg-bg-hover transition-colors"
+              >
+                Show data folder
+              </button>
+            </div>
+          </section>
+
           {/* Notifications */}
           <section>
             <h3 className="text-xs font-medium text-text-primary mb-3">Notifications</h3>

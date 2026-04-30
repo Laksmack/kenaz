@@ -2,6 +2,7 @@ import React, { useCallback, useRef, useState, useEffect, useLayoutEffect } from
 import { createPortal } from 'react-dom';
 import type { CalendarEvent } from '../../shared/types';
 import { formatTime } from '../lib/utils';
+import { eventDisplayColor } from '../lib/calendar-colors';
 import type { DragMode } from '../hooks/useEventDrag';
 import { createDraftFromEvent, createNoteFromEvent, createTodoFromEvent, type EventContext } from '@futhark/core/lib/crossApp';
 
@@ -20,7 +21,7 @@ interface Props {
 const DRAG_THRESHOLD = 4;
 
 export function EventBlock({ event, selected, onClick, onRSVP, onDelete, onDragStart, style, compact, isDragGhost }: Props) {
-  const color = event.calendar_color || '#4A9AC2';
+  const color = eventDisplayColor(event);
   const isInvite = event.self_response === 'needsAction' && !event.is_organizer;
   const canDrag = !event.all_day && !compact && !!onDragStart;
 

@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import type { CalendarEvent } from '../../shared/types';
 import { getMonthDates, isSameDay, dateKey, parseLocalDate } from '../lib/utils';
+import { eventDisplayColor } from '../lib/calendar-colors';
 
 interface Props {
   currentDate: Date;
@@ -83,8 +84,8 @@ export function MonthView({ currentDate, events, selectedEvent, onSelectEvent, o
                       selectedEvent?.id === event.id ? 'ring-1 ring-accent-primary' : ''
                     }`}
                     style={{
-                      backgroundColor: `${event.calendar_color || '#4A9AC2'}20`,
-                      color: event.calendar_color || '#4A9AC2',
+                      backgroundColor: `${eventDisplayColor(event)}20`,
+                      color: eventDisplayColor(event),
                     }}
                     onClick={(e) => { e.stopPropagation(); onSelectEvent(event); }}
                   >

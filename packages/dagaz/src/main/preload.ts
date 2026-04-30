@@ -32,6 +32,8 @@ const api = {
   // Events
   getEvents: (start: string, end: string, calendarId?: string): Promise<CalendarEvent[]> =>
     ipcRenderer.invoke(IPC.EVENTS_LIST, start, end, calendarId),
+  searchEvents: (query: string, limit?: number): Promise<CalendarEvent[]> =>
+    ipcRenderer.invoke(IPC.EVENTS_SEARCH, query, limit),
   getEvent: (id: string): Promise<CalendarEvent> => ipcRenderer.invoke(IPC.EVENT_GET, id),
   createEvent: (data: CreateEventInput): Promise<CalendarEvent> => ipcRenderer.invoke(IPC.EVENT_CREATE, data),
   updateEvent: (id: string, updates: UpdateEventInput, scope?: 'single' | 'all'): Promise<CalendarEvent> =>
@@ -66,6 +68,9 @@ const api = {
   setBadge: (count: number): Promise<void> => ipcRenderer.invoke(IPC.APP_SET_BADGE, count),
   notify: (title: string, body: string): Promise<void> => ipcRenderer.invoke(IPC.APP_NOTIFY, title, body),
   openExternal: (url: string): Promise<void> => ipcRenderer.invoke(IPC.APP_OPEN_EXTERNAL, url),
+  exportBackup: (): Promise<{ ok: boolean; canceled?: boolean; error?: string; filePath?: string }> =>
+    ipcRenderer.invoke(IPC.APP_EXPORT_BACKUP),
+  revealDataFolder: (): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke(IPC.APP_REVEAL_DATA),
 
   // Integration
   getDayPlan: (date?: string): Promise<{ events: CalendarEvent[]; tasks: unknown[]; date: string }> =>

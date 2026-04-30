@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, shell, Notification, powerMonitor, dialog, Menu, session } from 'electron';
+import fs from 'fs';
 import path from 'path';
 import log from 'electron-log/main';
 import * as chrono from 'chrono-node';
@@ -343,6 +344,10 @@ function registerIpcHandlers() {
     return cache.getEventsInRange(start, end, calendarId ? [calendarId] : undefined);
   });
 
+  ipcMain.handle(IPC.EVENTS_SEARCH, async (_event, query: string, limit?: number) => {
+    return cache.searchEvents(query, limit ?? 20);
+  });
+
   ipcMain.handle(IPC.EVENT_GET, async (_event, id: string) => cache.getEvent(id));
 
   ipcMain.handle(IPC.EVENT_CREATE, async (_event, data: CreateEventInput) => {
@@ -633,6 +638,35 @@ function registerIpcHandlers() {
         }
       });
       notif.show();
+    }
+  });
+
+  ipcMain.handle(IPC.APP_EXPORT_BACKUP, async () => {
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : BrowserWindow.getFocusedWindow();
+    if (!win) return { ok: false as const, error: 'No window' };
+    try {
+      const payload = cache.exportBackupPayload();
+      const { filePath, canceled } = await dialog.showSaveDialog(win, {
+        title: 'Export Dagaz backup',
+        defaultPath: `dagaz-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (canceled || !filePath) return { ok: false as const, canceled: true as const };
+      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
+      return { ok: true as const, filePath };
+    } catch (e: any) {
+      console.error('[Dagaz] Export backup failed:', e);
+      return { ok: false as const, error: e?.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(IPC.APP_REVEAL_DATA, async () => {
+    try {
+      shell.showItemInFolder(cache.getDbPath());
+      return { ok: true as const };
+    } catch (e: any) {
+      console.error('[Dagaz] Reveal data folder failed:', e);
+      return { ok: false as const, error: e?.message || String(e) };
     }
   });
 

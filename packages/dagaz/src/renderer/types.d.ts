@@ -29,6 +29,7 @@ interface DagazAPI {
 
   // Events
   getEvents(start: string, end: string, calendarId?: string): Promise<CalendarEvent[]>;
+  searchEvents(query: string, limit?: number): Promise<CalendarEvent[]>;
   getEvent(id: string): Promise<CalendarEvent>;
   createEvent(data: CreateEventInput): Promise<CalendarEvent>;
   updateEvent(id: string, updates: UpdateEventInput, scope?: 'single' | 'all'): Promise<CalendarEvent>;
@@ -59,6 +60,8 @@ interface DagazAPI {
   setBadge(count: number): Promise<void>;
   notify(title: string, body: string): Promise<void>;
   openExternal(url: string): Promise<void>;
+  exportBackup(): Promise<{ ok: boolean; canceled?: boolean; error?: string; filePath?: string }>;
+  revealDataFolder(): Promise<{ ok: boolean; error?: string }>;
 
   // Integration
   getDayPlan(date?: string): Promise<{ events: CalendarEvent[]; tasks: unknown[]; date: string }>;

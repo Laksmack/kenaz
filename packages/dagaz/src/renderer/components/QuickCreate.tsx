@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { Calendar, CalendarEvent, CreateEventInput, UpdateEventInput, OverlayPerson, AttendeeInput, ReminderOverride } from '../../shared/types';
+import { GOOGLE_EVENT_COLOR_SWATCHES } from '../lib/calendar-colors';
 
 interface Props {
   open: boolean;
@@ -856,27 +857,14 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
           </div>
           <div className="flex items-center gap-1.5 ml-auto">
             <span className="text-[10px] text-text-muted mr-1">Color</span>
-            {[
-              { id: '', color: '' },
-              { id: '1', color: '#7986CB' },
-              { id: '2', color: '#33B679' },
-              { id: '3', color: '#8E24AA' },
-              { id: '4', color: '#E67C73' },
-              { id: '5', color: '#F6BF26' },
-              { id: '6', color: '#F4511E' },
-              { id: '7', color: '#039BE5' },
-              { id: '8', color: '#616161' },
-              { id: '9', color: '#3F51B5' },
-              { id: '10', color: '#0B8043' },
-              { id: '11', color: '#D50000' },
-            ].map(c => (
+            {GOOGLE_EVENT_COLOR_SWATCHES.map(c => (
               <button
-                key={c.id}
+                key={c.id || 'default'}
                 onClick={() => setColorId(c.id)}
                 className={`w-4 h-4 rounded-full transition-all ${
                   colorId === c.id ? 'ring-2 ring-accent-primary ring-offset-1 ring-offset-bg-secondary scale-110' : 'hover:scale-110'
                 }`}
-                style={{ backgroundColor: c.color || 'var(--bg-tertiary)' }}
+                style={{ backgroundColor: c.hex || 'var(--bg-tertiary)' }}
                 title={c.id ? `Color ${c.id}` : 'Default (calendar color)'}
               >
                 {!c.id && <span className="block w-full h-full rounded-full border border-border-subtle" />}

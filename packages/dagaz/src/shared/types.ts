@@ -219,6 +219,7 @@ export const IPC = {
 
   // Events
   EVENTS_LIST: 'events:list',
+  EVENTS_SEARCH: 'events:search',
   EVENT_GET: 'event:get',
   EVENT_CREATE: 'event:create',
   EVENT_UPDATE: 'event:update',
@@ -249,6 +250,8 @@ export const IPC = {
   APP_SET_BADGE: 'app:set-badge',
   APP_NOTIFY: 'app:notify',
   APP_OPEN_EXTERNAL: 'app:open-external',
+  APP_EXPORT_BACKUP: 'app:export-backup',
+  APP_REVEAL_DATA: 'app:reveal-data',
 
   // Integration
   DAY_PLAN: 'day-plan',

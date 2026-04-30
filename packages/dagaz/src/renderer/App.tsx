@@ -55,7 +55,7 @@ export default function App() {
   const { isOnline } = useConnectivity();
   const { overlayPeople, overlayEvents, initOverlayPeople, addOverlayPerson, removeOverlayPerson, toggleOverlayPerson } = useOverlay(currentDate, currentView, weekDays);
 
-  const { events: rawEvents, calendars, loading, refresh, fetchCalendars } = useCalendar(currentView, currentDate, weekDays, isOnline, weekendWeekAhead);
+  const { events: rawEvents, calendars, loading, refreshing, refresh, fetchCalendars } = useCalendar(currentView, currentDate, weekDays, isOnline, weekendWeekAhead);
   const syncState = useSync();
   const {
     invites: pendingInvites,
@@ -487,11 +487,11 @@ export default function App() {
             )}
             <button
               onClick={() => refresh({ full: true })}
-              disabled={loading || syncState.status === 'syncing'}
+              disabled={loading || refreshing || syncState.status === 'syncing'}
               className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors disabled:opacity-50"
               title="Refresh (sync & reload)"
             >
-              <svg className={`w-4 h-4 ${loading || syncState.status === 'syncing' ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className={`w-4 h-4 ${loading || refreshing || syncState.status === 'syncing' ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
@@ -535,7 +535,15 @@ export default function App() {
             {currentView === 'month' && (
               <MonthView currentDate={currentDate} events={events} selectedEvent={selectedEvent} onSelectEvent={selectEvent} onDateSelect={handleDateSelect} />
             )}
-            {currentView === 'agenda' && <AgendaView events={events} loading={loading} selectedEvent={selectedEvent} onSelectEvent={setSelectedEvent} />}
+            {currentView === 'agenda' && (
+              <AgendaView
+                events={events}
+                loading={loading && !refreshing}
+                refreshing={refreshing}
+                selectedEvent={selectedEvent}
+                onSelectEvent={setSelectedEvent}
+              />
+            )}
           </div>
           </ErrorBoundary>
 
@@ -583,8 +591,12 @@ export default function App() {
 
 // ── Extracted inline components ─────────────────────────
 
-function AgendaView({ events, loading, selectedEvent, onSelectEvent }: {
-  events: CalendarEvent[]; loading: boolean; selectedEvent: CalendarEvent | null; onSelectEvent: (e: CalendarEvent) => void;
+function AgendaView({ events, loading, refreshing = false, selectedEvent, onSelectEvent }: {
+  events: CalendarEvent[];
+  loading: boolean;
+  refreshing?: boolean;
+  selectedEvent: CalendarEvent | null;
+  onSelectEvent: (e: CalendarEvent) => void;
 }) {
   const grouped = new Map<string, CalendarEvent[]>();
   for (const event of events) {
@@ -597,7 +609,12 @@ function AgendaView({ events, loading, selectedEvent, onSelectEvent }: {
 
   return (
     <div className="h-full overflow-y-auto scrollbar-thin p-4 space-y-4">
-      {sortedDays.length === 0 && !loading && <p className="text-sm text-text-muted text-center mt-8">No events in this period</p>}
+      {sortedDays.length === 0 && !loading && !refreshing && (
+        <p className="text-sm text-text-muted text-center mt-8">No events in this period</p>
+      )}
+      {refreshing && sortedDays.length > 0 && (
+        <p className="text-[10px] text-text-muted text-center py-1">Updating…</p>
+      )}
       {sortedDays.map(([dayKey, dayEvents]) => (
         <div key={dayKey}>
           <h3 className="text-xs font-medium text-text-muted mb-2 uppercase tracking-wider">{formatDayHeader(new Date(dayKey + 'T00:00:00'))}</h3>

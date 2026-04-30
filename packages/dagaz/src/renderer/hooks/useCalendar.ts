@@ -2,11 +2,17 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getWeekStart } from '../lib/utils';
 import type { CalendarEvent, Calendar, ViewType, SyncState } from '../../shared/types';
 
+const PUSH_REFRESH_DEBOUNCE_MS = 450;
+
 export function useCalendar(view: ViewType, currentDate: Date, weekDays: number, isOnline = true, weekendWeekAhead = false) {
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [calendars, setCalendars] = useState<Calendar[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const mountedRef = useRef(true);
+  const eventsRef = useRef<CalendarEvent[]>([]);
+  eventsRef.current = events;
+  const didMountSyncRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -49,19 +55,6 @@ export function useCalendar(view: ViewType, currentDate: Date, weekDays: number,
     }
   }, [view, currentDate, weekDays, weekendWeekAhead]);
 
-  const fetchEvents = useCallback(async () => {
-    setLoading(true);
-    try {
-      const { start, end } = getDateRange();
-      const events = await window.dagaz.getEvents(start, end);
-      if (mountedRef.current) setEvents(events || []);
-    } catch (e) {
-      console.error('[Dagaz] Failed to fetch events:', e);
-    } finally {
-      if (mountedRef.current) setLoading(false);
-    }
-  }, [getDateRange]);
-
   const fetchCalendars = useCallback(async () => {
     try {
       const cals = await window.dagaz.getCalendars();
@@ -71,9 +64,51 @@ export function useCalendar(view: ViewType, currentDate: Date, weekDays: number,
     }
   }, []);
 
+  const fetchEvents = useCallback(async () => {
+    const hadEvents = eventsRef.current.length > 0;
+    if (hadEvents) setRefreshing(true);
+    else setLoading(true);
+    try {
+      const { start, end } = getDateRange();
+      const evts = await window.dagaz.getEvents(start, end);
+      if (mountedRef.current) setEvents(evts || []);
+    } catch (e) {
+      console.error('[Dagaz] Failed to fetch events:', e);
+    } finally {
+      if (mountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    }
+  }, [getDateRange]);
+
+  // One incremental sync on first mount if online (navigation only reads cache; reconnect uses full sync below).
+  useEffect(() => {
+    if (didMountSyncRef.current) return;
+    didMountSyncRef.current = true;
+    void (async () => {
+      if (!isOnline) return;
+      try {
+        await window.dagaz.triggerSync({ full: false });
+      } catch (e) {
+        console.error('[Dagaz] Mount incremental sync failed:', e);
+      }
+    })();
+    // Intentionally once: uses connectivity only at mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    void fetchCalendars();
+  }, [fetchCalendars]);
+
+  useEffect(() => {
+    void fetchEvents();
+  }, [fetchEvents]);
+
   const refresh = useCallback(async (opts?: { full?: boolean }) => {
     setLoading(true);
-    // Only trigger a network sync when online
+    setRefreshing(false);
     if (isOnline) {
       try {
         await window.dagaz.triggerSync({ full: opts?.full ?? true });
@@ -81,7 +116,6 @@ export function useCalendar(view: ViewType, currentDate: Date, weekDays: number,
         console.error('[Dagaz] Sync trigger failed:', e);
       }
     }
-    // Always read from local cache (works offline)
     try {
       const { start, end } = getDateRange();
       const evts = await window.dagaz.getEvents(start, end);
@@ -91,36 +125,42 @@ export function useCalendar(view: ViewType, currentDate: Date, weekDays: number,
     } catch (e) {
       console.error('[Dagaz] Failed to fetch after sync:', e);
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [getDateRange, isOnline]);
-
-  // Initial load
-  useEffect(() => {
-    refresh({ full: false });
-  }, [refresh]);
 
   // Re-sync when coming back online
   const prevOnlineRef = useRef(isOnline);
   useEffect(() => {
     if (isOnline && !prevOnlineRef.current) {
-      refresh({ full: true });
+      void refresh({ full: true });
     }
     prevOnlineRef.current = isOnline;
   }, [isOnline, refresh]);
 
-  // Listen for background sync completions and event changes
+  // Debounced reload from cache when main signals sync or local event changes
+  const pushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    const unsubSync = window.dagaz.onSyncChanged(() => {
-      fetchEvents();
-    });
-    const unsubEvents = window.dagaz.onEventsChanged(() => {
-      fetchEvents();
-    });
-    return () => { unsubSync(); unsubEvents(); };
+    const schedule = () => {
+      if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+      pushTimerRef.current = setTimeout(() => {
+        pushTimerRef.current = null;
+        void fetchEvents();
+      }, PUSH_REFRESH_DEBOUNCE_MS);
+    };
+    const unsubSync = window.dagaz.onSyncChanged(schedule);
+    const unsubEvents = window.dagaz.onEventsChanged(schedule);
+    return () => {
+      unsubSync();
+      unsubEvents();
+      if (pushTimerRef.current) clearTimeout(pushTimerRef.current);
+    };
   }, [fetchEvents]);
 
-  return { events, calendars, loading, refresh, fetchCalendars };
+  return { events, calendars, loading, refreshing, refresh, fetchCalendars };
 }
 
 export function useSync() {

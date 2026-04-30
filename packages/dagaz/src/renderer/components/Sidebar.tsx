@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import type { Calendar, CalendarEvent, ViewType } from '../../shared/types';
 import { getMonthDates, isSameDay, dateKey, formatTime } from '../lib/utils';
+import { eventDisplayColor } from '../lib/calendar-colors';
 
 interface Props {
   calendars: Calendar[];
@@ -161,7 +162,7 @@ export function Sidebar({
                 <div className="flex items-center gap-1.5">
                   <span
                     className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: event.calendar_color || '#4A9AC2' }}
+                    style={{ backgroundColor: eventDisplayColor(event) }}
                   />
                   <span className="text-xs text-text-primary truncate">{event.summary}</span>
                 </div>

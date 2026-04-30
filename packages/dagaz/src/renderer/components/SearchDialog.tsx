@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { CalendarEvent } from '../../shared/types';
 import { formatTime, parseLocalDate } from '../lib/utils';
+import { eventDisplayColor } from '../lib/calendar-colors';
 
 interface Props {
   open: boolean;
@@ -9,51 +10,62 @@ interface Props {
   onNavigateToDate: (date: Date) => void;
 }
 
+const SEARCH_DEBOUNCE_MS = 280;
+
 export function SearchDialog({ open, onClose, onSelectEvent, onNavigateToDate }: Props) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<CalendarEvent[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [searching, setSearching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (open) {
       setQuery('');
       setResults([]);
       setSelectedIndex(0);
+      setSearching(false);
+      requestIdRef.current += 1;
       setTimeout(() => inputRef.current?.focus(), 0);
     }
   }, [open]);
 
-  const search = useCallback(async (q: string) => {
-    if (!q.trim()) { setResults([]); return; }
-    // Search a broad date range: 6 months back to 6 months forward
-    const now = new Date();
-    const start = new Date(now);
-    start.setMonth(start.getMonth() - 6);
-    const end = new Date(now);
-    end.setMonth(end.getMonth() + 6);
-
-    const events = await window.dagaz.getEvents(start.toISOString(), end.toISOString());
-    const lower = q.toLowerCase();
-    const filtered = (events || []).filter((e: CalendarEvent) =>
-      e.summary?.toLowerCase().includes(lower) ||
-      e.description?.toLowerCase().includes(lower) ||
-      e.location?.toLowerCase().includes(lower) ||
-      e.attendees?.some(a => a.display_name?.toLowerCase().includes(lower) || a.email.toLowerCase().includes(lower))
-    ).slice(0, 20);
-    setResults(filtered);
-    setSelectedIndex(0);
+  const runSearch = useCallback(async (q: string) => {
+    const trimmed = q.trim();
+    if (!trimmed) {
+      setResults([]);
+      setSearching(false);
+      return;
+    }
+    const myId = ++requestIdRef.current;
+    setSearching(true);
+    try {
+      const events = await window.dagaz.searchEvents(trimmed, 25);
+      if (myId !== requestIdRef.current) return;
+      setResults(events || []);
+      setSelectedIndex(0);
+    } catch (e) {
+      console.error('[SearchDialog] search failed:', e);
+      if (myId === requestIdRef.current) {
+        setResults([]);
+      }
+    } finally {
+      if (myId === requestIdRef.current) setSearching(false);
+    }
   }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => search(query), 200);
+    const timer = setTimeout(() => {
+      void runSearch(query);
+    }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [query, search]);
+  }, [query, runSearch]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setSelectedIndex(i => Math.min(i + 1, results.length - 1));
+      setSelectedIndex(i => Math.min(i + 1, Math.max(results.length - 1, 0)));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
       setSelectedIndex(i => Math.max(i - 1, 0));
@@ -88,9 +100,10 @@ export function SearchDialog({ open, onClose, onSelectEvent, onNavigateToDate }:
             value={query}
             onChange={e => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search events..."
+            placeholder="Search title, location, people…"
             className="flex-1 bg-transparent text-sm text-text-primary placeholder:text-text-muted outline-none"
           />
+          {searching && <span className="text-[10px] text-text-muted whitespace-nowrap">Searching…</span>}
           <kbd className="text-[10px] text-text-muted bg-bg-tertiary px-1.5 py-0.5 rounded">Esc</kbd>
         </div>
         {results.length > 0 && (
@@ -100,6 +113,7 @@ export function SearchDialog({ open, onClose, onSelectEvent, onNavigateToDate }:
               return (
                 <button
                   key={event.id}
+                  type="button"
                   className={`w-full text-left px-4 py-2.5 flex items-center gap-3 transition-colors ${
                     i === selectedIndex ? 'bg-accent-primary/10' : 'hover:bg-bg-hover'
                   }`}
@@ -112,7 +126,7 @@ export function SearchDialog({ open, onClose, onSelectEvent, onNavigateToDate }:
                 >
                   <span
                     className="w-2 h-2 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: event.calendar_color || '#4A9AC2' }}
+                    style={{ backgroundColor: eventDisplayColor(event) }}
                   />
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-text-primary truncate">{event.summary || '(No title)'}</div>
@@ -126,8 +140,10 @@ export function SearchDialog({ open, onClose, onSelectEvent, onNavigateToDate }:
             })}
           </div>
         )}
-        {query.trim() && results.length === 0 && (
-          <div className="px-4 py-6 text-center text-xs text-text-muted">No events found</div>
+        {query.trim() && !searching && results.length === 0 && (
+          <div className="px-4 py-6 text-center text-xs text-text-muted">
+            No events matched in the last six months (visible calendars only).
+          </div>
         )}
       </div>
     </div>

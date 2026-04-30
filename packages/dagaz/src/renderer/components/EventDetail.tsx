@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import DOMPurify from 'dompurify';
 import type { CalendarEvent, Attendee, UpdateEventInput } from '../../shared/types';
 import { formatTime, formatTimeRange, parseLocalDate } from '../lib/utils';
+import { eventDisplayColor } from '../lib/calendar-colors';
 
 interface Props {
   event: CalendarEvent | null;
@@ -147,7 +148,7 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit, onUpdate
       <div className="flex items-start gap-2 p-4 border-b border-border-subtle">
         <span
           className="w-3 h-3 rounded-full mt-0.5 flex-shrink-0"
-          style={{ backgroundColor: ev.calendar_color || '#4A9AC2' }}
+          style={{ backgroundColor: eventDisplayColor(ev) }}
         />
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold text-text-primary leading-snug">{ev.summary || '(No title)'}</h2>
@@ -409,7 +410,7 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit, onUpdate
           <div className="flex items-center gap-2">
             <span
               className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-              style={{ backgroundColor: ev.calendar_color || '#4A9AC2' }}
+              style={{ backgroundColor: eventDisplayColor(ev) }}
             />
             <span className="text-[10px] text-text-muted truncate">{ev.calendar_id}</span>
           </div>
