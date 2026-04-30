@@ -7,6 +7,7 @@ import type { CabinetService } from './cabinet-service';
 import * as pdfService from './pdf-service';
 import { detectPdfFields } from './pdf-fields';
 import { config } from './config';
+import { resolveVaultAbsolute } from './vault-path';
 
 let mammoth: any;
 try {
@@ -373,7 +374,12 @@ export function startApiServer(store: VaultStore, signatureStore: SignatureStore
       const pageRange = req.query.page_range as string | undefined;
       if (!filePath) return res.status(400).json({ error: 'path is required' });
 
-      const abs = filePath.startsWith('/') ? filePath : path.join(config.vaultPath, filePath);
+      let abs: string;
+      try {
+        abs = resolveVaultAbsolute(filePath, path.resolve(config.vaultPath));
+      } catch {
+        return res.status(403).json({ error: 'Invalid path' });
+      }
       if (!fs.existsSync(abs)) return res.status(404).json({ error: 'File not found' });
 
       const ext = path.extname(abs).toLowerCase();

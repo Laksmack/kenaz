@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import * as pdfjsLib from 'pdfjs-dist';
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist';
 import type { PdfAnnotation, PdfInfo } from '../types';
@@ -603,7 +604,7 @@ export function PdfViewer({
           <div className="w-72 border-l border-border-subtle bg-bg-secondary overflow-y-auto flex-shrink-0">
             <div className="p-4">
               <h3 className="text-xs font-semibold text-text-secondary uppercase tracking-wider mb-3">Claude's Notes</h3>
-              <div className="prose-laguz text-xs" dangerouslySetInnerHTML={{ __html: sidecar }} />
+              <div className="prose-laguz text-xs" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(sidecar) }} />
             </div>
           </div>
         )}

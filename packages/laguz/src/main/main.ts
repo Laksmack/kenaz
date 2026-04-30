@@ -30,6 +30,8 @@ import { LaguzConfigManager } from './laguz-config';
 import { CabinetService } from './cabinet-service';
 import * as pdfService from './pdf-service';
 import { SignatureStore } from './signature-store';
+import { resolveVaultAbsolute, isPathInsideVault } from './vault-path';
+import { LaguzIPC } from '../shared/ipc-channels';
 
 let mainWindow: BrowserWindow | null = null;
 let store: VaultStore;
@@ -108,8 +110,22 @@ function createWindow() {
 
 // ── IPC Handlers ─────────────────────────────────────────────
 
+function vaultAbs(relOrAbs: string): string {
+  return resolveVaultAbsolute(relOrAbs, path.resolve(config.vaultPath));
+}
+
+function cabinetAbs(folderPath: string): string {
+  const root = path.resolve(config.vaultPath);
+  const abs = resolveVaultAbsolute(path.join('_cabinet', folderPath), root);
+  const cr = path.resolve(path.join(root, '_cabinet'));
+  if (!isPathInsideVault(abs, cr)) {
+    throw new Error('Invalid cabinet folder');
+  }
+  return abs;
+}
+
 function registerIpcHandlers() {
-  ipcMain.handle('laguz:search', async (_event, params: any) => {
+  ipcMain.handle(LaguzIPC.SEARCH, async (_event, params: any) => {
     return store.search(params.q || '', {
       type: params.type,
       company: params.company,
@@ -118,105 +134,108 @@ function registerIpcHandlers() {
     });
   });
 
-  ipcMain.handle('laguz:getNote', async (_event, notePath: string) => {
+  ipcMain.handle(LaguzIPC.GET_NOTE, async (_event, notePath: string) => {
     return store.getNote(notePath);
   });
 
-  ipcMain.handle('laguz:getMeetings', async (_event, company: string, since?: string) => {
+  ipcMain.handle(LaguzIPC.GET_MEETINGS, async (_event, company: string, since?: string) => {
     return store.getMeetings(company, since);
   });
 
-  ipcMain.handle('laguz:getAccount', async (_event, folderPath: string) => {
+  ipcMain.handle(LaguzIPC.GET_ACCOUNT, async (_event, folderPath: string) => {
     return store.getAccount(folderPath);
   });
 
-  ipcMain.handle('laguz:getSubfolders', async (_event, parentPath: string) => {
+  ipcMain.handle(LaguzIPC.GET_SUBFOLDERS, async (_event, parentPath: string) => {
     return store.getSubfolders(parentPath);
   });
 
-  ipcMain.handle('laguz:getFolderNotes', async (_event, folderPath: string) => {
+  ipcMain.handle(LaguzIPC.GET_FOLDER_NOTES, async (_event, folderPath: string) => {
     return store.getFolderNotes(folderPath);
   });
 
-  ipcMain.handle('laguz:getUnprocessed', async (_event, since?: string) => {
+  ipcMain.handle(LaguzIPC.GET_UNPROCESSED, async (_event, since?: string) => {
     return store.getUnprocessed(since);
   });
 
-  ipcMain.handle('laguz:writeNote', async (_event, notePath: string, content: string) => {
+  ipcMain.handle(LaguzIPC.WRITE_NOTE, async (_event, notePath: string, content: string) => {
     store.writeNote(notePath, content);
     return store.getNote(notePath);
   });
 
-  ipcMain.handle('laguz:updateFrontmatter', async (_event, notePath: string, fields: Record<string, any>) => {
+  ipcMain.handle(LaguzIPC.UPDATE_FRONTMATTER, async (_event, notePath: string, fields: Record<string, any>) => {
     return store.updateFrontmatter(notePath, fields);
   });
 
-  ipcMain.handle('laguz:getCompanies', async () => {
+  ipcMain.handle(LaguzIPC.GET_COMPANIES, async () => {
     return store.getCompanies();
   });
 
-  ipcMain.handle('laguz:readFile', async (_event, filePath: string) => {
+  ipcMain.handle(LaguzIPC.READ_FILE, async (_event, filePath: string) => {
     return store.readFile(filePath);
   });
 
-  ipcMain.handle('laguz:readFileBase64', async (_event, filePath: string) => {
-    const abs = filePath.startsWith('/') ? filePath : path.join(config.vaultPath, filePath);
+  ipcMain.handle(LaguzIPC.READ_FILE_BASE64, async (_event, filePath: string) => {
+    const abs = vaultAbs(filePath);
     return fs.readFileSync(abs).toString('base64');
   });
 
-  ipcMain.handle('laguz:writeFile', async (_event, filePath: string, content: string) => {
-    const abs = filePath.startsWith('/') ? filePath : require('path').join(config.vaultPath, filePath);
-    require('fs').writeFileSync(abs, content, 'utf-8');
+  ipcMain.handle(LaguzIPC.WRITE_FILE, async (_event, filePath: string, content: string) => {
+    const abs = vaultAbs(filePath);
+    const dir = path.dirname(abs);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(abs, content, 'utf-8');
     return { success: true };
   });
 
-  ipcMain.handle('laguz:createFile', async (_event, filePath: string, content?: string) => {
-    const abs = filePath.startsWith('/') ? filePath : path.join(config.vaultPath, filePath);
+  ipcMain.handle(LaguzIPC.CREATE_FILE, async (_event, filePath: string, content?: string) => {
+    const abs = vaultAbs(filePath);
     const dir = path.dirname(abs);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(abs, content ?? '', 'utf-8');
-    if (/\.(md|markdown|mdx)$/i.test(filePath)) {
-      store.writeNote(filePath, content ?? '');
-      return store.getNote(filePath);
+    const relPath = path.relative(path.resolve(config.vaultPath), abs);
+    if (/\.(md|markdown|mdx)$/i.test(relPath)) {
+      store.writeNote(relPath, content ?? '');
+      return store.getNote(relPath);
     }
-    return { path: filePath, success: true };
+    return { path: relPath, success: true };
   });
 
-  ipcMain.handle('laguz:renameFile', async (_event, oldPath: string, newPath: string) => {
-    const absOld = oldPath.startsWith('/') ? oldPath : path.join(config.vaultPath, oldPath);
-    const absNew = newPath.startsWith('/') ? newPath : path.join(config.vaultPath, newPath);
+  ipcMain.handle(LaguzIPC.RENAME_FILE, async (_event, oldPath: string, newPath: string) => {
+    const absOld = vaultAbs(oldPath);
+    const absNew = vaultAbs(newPath);
     const dir = path.dirname(absNew);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.renameSync(absOld, absNew);
     return { oldPath, newPath, success: true };
   });
 
-  ipcMain.handle('laguz:deleteFile', async (_event, filePath: string) => {
-    const abs = filePath.startsWith('/') ? filePath : path.join(config.vaultPath, filePath);
+  ipcMain.handle(LaguzIPC.DELETE_FILE, async (_event, filePath: string) => {
+    const abs = vaultAbs(filePath);
     fs.unlinkSync(abs);
     return { path: filePath, success: true };
   });
 
-  ipcMain.handle('laguz:getRecent', async (_event, limit?: number) => {
+  ipcMain.handle(LaguzIPC.GET_RECENT, async (_event, limit?: number) => {
     return store.getRecent(limit);
   });
 
-  ipcMain.handle('laguz:getVaultFiles', async (_event, ext?: string) => {
+  ipcMain.handle(LaguzIPC.GET_VAULT_FILES, async (_event, ext?: string) => {
     return store.getVaultFiles(ext);
   });
 
-  ipcMain.handle('laguz:getConfig', async () => {
+  ipcMain.handle(LaguzIPC.GET_CONFIG, async () => {
     return configManager.get();
   });
 
-  ipcMain.handle('laguz:saveConfig', async (_event, newConfig: any) => {
+  ipcMain.handle(LaguzIPC.SAVE_CONFIG, async (_event, newConfig: any) => {
     configManager.save(newConfig);
     return configManager.get();
   });
 
   // ── Attachment / Drop Handlers ───────────────────────────────
 
-  ipcMain.handle('laguz:copyAttachment', async (_event, sourcePath: string) => {
+  ipcMain.handle(LaguzIPC.COPY_ATTACHMENT, async (_event, sourcePath: string) => {
     const filename = path.basename(sourcePath);
     const attachDir = path.join(config.vaultPath, '_attachments');
     if (!fs.existsSync(attachDir)) fs.mkdirSync(attachDir, { recursive: true });
@@ -235,23 +254,23 @@ function registerIpcHandlers() {
     return { path: `_attachments/${destFilename}`, filename: destFilename };
   });
 
-  ipcMain.handle('laguz:readExternalFile', async (_event, filePath: string) => {
+  ipcMain.handle(LaguzIPC.READ_EXTERNAL_FILE, async (_event, filePath: string) => {
     const content = fs.readFileSync(filePath, 'utf-8');
     return { content, filename: path.basename(filePath) };
   });
 
   // ── DOCX Handlers ──────────────────────────────────────────
 
-  ipcMain.handle('laguz:readDocxHtml', async (_event, filePath: string) => {
+  ipcMain.handle(LaguzIPC.READ_DOCX_HTML, async (_event, filePath: string) => {
     const mammoth = require('mammoth');
-    const abs = filePath.startsWith('/') ? filePath : path.join(config.vaultPath, filePath);
+    const abs = vaultAbs(filePath);
     const result = await mammoth.convertToHtml({ path: abs });
     return { html: result.value as string, messages: result.messages };
   });
 
-  ipcMain.handle('laguz:convertDocxToPdf', async (_event, filePath: string, outputPath?: string) => {
+  ipcMain.handle(LaguzIPC.CONVERT_DOCX_TO_PDF, async (_event, filePath: string, outputPath?: string) => {
     const mammoth = require('mammoth');
-    const abs = filePath.startsWith('/') ? filePath : path.join(config.vaultPath, filePath);
+    const abs = vaultAbs(filePath);
     const result = await mammoth.convertToHtml({ path: abs });
     const html = result.value as string;
 
@@ -272,9 +291,7 @@ function registerIpcHandlers() {
   ul, ol { margin: 0 0 8pt; padding-left: 24pt; }
 </style></head><body>${html}</body></html>`;
 
-    const pdfOut = outputPath
-      ? (outputPath.startsWith('/') ? outputPath : path.join(config.vaultPath, outputPath))
-      : abs.replace(/\.docx?$/i, '.pdf');
+    const pdfOut = outputPath ? vaultAbs(outputPath) : abs.replace(/\.docx?$/i, '.pdf');
 
     const hiddenWin = new BrowserWindow({
       show: false, width: 816, height: 1056,
@@ -301,86 +318,86 @@ function registerIpcHandlers() {
 
   // ── PDF Handlers ────────────────────────────────────────────
 
-  ipcMain.handle('laguz:readPdfBase64', async (_event, filePath: string) => {
+  ipcMain.handle(LaguzIPC.READ_PDF_BASE64, async (_event, filePath: string) => {
     return pdfService.readPdfBase64(filePath);
   });
 
-  ipcMain.handle('laguz:readPdfText', async (_event, filePath: string) => {
+  ipcMain.handle(LaguzIPC.READ_PDF_TEXT, async (_event, filePath: string) => {
     return pdfService.readPdfText(filePath);
   });
 
-  ipcMain.handle('laguz:getPdfInfo', async (_event, filePath: string) => {
+  ipcMain.handle(LaguzIPC.GET_PDF_INFO, async (_event, filePath: string) => {
     return pdfService.getPdfInfo(filePath);
   });
 
-  ipcMain.handle('laguz:addPdfAnnotation', async (_event, filePath: string, annotation: any) => {
+  ipcMain.handle(LaguzIPC.ADD_PDF_ANNOTATION, async (_event, filePath: string, annotation: any) => {
     await pdfService.addAnnotation(filePath, annotation);
     return { success: true };
   });
 
-  ipcMain.handle('laguz:placePdfSignature', async (_event, filePath: string, page: number, rect: any, signatureName?: string) => {
+  ipcMain.handle(LaguzIPC.PLACE_PDF_SIGNATURE, async (_event, filePath: string, page: number, rect: any, signatureName?: string) => {
     const sig = signatureStore.get(signatureName);
     if (!sig) throw new Error('No signature found');
     await pdfService.placeSignature(filePath, page, rect, sig);
     return { success: true };
   });
 
-  ipcMain.handle('laguz:placePdfSignatureRaw', async (_event, filePath: string, page: number, rect: any, pngBase64: string) => {
+  ipcMain.handle(LaguzIPC.PLACE_PDF_SIGNATURE_RAW, async (_event, filePath: string, page: number, rect: any, pngBase64: string) => {
     await pdfService.placeSignature(filePath, page, rect, pngBase64);
     return { success: true };
   });
 
-  ipcMain.handle('laguz:flattenPdf', async (_event, filePath: string, outputPath?: string) => {
+  ipcMain.handle(LaguzIPC.FLATTEN_PDF, async (_event, filePath: string, outputPath?: string) => {
     const result = await pdfService.flattenPdf(filePath, outputPath);
     return { outputPath: result };
   });
 
-  ipcMain.handle('laguz:fillPdfField', async (_event, filePath: string, fieldRect: any, value: string) => {
+  ipcMain.handle(LaguzIPC.FILL_PDF_FIELD, async (_event, filePath: string, fieldRect: any, value: string) => {
     await pdfService.fillField(filePath, fieldRect, value);
     return { success: true };
   });
 
-  ipcMain.handle('laguz:readSidecar', async (_event, pdfPath: string) => {
+  ipcMain.handle(LaguzIPC.READ_SIDECAR, async (_event, pdfPath: string) => {
     return pdfService.readSidecar(pdfPath);
   });
 
-  ipcMain.handle('laguz:writeSidecar', async (_event, pdfPath: string, content: string) => {
+  ipcMain.handle(LaguzIPC.WRITE_SIDECAR, async (_event, pdfPath: string, content: string) => {
     pdfService.writeSidecar(pdfPath, content);
     return { success: true };
   });
 
   // ── Signature Handlers ────────────────────────────────────────
 
-  ipcMain.handle('laguz:getSignatures', async () => {
+  ipcMain.handle(LaguzIPC.GET_SIGNATURES, async () => {
     return signatureStore.list();
   });
 
-  ipcMain.handle('laguz:saveSignature', async (_event, name: string, pngBase64: string) => {
+  ipcMain.handle(LaguzIPC.SAVE_SIGNATURE, async (_event, name: string, pngBase64: string) => {
     signatureStore.save(name, pngBase64);
     return { success: true };
   });
 
-  ipcMain.handle('laguz:deleteSignature', async (_event, name: string) => {
+  ipcMain.handle(LaguzIPC.DELETE_SIGNATURE, async (_event, name: string) => {
     signatureStore.remove(name);
     return { success: true };
   });
 
-  ipcMain.handle('laguz:getProfile', async () => {
+  ipcMain.handle(LaguzIPC.GET_PROFILE, async () => {
     return signatureStore.getProfile();
   });
 
-  ipcMain.handle('laguz:saveProfile', async (_event, profile: any) => {
+  ipcMain.handle(LaguzIPC.SAVE_PROFILE, async (_event, profile: any) => {
     signatureStore.saveProfile(profile);
     return { success: true };
   });
 
   // ── Folder Handlers ──────────────────────────────────────────
 
-  ipcMain.handle('laguz:getVaultFolders', async () => {
+  ipcMain.handle(LaguzIPC.GET_VAULT_FOLDERS, async () => {
     return store.getAllFolders();
   });
 
-  ipcMain.handle('laguz:getFolderContext', async (_event, folderName: string) => {
+  ipcMain.handle(LaguzIPC.GET_FOLDER_CONTEXT, async (_event, folderName: string) => {
     const allFolders = store.getAllFolders();
     const folder = allFolders.find(f => f.name === folderName)
       || allFolders.find(f => f.path === folderName);
@@ -427,53 +444,53 @@ function registerIpcHandlers() {
 
   // ── Cabinet Handlers ──────────────────────────────────────────
 
-  ipcMain.handle('laguz:getCabinetFolders', async (_event, parent?: string) => {
+  ipcMain.handle(LaguzIPC.GET_CABINET_FOLDERS, async (_event, parent?: string) => {
     return store.getCabinetFolders(parent);
   });
 
-  ipcMain.handle('laguz:getCabinetDocuments', async (_event, folder?: string, ext?: string) => {
+  ipcMain.handle(LaguzIPC.GET_CABINET_DOCUMENTS, async (_event, folder?: string, ext?: string) => {
     return store.getCabinetDocuments(folder, ext);
   });
 
-  ipcMain.handle('laguz:searchCabinet', async (_event, q: string, filters?: { folder?: string; ext?: string }) => {
+  ipcMain.handle(LaguzIPC.SEARCH_CABINET, async (_event, q: string, filters?: { folder?: string; ext?: string }) => {
     return store.searchCabinet(q, filters);
   });
 
-  ipcMain.handle('laguz:getCabinetDocument', async (_event, docPath: string) => {
+  ipcMain.handle(LaguzIPC.GET_CABINET_DOCUMENT, async (_event, docPath: string) => {
     return store.getCabinetDocument(docPath);
   });
 
-  ipcMain.handle('laguz:tagCabinetDocument', async (_event, docPath: string, tags: string[]) => {
+  ipcMain.handle(LaguzIPC.TAG_CABINET_DOCUMENT, async (_event, docPath: string, tags: string[]) => {
     store.tagCabinetDocument(docPath, tags);
     return { success: true };
   });
 
-  ipcMain.handle('laguz:updateCabinetMetadata', async (_event, docPath: string, fields: any) => {
+  ipcMain.handle(LaguzIPC.UPDATE_CABINET_METADATA, async (_event, docPath: string, fields: any) => {
     store.updateCabinetMetadata(docPath, fields);
     return { success: true };
   });
 
-  ipcMain.handle('laguz:createCabinetFolder', async (_event, folderPath: string) => {
+  ipcMain.handle(LaguzIPC.CREATE_CABINET_FOLDER, async (_event, folderPath: string) => {
     store.createCabinetFolder(folderPath);
     return { success: true };
   });
 
-  ipcMain.handle('laguz:moveCabinetDocument', async (_event, from: string, to: string) => {
+  ipcMain.handle(LaguzIPC.MOVE_CABINET_DOCUMENT, async (_event, from: string, to: string) => {
     return store.moveCabinetDocument(from, to);
   });
 
-  ipcMain.handle('laguz:getCabinetOcrStatus', async () => {
+  ipcMain.handle(LaguzIPC.GET_CABINET_OCR_STATUS, async () => {
     return store.getCabinetOcrStatus();
   });
 
-  ipcMain.handle('laguz:copyCabinetFile', async (_event, sourcePath: string, targetFolder: string) => {
+  ipcMain.handle(LaguzIPC.COPY_CABINET_FILE, async (_event, sourcePath: string, targetFolder: string) => {
     return cabinetService.copyCabinetFile(sourcePath, targetFolder || '');
   });
 
-  ipcMain.handle('laguz:openScanner', async (_event, cabinetFolder?: string) => {
+  ipcMain.handle(LaguzIPC.OPEN_SCANNER, async (_event, cabinetFolder?: string) => {
     if (process.platform !== 'darwin') return { supported: false };
 
-    const targetDir = path.join(config.vaultPath, '_cabinet', cabinetFolder || '');
+    const targetDir = cabinetAbs(cabinetFolder || '');
     if (!fs.existsSync(targetDir)) fs.mkdirSync(targetDir, { recursive: true });
 
     // Open Image Capture and reveal the target folder so the user knows where to save
@@ -485,8 +502,8 @@ function registerIpcHandlers() {
   });
 
   // ── Print ──
-  ipcMain.handle('laguz:printFile', async (_event, filePath: string) => {
-    const abs = path.isAbsolute(filePath) ? filePath : path.join(config.vaultPath, filePath);
+  ipcMain.handle(LaguzIPC.PRINT_FILE, async (_event, filePath: string) => {
+    const abs = vaultAbs(filePath);
     const ext = path.extname(abs).toLowerCase();
 
     if (ext === '.pdf') {
@@ -531,8 +548,8 @@ function registerIpcHandlers() {
   });
 
   // ── Save As ──
-  ipcMain.handle('laguz:saveFileAs', async (_event, filePath: string) => {
-    const abs = path.isAbsolute(filePath) ? filePath : path.join(config.vaultPath, filePath);
+  ipcMain.handle(LaguzIPC.SAVE_FILE_AS, async (_event, filePath: string) => {
+    const abs = vaultAbs(filePath);
     const ext = path.extname(abs);
     const baseName = path.basename(abs);
     const { canceled, filePath: dest } = await dialog.showSaveDialog({
@@ -545,7 +562,7 @@ function registerIpcHandlers() {
   });
 
   // Cross-app
-  ipcMain.handle('cross-app:fetch', async (_event, url: string, options?: any) => {
+  ipcMain.handle(LaguzIPC.CROSS_APP_FETCH, async (_event, url: string, options?: any) => {
     const res = await fetch(url, {
       ...options,
       headers: { 'Content-Type': 'application/json', ...options?.headers },
@@ -592,7 +609,7 @@ function sendFileToRenderer(filePath: string) {
     ? abs.slice(vaultPath.length + 1)
     : abs;
   if (mainWindow?.webContents) {
-    mainWindow.webContents.send('laguz:open-file', relative);
+    mainWindow.webContents.send(LaguzIPC.OPEN_FILE, relative);
   } else {
     pendingFilePath = relative;
   }
@@ -811,7 +828,7 @@ app.whenReady().then(async () => {
   if (mainWindow && pendingFilePath) {
     mainWindow.webContents.on('did-finish-load', () => {
       if (pendingFilePath) {
-        mainWindow?.webContents.send('laguz:open-file', pendingFilePath);
+        mainWindow?.webContents.send(LaguzIPC.OPEN_FILE, pendingFilePath);
         pendingFilePath = null;
       }
     });

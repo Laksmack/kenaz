@@ -2,9 +2,10 @@ import fs from 'fs';
 import path from 'path';
 import { PDFDocument, PDFName, PDFString, PDFArray, PDFDict, rgb, StandardFonts } from 'pdf-lib';
 import { config } from './config';
+import { resolveVaultAbsolute } from './vault-path';
 
-function resolveVaultPath(filePath: string): string {
-  return filePath.startsWith('/') ? filePath : path.join(config.vaultPath, filePath);
+function vaultAbs(filePath: string): string {
+  return resolveVaultAbsolute(filePath, path.resolve(config.vaultPath));
 }
 
 export interface PdfInfo {
@@ -36,13 +37,13 @@ export interface PdfField {
 }
 
 export async function readPdfBase64(filePath: string): Promise<string> {
-  const abs = resolveVaultPath(filePath);
+  const abs = vaultAbs(filePath);
   const buf = fs.readFileSync(abs);
   return buf.toString('base64');
 }
 
 export async function readPdfText(filePath: string, pageRange?: { start: number; end: number }): Promise<string> {
-  const abs = resolveVaultPath(filePath);
+  const abs = vaultAbs(filePath);
   const buf = fs.readFileSync(abs);
   const pdfDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
   const pages = pdfDoc.getPages();
@@ -198,7 +199,7 @@ function decodePdfString(s: string): string {
 }
 
 export async function getPdfInfo(filePath: string): Promise<PdfInfo> {
-  const abs = resolveVaultPath(filePath);
+  const abs = vaultAbs(filePath);
   const buf = fs.readFileSync(abs);
   const pdfDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
 
@@ -214,7 +215,7 @@ export async function getPdfInfo(filePath: string): Promise<PdfInfo> {
 }
 
 export async function addAnnotation(filePath: string, annotation: PdfAnnotationData): Promise<void> {
-  const abs = resolveVaultPath(filePath);
+  const abs = vaultAbs(filePath);
   const buf = fs.readFileSync(abs);
   const pdfDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
   const pages = pdfDoc.getPages();
@@ -274,7 +275,7 @@ export async function placeSignature(
   rect: { x: number; y: number; width: number; height: number },
   signaturePngBase64: string,
 ): Promise<void> {
-  const abs = resolveVaultPath(filePath);
+  const abs = vaultAbs(filePath);
   const buf = fs.readFileSync(abs);
   const pdfDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
   const pages = pdfDoc.getPages();
@@ -298,7 +299,7 @@ export async function placeSignature(
 }
 
 export async function flattenPdf(filePath: string, outputPath?: string): Promise<string> {
-  const abs = resolveVaultPath(filePath);
+  const abs = vaultAbs(filePath);
   const buf = fs.readFileSync(abs);
   const pdfDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
 
@@ -306,7 +307,7 @@ export async function flattenPdf(filePath: string, outputPath?: string): Promise
   const pdfBytes = await pdfDoc.save();
 
   const out = outputPath
-    ? resolveVaultPath(outputPath)
+    ? vaultAbs(outputPath)
     : abs.replace(/\.pdf$/i, ' (signed).pdf');
 
   fs.writeFileSync(out, Buffer.from(pdfBytes));
@@ -323,7 +324,7 @@ export async function fillField(
   fieldRect: { page: number; x: number; y: number; width: number; height: number },
   value: string,
 ): Promise<void> {
-  const abs = resolveVaultPath(filePath);
+  const abs = vaultAbs(filePath);
   const buf = fs.readFileSync(abs);
   const pdfDoc = await PDFDocument.load(buf, { ignoreEncryption: true });
   const pages = pdfDoc.getPages();
@@ -350,7 +351,7 @@ export async function fillField(
 
 // Sidecar notes
 export function getSidecarPath(pdfPath: string): string {
-  const abs = resolveVaultPath(pdfPath);
+  const abs = vaultAbs(pdfPath);
   return abs.replace(/\.pdf$/i, '.md');
 }
 

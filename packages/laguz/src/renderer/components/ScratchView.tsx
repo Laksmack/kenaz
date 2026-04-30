@@ -32,11 +32,24 @@ function loadTabs(): ScratchTab[] {
 }
 
 function saveTabs(tabs: ScratchTab[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs));
+  const raw = JSON.stringify(tabs);
+  if (raw.length > 500_000) {
+    console.warn('[Scratch] localStorage payload exceeds 500KB; skipping save');
+    return;
+  }
+  try {
+    localStorage.setItem(STORAGE_KEY, raw);
+  } catch (e) {
+    console.warn('[Scratch] localStorage save failed:', e);
+  }
 }
+
+const SCRATCH_SAVE_DEBOUNCE_MS = 500;
 
 export function ScratchView() {
   const [tabs, setTabs] = useState<ScratchTab[]>(loadTabs);
+  const tabsRef = useRef(tabs);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const [activeTab, setActiveTab] = useState(1);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [savePath, setSavePath] = useState('');
@@ -52,7 +65,24 @@ export function ScratchView() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { saveTabs(tabs); }, [tabs]);
+  useEffect(() => {
+    tabsRef.current = tabs;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      saveTimerRef.current = undefined;
+      saveTabs(tabs);
+    }, SCRATCH_SAVE_DEBOUNCE_MS);
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = undefined;
+      }
+    };
+  }, [tabs]);
+
+  useEffect(() => () => {
+    saveTabs(tabsRef.current);
+  }, []);
 
   const currentTab = tabs.find(t => t.id === activeTab) || tabs[0];
 

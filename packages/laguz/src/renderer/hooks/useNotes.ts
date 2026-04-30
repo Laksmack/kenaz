@@ -5,20 +5,28 @@ export function useSearch() {
   const [results, setResults] = useState<NoteSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const requestGenRef = useRef(0);
 
   const search = useCallback((query: string, filters?: { type?: string; company?: string }) => {
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(async () => {
+      const gen = ++requestGenRef.current;
       setLoading(true);
       try {
         const notes = await window.laguz.search({ q: query, ...filters });
+        if (gen !== requestGenRef.current) return;
         setResults(notes);
       } catch (e) {
-        console.error('Search failed:', e);
+        if (gen === requestGenRef.current) console.error('Search failed:', e);
       } finally {
-        setLoading(false);
+        if (gen === requestGenRef.current) setLoading(false);
       }
     }, 300);
+  }, []);
+
+  useEffect(() => () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    requestGenRef.current += 1;
   }, []);
 
   return { results, loading, search };

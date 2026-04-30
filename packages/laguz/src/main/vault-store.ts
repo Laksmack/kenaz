@@ -4,6 +4,8 @@ import fs from 'fs';
 import path from 'path';
 import matter from 'gray-matter';
 import { config } from './config';
+import { resolveVaultAbsolute, isPathInsideVault } from './vault-path';
+import { buildFtsMatchQuery } from './fts-query';
 
 export interface NoteSummary {
   id: string;
@@ -74,6 +76,20 @@ function countWords(text: string): number {
 
 function fileHash(content: string): string {
   return crypto.createHash('sha1').update(content).digest('hex');
+}
+
+function vaultRoot(): string {
+  return path.resolve(config.vaultPath);
+}
+
+function cabinetRootResolved(): string {
+  return path.resolve(path.join(vaultRoot(), '_cabinet'));
+}
+
+function assertInsideCabinet(absPath: string): void {
+  if (!isPathInsideVault(absPath, cabinetRootResolved())) {
+    throw new Error('Invalid cabinet path');
+  }
 }
 
 export class VaultStore {
@@ -502,18 +518,56 @@ export class VaultStore {
     return meta;
   }
 
-  private enrichSummary(row: NoteRow): NoteSummary {
-    return {
-      ...row,
-      tags: this.getTagsForNote(row.id),
-    };
+  private getTagsForNotesBatch(noteIds: string[]): Map<string, string[]> {
+    if (noteIds.length === 0) return new Map();
+    const placeholders = noteIds.map(() => '?').join(',');
+    const rows = this.db.prepare(
+      `SELECT note_id, tag FROM note_tags WHERE note_id IN (${placeholders})`
+    ).all(...noteIds) as { note_id: string; tag: string }[];
+    const map = new Map<string, string[]>();
+    for (const id of noteIds) map.set(id, []);
+    for (const r of rows) {
+      const arr = map.get(r.note_id);
+      if (arr) arr.push(r.tag);
+    }
+    return map;
+  }
+
+  private enrichSummaries(rows: NoteRow[]): NoteSummary[] {
+    const tagMap = this.getTagsForNotesBatch(rows.map((r) => r.id));
+    return rows.map((r) => ({ ...r, tags: tagMap.get(r.id) ?? [] }));
+  }
+
+  private getCabinetTagsBatch(docIds: string[]): Map<string, string[]> {
+    if (docIds.length === 0) return new Map();
+    const placeholders = docIds.map(() => '?').join(',');
+    const rows = this.db.prepare(
+      `SELECT doc_id, tag FROM cabinet_tags WHERE doc_id IN (${placeholders})`
+    ).all(...docIds) as { doc_id: string; tag: string }[];
+    const map = new Map<string, string[]>();
+    for (const id of docIds) map.set(id, []);
+    for (const r of rows) {
+      const arr = map.get(r.doc_id);
+      if (arr) arr.push(r.tag);
+    }
+    return map;
+  }
+
+  private enrichCabinetRows(
+    rows: Array<Omit<CabinetDocumentRow, 'tags'>>
+  ): CabinetDocumentRow[] {
+    const tagMap = this.getCabinetTagsBatch(rows.map((r) => r.id));
+    return rows.map((r) => ({ ...r, tags: tagMap.get(r.id) ?? [] }));
   }
 
   search(query: string, filters?: { type?: string; company?: string; since?: string; tags?: string[] }): NoteSummary[] {
     let rows: NoteRow[];
 
-    if (query) {
-      const ftsQuery = query.split(/\s+/).map(w => `"${w}"`).join(' ');
+    if (query.trim()) {
+      const ftsQuery = buildFtsMatchQuery(query);
+      if (!ftsQuery) {
+        return [];
+      }
       let sql = `
         SELECT n.* FROM notes n
         JOIN notes_fts f ON f.rowid = n.rowid
@@ -557,7 +611,7 @@ export class VaultStore {
       rows = this.db.prepare(sql).all(...params) as NoteRow[];
     }
 
-    let results = rows.map(r => this.enrichSummary(r));
+    let results = this.enrichSummaries(rows);
 
     if (filters?.tags && filters.tags.length > 0) {
       results = results.filter(r =>
@@ -572,7 +626,12 @@ export class VaultStore {
     const row = this.db.prepare('SELECT * FROM notes WHERE path = ?').get(notePath) as NoteRow | undefined;
     if (!row) return null;
 
-    const fullPath = path.join(config.vaultPath, notePath);
+    let fullPath: string;
+    try {
+      fullPath = resolveVaultAbsolute(notePath, vaultRoot());
+    } catch {
+      return null;
+    }
     let content = '';
     try {
       content = fs.readFileSync(fullPath, 'utf-8');
@@ -587,7 +646,12 @@ export class VaultStore {
   }
 
   readFile(filePath: string): { path: string; content: string; modified: string } | null {
-    const abs = filePath.startsWith('/') ? filePath : path.join(config.vaultPath, filePath);
+    let abs: string;
+    try {
+      abs = resolveVaultAbsolute(filePath, vaultRoot());
+    } catch {
+      return null;
+    }
     try {
       const stat = fs.statSync(abs);
       const content = fs.readFileSync(abs, 'utf-8');
@@ -606,14 +670,14 @@ export class VaultStore {
 
     sql += ' ORDER BY date DESC';
     const rows = this.db.prepare(sql).all(...params) as NoteRow[];
-    return rows.map(r => this.enrichSummary(r));
+    return this.enrichSummaries(rows);
   }
 
   getAccount(folderPath: string): NoteSummary[] {
     const rows = this.db.prepare(
       'SELECT * FROM notes WHERE path LIKE ? ORDER BY modified DESC'
     ).all(`${folderPath}/%`) as NoteRow[];
-    return rows.map(r => this.enrichSummary(r));
+    return this.enrichSummaries(rows);
   }
 
   getFolderNotes(folderPath: string): NoteSummary[] {
@@ -647,7 +711,7 @@ export class VaultStore {
 
     sql += ' ORDER BY date DESC';
     const rows = this.db.prepare(sql).all(...params) as NoteRow[];
-    return rows.map(r => this.enrichSummary(r));
+    return this.enrichSummaries(rows);
   }
 
   getCompanies(): string[] {
@@ -661,13 +725,13 @@ export class VaultStore {
     const rows = this.db.prepare(
       'SELECT * FROM notes ORDER BY modified DESC LIMIT ?'
     ).all(limit) as NoteRow[];
-    return rows.map(r => this.enrichSummary(r));
+    return this.enrichSummaries(rows);
   }
 
   // ── Write Operations ─────────────────────────────────────────
 
   writeNote(notePath: string, content: string): void {
-    const fullPath = path.join(config.vaultPath, notePath);
+    const fullPath = resolveVaultAbsolute(notePath, vaultRoot());
     const dir = path.dirname(fullPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -677,7 +741,7 @@ export class VaultStore {
   }
 
   getFields(notePath: string, fields: string[]): Record<string, string | null> {
-    const fullPath = path.join(config.vaultPath, notePath);
+    const fullPath = resolveVaultAbsolute(notePath, vaultRoot());
     if (!fs.existsSync(fullPath)) throw new Error(`File not found: ${notePath}`);
     const raw = fs.readFileSync(fullPath, 'utf-8');
     const parsed = matter(raw);
@@ -734,7 +798,7 @@ export class VaultStore {
   }
 
   updateFrontmatter(notePath: string, fields: Record<string, any>): { path: string; updated: string[] } {
-    const fullPath = path.join(config.vaultPath, notePath);
+    const fullPath = resolveVaultAbsolute(notePath, vaultRoot());
     const raw = fs.readFileSync(fullPath, 'utf-8');
     const parsed = matter(raw);
 
@@ -854,8 +918,8 @@ export class VaultStore {
     }
 
     sql += ' ORDER BY modified DESC LIMIT 200';
-    const rows = this.db.prepare(sql).all(...params) as CabinetDocumentRow[];
-    return rows.map(r => ({ ...r, tags: this.getCabinetTags(r.id) }));
+    const rows = this.db.prepare(sql).all(...params) as Array<Omit<CabinetDocumentRow, 'tags'>>;
+    return this.enrichCabinetRows(rows);
   }
 
   getCabinetDocument(docPath: string): (CabinetDocumentRow & { extracted_text: string | null }) | null {
@@ -867,9 +931,11 @@ export class VaultStore {
   }
 
   searchCabinet(query: string, filters?: { folder?: string; ext?: string }): CabinetDocumentRow[] {
-    if (!query) return this.getCabinetDocuments(filters?.folder, filters?.ext);
+    if (!query.trim()) return this.getCabinetDocuments(filters?.folder, filters?.ext);
 
-    const ftsQuery = query.split(/\s+/).map(w => `"${w}"`).join(' ');
+    const ftsQuery = buildFtsMatchQuery(query);
+    if (!ftsQuery) return [];
+
     let sql = `
       SELECT d.id, d.path, d.filename, d.ext, d.folder, d.size, d.modified, d.created, d.ocr_status, d.page_count, d.notes, d.doc_date, d.category
       FROM cabinet_documents d
@@ -888,8 +954,8 @@ export class VaultStore {
     }
 
     sql += ' ORDER BY rank LIMIT 100';
-    const rows = this.db.prepare(sql).all(...params) as CabinetDocumentRow[];
-    return rows.map(r => ({ ...r, tags: this.getCabinetTags(r.id) }));
+    const rows = this.db.prepare(sql).all(...params) as Array<Omit<CabinetDocumentRow, 'tags'>>;
+    return this.enrichCabinetRows(rows);
   }
 
   getCabinetFolders(parent?: string): string[] {
@@ -906,19 +972,24 @@ export class VaultStore {
   }
 
   createCabinetFolder(folderPath: string): void {
-    const abs = path.join(config.vaultPath, '_cabinet', folderPath);
+    const abs = resolveVaultAbsolute(path.join('_cabinet', folderPath), vaultRoot());
+    assertInsideCabinet(abs);
     if (!fs.existsSync(abs)) {
       fs.mkdirSync(abs, { recursive: true });
     }
   }
 
   moveCabinetDocument(fromPath: string, toFolder: string): { newPath: string } {
-    const absFrom = fromPath.startsWith('/') ? fromPath : path.join(config.vaultPath, fromPath);
-    const filename = path.basename(fromPath);
-    const destDir = path.join(config.vaultPath, '_cabinet', toFolder);
+    const root = vaultRoot();
+    const absFrom = resolveVaultAbsolute(fromPath, root);
+    assertInsideCabinet(absFrom);
+    const filename = path.basename(absFrom);
+    const destRel = path.join('_cabinet', toFolder, filename);
+    const absTo = resolveVaultAbsolute(destRel, root);
+    assertInsideCabinet(absTo);
+    const destDir = path.dirname(absTo);
     if (!fs.existsSync(destDir)) fs.mkdirSync(destDir, { recursive: true });
 
-    const absTo = path.join(destDir, filename);
     fs.renameSync(absFrom, absTo);
 
     const oldRelative = path.relative(config.vaultPath, absFrom);
@@ -986,8 +1057,8 @@ export class VaultStore {
   getCabinetPending(): CabinetDocumentRow[] {
     const rows = this.db.prepare(
       "SELECT id, path, filename, ext, folder, size, modified, created, ocr_status, page_count, notes, doc_date, category FROM cabinet_documents WHERE ocr_status = 'pending' ORDER BY modified DESC"
-    ).all() as CabinetDocumentRow[];
-    return rows;
+    ).all() as Array<Omit<CabinetDocumentRow, 'tags'>>;
+    return this.enrichCabinetRows(rows);
   }
 
   getCabinetOcrStatus(): { pending: number; processing: number; done: number; failed: number } {
