@@ -341,6 +341,13 @@ function registerIpcHandlers() {
               thread.nudgeType = cached.nudgeType;
             }
           }
+
+          const ids = result.threads.map((t: { id: string }) => t.id);
+          if (!pageToken) {
+            cache.saveQueryListSnapshot(query, ids);
+          } else {
+            cache.appendToQueryListSnapshot(query, ids);
+          }
         } catch (e) {
           console.error('[Cache] Failed to write cache:', e);
         }
@@ -466,7 +473,15 @@ function registerIpcHandlers() {
       }
       const apiIds = new Set(result.threads.map((t: any) => t.id));
       const uniqueLocal = localResults.filter(t => !apiIds.has(t.id));
-      return [...result.threads, ...uniqueLocal];
+      const merged = [...result.threads, ...uniqueLocal];
+      if (appConfig.cacheEnabled) {
+        try {
+          cache.saveQueryListSnapshot(normalizedQuery, merged.map((t: { id: string }) => t.id));
+        } catch (e) {
+          console.error('[Cache] Failed to save search snapshot:', e);
+        }
+      }
+      return merged;
     } catch (e) {
       console.error('[Kenaz] Search API failed, returning local results:', e);
       return localResults;

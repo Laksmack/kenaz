@@ -32,7 +32,16 @@ export type InboxSort = 'newest' | 'oldest';
 // so reversing them would produce a confusing mixed order.
 const ALWAYS_NEWEST_FIRST: Set<ViewType> = new Set(['sent', 'all', 'search']);
 
-export function useEmails(currentView: ViewType, searchQuery: string, enabled: boolean = true, views: View[] = [], sort: InboxSort = 'newest', userEmail: string = '') {
+export function useEmails(
+  currentView: ViewType,
+  searchQuery: string,
+  enabled: boolean = true,
+  views: View[] = [],
+  sort: InboxSort = 'newest',
+  userEmail: string = '',
+  /** When true, background sync triggers a network list refresh; when false, reload from local cache only. */
+  isOnline: boolean = true,
+) {
   const [threads, setThreads] = useState<EmailThread[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -261,20 +270,24 @@ export function useEmails(currentView: ViewType, searchQuery: string, enabled: b
   // Listen for push updates from sync engine
   useEffect(() => {
     const cleanupThreads = window.kenaz.onThreadsUpdated(() => {
-      // Sync engine updated the cache — refresh current view
-      if (enabled) {
-        if (currentView === 'search') {
-          fetchThreads();
-        } else {
-          refreshFromCache();
-        }
+      // Drop in-memory list cache so we never flash stale ordering after a sync invalidates snapshots.
+      cacheRef.current = {};
+      if (!enabled) return;
+      if (currentView === 'search') {
+        void fetchThreads();
+        return;
+      }
+      if (isOnline) {
+        void fetchThreads();
+      } else {
+        void refreshFromCache();
       }
     });
 
     return () => {
       cleanupThreads();
     };
-  }, [enabled, currentView, fetchThreads, refreshFromCache]);
+  }, [enabled, currentView, fetchThreads, refreshFromCache, isOnline]);
 
   const archiveThread = useCallback(async (threadId: string) => {
     recentDoneRef.current.set(threadId, Date.now() + RECENT_DONE_SUPPRESS_MS);

@@ -180,6 +180,7 @@ export class SyncEngine {
         // No history delta, but still reconcile INBOX to prune stale cached labels.
         const pruned = await this.reconcileInbox();
         if (pruned > 0) {
+          this.cache.clearAllQueryListSnapshots();
           this.notifyThreadsUpdated();
         }
         // Update history ID after successful reconciliation pass.
@@ -248,6 +249,10 @@ export class SyncEngine {
             }
           }
         }
+      }
+
+      for (const mid of deletedMessageIds) {
+        this.cache.deleteMessage(mid);
       }
 
       // ── Auto-wake snoozed threads on new reply ──────────
@@ -403,7 +408,8 @@ export class SyncEngine {
       if (pruned > 0) {
         shouldNotify = true;
       }
-      if (shouldNotify) {
+      if (shouldNotify || deletedMessageIds.size > 0) {
+        this.cache.clearAllQueryListSnapshots();
         this.notifyThreadsUpdated();
       }
 
@@ -428,8 +434,8 @@ export class SyncEngine {
    */
   private async reconcileInbox(): Promise<number> {
     try {
-      const result = await this.gmail.fetchThreads('in:inbox', 100);
-      const liveIds = new Set(result.threads.map((t) => t.id));
+      const liveIdsList = await this.gmail.listThreadIdsForQuery('in:inbox');
+      const liveIds = new Set(liveIdsList);
       const pruned = this.cache.reconcileLabel('INBOX', liveIds);
       if (pruned > 0) {
         console.log(`[SyncEngine] Reconciled INBOX after incremental sync: removed ${pruned} stale thread(s)`);
@@ -476,9 +482,9 @@ export class SyncEngine {
             }
           }
 
-          // Reconcile: strip label from any cached thread NOT in this response
+          // Reconcile against the full query result (not just the first page of list fetches).
           if (reconcileLabel) {
-            const liveIds = new Set(result.threads.map(t => t.id));
+            const liveIds = new Set(await this.gmail.listThreadIdsForQuery(query));
             this.cache.reconcileLabel(reconcileLabel, liveIds);
           }
         } catch (e) {
@@ -487,6 +493,7 @@ export class SyncEngine {
       }
 
       this.cache.setLastHistoryId(historyId);
+      this.cache.clearAllQueryListSnapshots();
       this.notifyThreadsUpdated();
       console.log('[SyncEngine] Full sync complete');
     } catch (e) {

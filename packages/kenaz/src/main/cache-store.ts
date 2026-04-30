@@ -126,6 +126,15 @@ export class CacheStore {
       // Column already exists — that's fine
     }
 
+    // Last successful list fetch per Gmail query (ordered thread ids) for cache-only refresh
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS query_list_snapshots (
+        query_key TEXT PRIMARY KEY,
+        thread_ids TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
     // Create FTS5 table if not exists (separate try since virtual tables can't use IF NOT EXISTS easily)
     try {
       this.db.exec(`
@@ -166,12 +175,26 @@ export class CacheStore {
   // ── Thread operations ────────────────────────────────────
 
   upsertThreads(threads: EmailThread[]): void {
+    // ON CONFLICT DO UPDATE preserves columns not listed (e.g. nudge_type) — INSERT OR REPLACE would wipe them.
     const stmt = this.db.prepare(`
-      INSERT OR REPLACE INTO threads (id, subject, snippet, last_date, labels, is_unread, from_name, from_email, participants, has_attachments, history_id, cached_at)
+      INSERT INTO threads (id, subject, snippet, last_date, labels, is_unread, from_name, from_email, participants, has_attachments, history_id, cached_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        subject = excluded.subject,
+        snippet = excluded.snippet,
+        last_date = excluded.last_date,
+        labels = excluded.labels,
+        is_unread = excluded.is_unread,
+        from_name = excluded.from_name,
+        from_email = excluded.from_email,
+        participants = excluded.participants,
+        has_attachments = excluded.has_attachments,
+        history_id = excluded.history_id,
+        cached_at = excluded.cached_at
     `);
 
     const transaction = this.db.transaction((items: EmailThread[]) => {
+      const cachedAt = new Date().toISOString();
       for (const t of items) {
         const hasAttachments = t.messages.some(m => m.hasAttachments) ? 1 : 0;
         stmt.run(
@@ -185,8 +208,8 @@ export class CacheStore {
           t.from.email,
           JSON.stringify(t.participants),
           hasAttachments,
-          null, // history_id filled by sync engine
-          new Date().toISOString(),
+          null,
+          cachedAt,
         );
       }
     });
@@ -288,8 +311,12 @@ export class CacheStore {
       return this.getThreadsByLabels([labelMatch[1].toUpperCase()], limit);
     }
 
-    // Fallback: return all threads (the sync engine will have the right data)
-    return this.getThreadsByLabels([], limit);
+    // Arbitrary Gmail queries: use the last successful list snapshot (see main IPC after network fetch).
+    const snapshotIds = this.getSnapshotThreadIds(query);
+    if (snapshotIds && snapshotIds.length > 0) {
+      return this.getThreadsByIdsInOrder(snapshotIds, limit);
+    }
+    return [];
   }
 
   /**
@@ -404,6 +431,86 @@ export class CacheStore {
   deleteThread(threadId: string): void {
     this.db.prepare('DELETE FROM messages WHERE thread_id = ?').run(threadId);
     this.db.prepare('DELETE FROM threads WHERE id = ?').run(threadId);
+  }
+
+  /**
+   * Remove a single cached message (e.g. from Gmail History messagesDeleted).
+   * Drops the parent thread row if it no longer has any messages.
+   */
+  deleteMessage(messageId: string): void {
+    const row = this.db.prepare('SELECT thread_id FROM messages WHERE id = ?').get(messageId) as { thread_id: string } | undefined;
+    if (!row) return;
+    this.db.prepare('DELETE FROM messages WHERE id = ?').run(messageId);
+    const cnt = (this.db.prepare('SELECT COUNT(*) as n FROM messages WHERE thread_id = ?').get(row.thread_id) as { n: number }).n;
+    if (cnt === 0) {
+      this.deleteThread(row.thread_id);
+    }
+  }
+
+  // ── List query snapshots (custom Gmail views) ─────────────
+
+  saveQueryListSnapshot(queryKey: string, threadIds: string[]): void {
+    const key = (queryKey || '').trim();
+    if (!key) return;
+    this.db
+      .prepare(
+        `INSERT INTO query_list_snapshots (query_key, thread_ids, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(query_key) DO UPDATE SET
+           thread_ids = excluded.thread_ids,
+           updated_at = excluded.updated_at`
+      )
+      .run(key, JSON.stringify(threadIds), new Date().toISOString());
+  }
+
+  /** Append ids from a paged list fetch (deduped, preserves existing order). */
+  appendToQueryListSnapshot(queryKey: string, newIds: string[]): void {
+    const key = (queryKey || '').trim();
+    if (!key || newIds.length === 0) return;
+    const existing = this.getSnapshotThreadIds(key) || [];
+    const seen = new Set(existing);
+    const merged = [...existing];
+    for (const id of newIds) {
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        merged.push(id);
+      }
+    }
+    this.saveQueryListSnapshot(key, merged);
+  }
+
+  clearAllQueryListSnapshots(): void {
+    this.db.exec('DELETE FROM query_list_snapshots');
+  }
+
+  private getSnapshotThreadIds(queryKey: string): string[] | null {
+    const key = (queryKey || '').trim();
+    if (!key) return null;
+    const row = this.db.prepare('SELECT thread_ids FROM query_list_snapshots WHERE query_key = ?').get(key) as { thread_ids: string } | undefined;
+    if (!row) return null;
+    try {
+      const ids = JSON.parse(row.thread_ids) as string[];
+      return Array.isArray(ids) ? ids : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Load threads by id preserving caller order (drops missing ids after prune/delete).
+   */
+  getThreadsByIdsInOrder(ids: string[], limit: number): EmailThread[] {
+    const slice = ids.slice(0, limit).filter(Boolean);
+    if (slice.length === 0) return [];
+    const placeholders = slice.map(() => '?').join(',');
+    const rows = this.db.prepare(`SELECT * FROM threads WHERE id IN (${placeholders})`).all(...slice) as any[];
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const out: EmailThread[] = [];
+    for (const id of slice) {
+      const r = byId.get(id);
+      if (r) out.push(this.rowToThread(r));
+    }
+    return out;
   }
 
   // ── Search ──────────────────────────────────────────────
@@ -838,7 +945,7 @@ export class CacheStore {
     if (stats.sizeBytes <= maxSizeBytes) return;
 
     const pendingThreadIds = this.db.prepare(
-      "SELECT DISTINCT thread_id FROM pending_actions WHERE status = 'pending'"
+      "SELECT DISTINCT thread_id FROM pending_actions WHERE status IN ('pending', 'failed')"
     ).all() as any[];
     const protectedIds = new Set(pendingThreadIds.map(r => r.thread_id));
 
@@ -863,6 +970,7 @@ export class CacheStore {
   clearCache(): void {
     this.db.exec('DELETE FROM messages');
     this.db.exec('DELETE FROM threads');
+    this.db.exec('DELETE FROM query_list_snapshots');
     this.db.exec("DELETE FROM sync_meta WHERE key IN ('lastHistoryId', 'lastSyncedAt')");
     // Rebuild FTS
     try {

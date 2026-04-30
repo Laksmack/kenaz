@@ -104,7 +104,7 @@ export default function App() {
     removeThread,
     labelThread,
     markRead,
-  } = useEmails(currentView, searchQuery, authenticated === true, visibleViews, appConfig?.inboxSort ?? 'newest', userEmail);
+  } = useEmails(currentView, searchQuery, authenticated === true, visibleViews, appConfig?.inboxSort ?? 'newest', userEmail, isOnline);
 
   // ── View counts (background fetch) ──────────────────────
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});

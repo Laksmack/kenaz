@@ -346,6 +346,35 @@ export class GmailService {
   }
 
   /**
+   * Paginate threads.list for a Gmail search query and collect every thread id.
+   * Uses minimal response fields (ids only) so reconciliation stays correct for
+   * large inboxes without fetching full metadata for each thread.
+   */
+  async listThreadIdsForQuery(query: string): Promise<string[]> {
+    if (!this.gmail) throw new Error('Not authenticated');
+    const q = (query || '').trim();
+    const ids: string[] = [];
+    let pageToken: string | undefined;
+    const pageSize = 500;
+
+    do {
+      const res = await this.gmail.users.threads.list({
+        userId: 'me',
+        q: q || undefined,
+        maxResults: pageSize,
+        pageToken,
+        fields: 'threads/id,nextPageToken',
+      });
+      for (const t of res.data.threads || []) {
+        if (t.id) ids.push(t.id);
+      }
+      pageToken = res.data.nextPageToken || undefined;
+    } while (pageToken);
+
+    return ids;
+  }
+
+  /**
    * Lightweight thread fetch using 'metadata' format — much faster than 'full'.
    * Only returns headers, labels, and snippet (no body content).
    * Used for list views where we don't need message bodies.
