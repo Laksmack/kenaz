@@ -189,6 +189,35 @@ function registerIpcHandlers() {
     }
   });
 
+  ipcMain.handle(IPC.APP_EXPORT_BACKUP, async () => {
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : BrowserWindow.getFocusedWindow();
+    if (!win) return { ok: false as const, error: 'No window' };
+    try {
+      const payload = store.exportBackupPayload();
+      const { filePath, canceled } = await dialog.showSaveDialog(win, {
+        title: 'Export Raidō backup',
+        defaultPath: `raido-backup-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (canceled || !filePath) return { ok: false as const, canceled: true as const };
+      fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), 'utf-8');
+      return { ok: true as const, filePath };
+    } catch (e: any) {
+      console.error('[Raidō] Export backup failed:', e);
+      return { ok: false as const, error: e?.message || String(e) };
+    }
+  });
+
+  ipcMain.handle(IPC.APP_REVEAL_DATA, async () => {
+    try {
+      shell.showItemInFolder(store.getDbPath());
+      return { ok: true as const };
+    } catch (e: any) {
+      console.error('[Raidō] Reveal data folder failed:', e);
+      return { ok: false as const, error: e?.message || String(e) };
+    }
+  });
+
   // Linear
   ipcMain.handle(IPC.LINEAR_TEST, async () => {
     return linear.testConnection();

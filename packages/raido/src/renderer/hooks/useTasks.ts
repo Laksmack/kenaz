@@ -1,20 +1,55 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { Task, TaskStats, TaskGroup } from '../../shared/types';
 import { extractLinearIssueKeys } from '../lib/linear';
 
 type ViewType = 'today' | 'inbox' | 'upcoming' | 'logbook' | 'deferred' | 'pipeline' | 'linear' | 'group' | 'search';
 
+const TASKS_CHANGED_DEBOUNCE_MS = 450;
+const POLL_INTERVAL_MS = 60000;
+
 export function useTasks(view: ViewType | string, query?: string) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState<TaskStats>({ overdue: 0, today: 0, inbox: 0, total_open: 0, deferred: 0 });
   const [groups, setGroups] = useState<TaskGroup[]>([]);
 
-  // Fetch tasks and stats together to ensure sidebar counts match the task list.
-  // The stats for the current view are overridden with the actual task array length
-  // so they can never be out of sync (race condition between two separate IPC calls).
-  const fetchAll = useCallback(async () => {
-    setLoading(true);
+  const tasksRef = useRef<Task[]>([]);
+  tasksRef.current = tasks;
+  const prevViewForFetchRef = useRef(view);
+
+  const runFetch = useCallback(async () => {
+    const switchedView = prevViewForFetchRef.current !== view;
+    prevViewForFetchRef.current = view;
+    if (switchedView) {
+      setTasks([]);
+    }
+    const hadTasks = !switchedView && tasksRef.current.length > 0;
+    const isSearch = view === 'search';
+    const q = (query || '').trim();
+
+    if (isSearch && !q) {
+      setTasks([]);
+      setLoading(false);
+      setRefreshing(false);
+      try {
+        const [s, g] = await Promise.all([window.raido.getStats(), window.raido.getGroups()]);
+        const correctedStats = { ...s };
+        setStats(correctedStats);
+        setGroups(g);
+      } catch (e) {
+        console.error('Failed to fetch stats:', e);
+      }
+      return;
+    }
+
+    if (isSearch && hadTasks && q) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+      setRefreshing(false);
+    }
+
     try {
       let result: Task[];
       switch (view) {
@@ -52,13 +87,8 @@ export function useTasks(view: ViewType | string, query?: string) {
       }
       setTasks(result);
 
-      const [s, g] = await Promise.all([
-        window.raido.getStats(),
-        window.raido.getGroups(),
-      ]);
+      const [s, g] = await Promise.all([window.raido.getStats(), window.raido.getGroups()]);
 
-      // Override the current view's stat with the actual task count so
-      // the sidebar badge always matches what the user sees in the list
       const correctedStats = { ...s };
       if (view === 'today') correctedStats.today = result.length;
       else if (view === 'inbox') correctedStats.inbox = result.length;
@@ -70,28 +100,39 @@ export function useTasks(view: ViewType | string, query?: string) {
       console.error('Failed to fetch tasks:', e);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [view, query]);
 
   useEffect(() => {
-    fetchAll();
-  }, [fetchAll]);
+    void runFetch();
+  }, [runFetch]);
 
+  const tasksChangedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     const cleanup = window.raido.onTasksChanged(() => {
-      fetchAll();
+      if (tasksChangedTimerRef.current) clearTimeout(tasksChangedTimerRef.current);
+      tasksChangedTimerRef.current = setTimeout(() => {
+        tasksChangedTimerRef.current = null;
+        void runFetch();
+      }, TASKS_CHANGED_DEBOUNCE_MS);
     });
-    return cleanup;
-  }, [fetchAll]);
+    return () => {
+      cleanup();
+      if (tasksChangedTimerRef.current) clearTimeout(tasksChangedTimerRef.current);
+    };
+  }, [runFetch]);
 
   useEffect(() => {
-    const interval = setInterval(fetchAll, 30000);
+    const interval = setInterval(() => {
+      void runFetch();
+    }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [fetchAll]);
+  }, [runFetch]);
 
   const refresh = useCallback(() => {
-    fetchAll();
-  }, [fetchAll]);
+    void runFetch();
+  }, [runFetch]);
 
-  return { tasks, loading, stats, groups, refresh };
+  return { tasks, loading, refreshing, stats, groups, refresh };
 }

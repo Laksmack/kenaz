@@ -14,19 +14,28 @@ export default function App() {
   const [currentView, setCurrentView] = useState<ViewType | string>('today');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchDraft, setSearchDraft] = useState('');
+  const [committedSearch, setCommittedSearch] = useState('');
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [newTaskOpen, setNewTaskOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [listWidth, setListWidth] = useState(400);
   const resizing = useRef(false);
 
-  const viewQuery = currentView === 'search' ? searchQuery : currentView === 'group' ? selectedGroup || undefined : undefined;
-  const { tasks, loading, stats, groups, refresh } = useTasks(currentView as any, viewQuery);
+  const viewQuery =
+    currentView === 'search' ? (committedSearch.trim() || undefined) : currentView === 'group' ? selectedGroup || undefined : undefined;
+  const { tasks, loading, refreshing, stats, groups, refresh } = useTasks(currentView as any, viewQuery);
 
   useEffect(() => {
     window.raido.getConfig().then(setAppConfig);
   }, []);
+
+  useEffect(() => {
+    if (currentView !== 'search') {
+      setSearchDraft('');
+      setCommittedSearch('');
+    }
+  }, [currentView]);
 
   useEffect(() => {
     const themePref = appConfig?.theme || 'dark';
@@ -270,14 +279,23 @@ export default function App() {
           <div className="flex-1" />
           <div className="titlebar-no-drag flex items-center gap-2">
             {currentView === 'search' ? (
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search tasks..."
-                className="bg-bg-primary border border-border-subtle rounded-md px-3 py-1.5 text-xs text-text-primary placeholder-text-muted outline-none w-48 focus:border-accent-primary/40"
-                autoFocus
-              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={searchDraft}
+                  onChange={(e) => setSearchDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      setCommittedSearch(searchDraft.trim());
+                    }
+                  }}
+                  placeholder="Search tasks…"
+                  className="bg-bg-primary border border-border-subtle rounded-md px-3 py-1.5 text-xs text-text-primary placeholder-text-muted outline-none w-52 focus:border-accent-primary/40"
+                  autoFocus
+                />
+                <span className="text-[10px] text-text-muted whitespace-nowrap hidden sm:inline">Enter to run</span>
+              </div>
             ) : (
               <button
                 onClick={() => setCurrentView('search')}
@@ -295,7 +313,7 @@ export default function App() {
               className="p-1.5 rounded hover:bg-bg-hover text-text-secondary hover:text-text-primary transition-colors"
               title="Refresh"
             >
-              <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className={`w-4 h-4 ${loading || refreshing ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
@@ -402,8 +420,17 @@ export default function App() {
                   onComplete={handleComplete}
                   onUpdate={handleUpdate}
                   loading={loading}
+                  refreshing={refreshing}
                   title={viewTitle}
                   linearEnabled={appConfig?.linear_enabled || false}
+                  searchAwaitingCommit={currentView === 'search' && !committedSearch.trim()}
+                  searchNoMatches={
+                    currentView === 'search' &&
+                    !!committedSearch.trim() &&
+                    !loading &&
+                    !refreshing &&
+                    tasks.length === 0
+                  }
                 />
                 <div
                   onMouseDown={handleResizeStart}

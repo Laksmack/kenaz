@@ -135,10 +135,56 @@ function GeneralSettings({ config, onSave, saving, saved }: TabProps) {
   const [hubspotEnabled, setHubspotEnabled] = useState(config.hubspot_enabled ?? false);
   const [linearEnabled, setLinearEnabled] = useState(config.linear_enabled ?? false);
 
+  const handleExportBackup = useCallback(async () => {
+    try {
+      const r = await window.raido.exportBackup();
+      if (r.ok && r.filePath) {
+        window.raido.notify('Raidō', 'Backup saved');
+      } else if (!r.canceled) {
+        window.raido.notify('Raidō', r.error || 'Export failed');
+      }
+    } catch (e: any) {
+      console.error('[Settings] Export backup failed:', e);
+      window.raido.notify('Raidō', e?.message || 'Export failed');
+    }
+  }, []);
+
+  const handleRevealData = useCallback(async () => {
+    try {
+      const r = await window.raido.revealDataFolder();
+      if (!r.ok) window.raido.notify('Raidō', r.error || 'Could not open folder');
+    } catch (e: any) {
+      console.error('[Settings] Reveal data failed:', e);
+      window.raido.notify('Raidō', e?.message || 'Could not open folder');
+    }
+  }, []);
+
   return (
     <div>
       <h3 className="text-sm font-semibold text-text-primary mb-4">General</h3>
       <div className="space-y-4">
+        <SettingsField
+          label="Data"
+          description="Export a JSON snapshot of tasks, tags, checklists, comments, and attachment metadata (not file binaries). Open the folder that holds your local database."
+        >
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleExportBackup}
+              className="px-3 py-2 text-xs font-medium rounded-lg bg-bg-primary border border-border-subtle text-text-primary hover:bg-bg-hover transition-colors"
+            >
+              Export backup…
+            </button>
+            <button
+              type="button"
+              onClick={handleRevealData}
+              className="px-3 py-2 text-xs font-medium rounded-lg bg-bg-primary border border-border-subtle text-text-primary hover:bg-bg-hover transition-colors"
+            >
+              Show data folder
+            </button>
+          </div>
+        </SettingsField>
+
         <SettingsField label="Theme" description="Choose the app color theme. System will follow your macOS appearance. Restart required after changes.">
           <select
             value={theme}

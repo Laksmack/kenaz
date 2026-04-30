@@ -11,11 +11,26 @@ interface TaskListProps {
   onComplete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<Task>) => void;
   loading: boolean;
+  refreshing?: boolean;
   title: string;
   linearEnabled?: boolean;
+  searchAwaitingCommit?: boolean;
+  searchNoMatches?: boolean;
 }
 
-export function TaskList({ tasks, selectedId, onSelect, onComplete, onUpdate, loading, title, linearEnabled = false }: TaskListProps) {
+export function TaskList({
+  tasks,
+  selectedId,
+  onSelect,
+  onComplete,
+  onUpdate,
+  loading,
+  refreshing = false,
+  title,
+  linearEnabled = false,
+  searchAwaitingCommit = false,
+  searchNoMatches = false,
+}: TaskListProps) {
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; task: Task } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -114,7 +129,8 @@ export function TaskList({ tasks, selectedId, onSelect, onComplete, onUpdate, lo
     document.addEventListener('mouseup', handleUp);
   }, [filteredTasks, onUpdate]);
 
-  if (loading) {
+  const blockingLoad = loading && !refreshing;
+  if (blockingLoad) {
     return (
       <div className="flex-1 flex items-center justify-center">
         <div className="text-text-muted text-sm">Loading...</div>
@@ -125,9 +141,14 @@ export function TaskList({ tasks, selectedId, onSelect, onComplete, onUpdate, lo
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-border-subtle flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
-        <span className="text-xs text-text-muted">{filteredTasks.length} tasks</span>
+        <div className="flex items-center gap-2">
+          {refreshing && (
+            <span className="text-[10px] text-text-muted uppercase tracking-wide">Updating…</span>
+          )}
+          <span className="text-xs text-text-muted">{filteredTasks.length} tasks</span>
+        </div>
       </div>
 
       {/* Tag filter bar */}
@@ -154,9 +175,17 @@ export function TaskList({ tasks, selectedId, onSelect, onComplete, onUpdate, lo
       {/* Task list */}
       <div ref={listRef} className="flex-1 overflow-y-auto scrollbar-hide relative">
         {filteredTasks.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-text-muted">
-            <div className="text-3xl mb-2">✨</div>
-            <div className="text-sm">No tasks here</div>
+          <div className="flex flex-col items-center justify-center h-full text-text-muted px-6 text-center">
+            <div className="text-3xl mb-2">{searchAwaitingCommit || searchNoMatches ? '🔎' : '✨'}</div>
+            {searchAwaitingCommit ? (
+              <>
+                <div className="text-sm text-text-secondary max-w-xs">Type a query and press Enter to search across titles, notes, and tags.</div>
+              </>
+            ) : searchNoMatches ? (
+              <div className="text-sm text-text-secondary max-w-xs">No tasks matched that search. Try different words or fewer filters.</div>
+            ) : (
+              <div className="text-sm">No tasks here</div>
+            )}
           </div>
         ) : (
           filteredTasks.map((task, i) => (

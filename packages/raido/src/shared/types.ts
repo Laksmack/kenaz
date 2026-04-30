@@ -118,6 +118,8 @@ export const IPC = {
   APP_SET_CONFIG: 'app:set-config',
   APP_SET_BADGE: 'app:set-badge',
   APP_NOTIFY: 'app:notify',
+  APP_EXPORT_BACKUP: 'app:export-backup',
+  APP_REVEAL_DATA: 'app:reveal-data',
 
   // Linear
   LINEAR_TEST: 'linear:test',

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import DOMPurify from 'dompurify';
 import type { TaskComment } from '../../shared/types';
 import { RichTextEditor, useRichEditorReset } from './RichTextEditor';
 
@@ -109,7 +110,10 @@ export function CommentSection({ taskId }: Props) {
                 </div>
               ) : (
                 <div className="rounded-lg border border-border-subtle bg-bg-secondary/30 px-3 py-2">
-                  <div className="prose-raido text-xs" dangerouslySetInnerHTML={{ __html: comment.body_html }} />
+                  <div
+                    className="prose-raido text-xs"
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(comment.body_html, { USE_PROFILES: { html: true } }) }}
+                  />
                   <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-border-subtle/50">
                     <span className="text-[10px] text-text-muted">{formatTime(comment.created_at)}</span>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

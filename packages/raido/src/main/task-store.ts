@@ -14,10 +14,11 @@ function localToday(): string {
 
 export class TaskStore {
   private db: Database.Database;
+  private readonly dbPath: string;
 
   constructor() {
-    const dbPath = path.join(app.getPath('userData'), 'raido.db');
-    this.db = new Database(dbPath);
+    this.dbPath = path.join(app.getPath('userData'), 'raido.db');
+    this.db = new Database(this.dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
     this.init();
@@ -202,23 +203,79 @@ export class TaskStore {
     return new Date().toISOString().replace('T', ' ').replace('Z', '').split('.')[0];
   }
 
-  private getTagsForTask(taskId: string): string[] {
-    const rows = this.db.prepare(`
-      SELECT t.name FROM tags t
-      JOIN task_tags tt ON tt.tag_id = t.id
-      WHERE tt.task_id = ?
-    `).all(taskId) as { name: string }[];
-    return rows.map(r => r.name);
+  /** Absolute path to the main SQLite database file. */
+  getDbPath(): string {
+    return this.dbPath;
   }
 
-  private enrichTask(row: any): Task {
+  /** Portable JSON snapshot (attachment files on disk are not embedded). */
+  exportBackupPayload(): Record<string, unknown> {
     return {
+      exportVersion: 1,
+      exportedAt: new Date().toISOString(),
+      tasks: this.db.prepare('SELECT * FROM tasks').all(),
+      tags: this.db.prepare('SELECT * FROM tags').all(),
+      task_tags: this.db.prepare('SELECT * FROM task_tags').all(),
+      checklist_items: this.db.prepare('SELECT * FROM checklist_items').all(),
+      task_comments: this.db.prepare('SELECT * FROM task_comments').all(),
+      task_attachments: this.db.prepare('SELECT * FROM task_attachments').all(),
+    };
+  }
+
+  /** Escape `%`, `_`, and `\\` for SQL LIKE … ESCAPE '\\'. */
+  private static escapeLikeLiteral(raw: string): string {
+    return raw.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+  }
+
+  private getTagsForTasksBatch(taskIds: string[]): Map<string, string[]> {
+    const map = new Map<string, string[]>();
+    if (taskIds.length === 0) return map;
+    const placeholders = taskIds.map(() => '?').join(',');
+    const rows = this.db.prepare(`
+      SELECT tt.task_id, t.name FROM task_tags tt
+      JOIN tags t ON t.id = tt.tag_id
+      WHERE tt.task_id IN (${placeholders})
+      ORDER BY tt.task_id, t.name
+    `).all(...taskIds) as { task_id: string; name: string }[];
+    for (const r of rows) {
+      if (!map.has(r.task_id)) map.set(r.task_id, []);
+      map.get(r.task_id)!.push(r.name);
+    }
+    return map;
+  }
+
+  private getChecklistsForTasksBatch(taskIds: string[]): Map<string, ChecklistItem[]> {
+    const map = new Map<string, ChecklistItem[]>();
+    if (taskIds.length === 0) return map;
+    const placeholders = taskIds.map(() => '?').join(',');
+    const rows = this.db.prepare(`
+      SELECT * FROM checklist_items WHERE task_id IN (${placeholders})
+      ORDER BY task_id, sort_order ASC, created_at ASC
+    `).all(...taskIds) as any[];
+    for (const r of rows) {
+      const tid = r.task_id as string;
+      if (!map.has(tid)) map.set(tid, []);
+      map.get(tid)!.push({ ...r, completed: !!r.completed });
+    }
+    return map;
+  }
+
+  private enrichTasks(rows: any[]): Task[] {
+    if (rows.length === 0) return [];
+    const ids = rows.map((r) => r.id as string);
+    const tagMap = this.getTagsForTasksBatch(ids);
+    const checkMap = this.getChecklistsForTasksBatch(ids);
+    return rows.map((row) => ({
       ...row,
       recurrence: row.recurrence || null,
       defer_until: row.defer_until || null,
-      tags: this.getTagsForTask(row.id),
-      checklist: this.getChecklistItems(row.id),
-    };
+      tags: tagMap.get(row.id) || [],
+      checklist: checkMap.get(row.id) || [],
+    }));
+  }
+
+  private enrichTask(row: any): Task {
+    return this.enrichTasks([row])[0];
   }
 
   private setTaskTags(taskId: string, tagNames: string[]): void {
@@ -249,7 +306,7 @@ export class TaskStore {
         ${deferClause}
       ORDER BY due_date ASC, priority DESC, sort_order ASC
     `).all(...params) as any[];
-    return rows.map(r => this.enrichTask(r));
+    return this.enrichTasks(rows);
   }
 
   getInbox(): Task[] {
@@ -262,7 +319,7 @@ export class TaskStore {
         AND (defer_until IS NULL OR defer_until <= ?)
       ORDER BY created_at DESC
     `).all(today) as any[];
-    return rows.map(r => this.enrichTask(r));
+    return this.enrichTasks(rows);
   }
 
   getUpcoming(includeDeferred = false): Task[] {
@@ -277,7 +334,7 @@ export class TaskStore {
         ${deferClause}
       ORDER BY due_date ASC, priority DESC
     `).all(...params) as any[];
-    return rows.map(r => this.enrichTask(r));
+    return this.enrichTasks(rows);
   }
 
   getDeferred(): Task[] {
@@ -289,7 +346,7 @@ export class TaskStore {
         AND defer_until > ?
       ORDER BY defer_until ASC, due_date ASC, priority DESC
     `).all(today) as any[];
-    return rows.map(r => this.enrichTask(r));
+    return this.enrichTasks(rows);
   }
 
   getTask(id: string): Task | null {
@@ -389,6 +446,7 @@ export class TaskStore {
 
   completeTask(id: string): { task: Task | null; spawned: Task | null } {
     const existing = this.getTask(id);
+    const checklistSnapshot = existing?.checklist ? [...existing.checklist] : [];
     const now = this.now();
     this.db.prepare(`
       UPDATE tasks SET status = 'completed', completed_at = ?, updated_at = ? WHERE id = ?
@@ -410,6 +468,14 @@ export class TaskStore {
         vault_path: existing.vault_path ?? undefined,
         calendar_event_id: existing.calendar_event_id ?? undefined,
       });
+      if (spawned && checklistSnapshot.length > 0) {
+        for (const item of checklistSnapshot) {
+          const ni = this.addChecklistItem(spawned.id, item.title);
+          if (item.completed) {
+            this.updateChecklistItem(ni.id, { completed: true });
+          }
+        }
+      }
     }
 
     return { task: this.getTask(id), spawned };
@@ -444,16 +510,19 @@ export class TaskStore {
   }
 
   searchTasks(query: string): Task[] {
-    const pattern = `%${query}%`;
+    const q = query.trim();
+    if (!q) return [];
+    const esc = TaskStore.escapeLikeLiteral(q);
+    const pattern = `%${esc}%`;
     const rows = this.db.prepare(`
       SELECT * FROM tasks
-      WHERE (title LIKE ? OR notes LIKE ?)
+      WHERE (title LIKE ? ESCAPE '\\' OR notes LIKE ? ESCAPE '\\')
       ORDER BY
         CASE WHEN status = 'open' THEN 0 ELSE 1 END,
         updated_at DESC
       LIMIT 50
     `).all(pattern, pattern) as any[];
-    return rows.map(r => this.enrichTask(r));
+    return this.enrichTasks(rows);
   }
 
   getLogbook(days: number = 7): Task[] {
@@ -466,30 +535,30 @@ export class TaskStore {
       WHERE status IN ('completed', 'canceled') AND completed_at >= ?
       ORDER BY completed_at DESC
     `).all(sinceStr) as any[];
-    return rows.map(r => this.enrichTask(r));
+    return this.enrichTasks(rows);
   }
 
   getStats(): TaskStats {
     const today = localToday();
-    const notDeferred = `AND (defer_until IS NULL OR defer_until <= '${today}')`;
+    const deferClause = 'AND (defer_until IS NULL OR defer_until <= ?)';
 
     const overdue = (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks
       WHERE due_date < ? AND due_date IS NOT NULL AND status = 'open'
-        ${notDeferred}
-    `).get(today) as any).c;
+        ${deferClause}
+    `).get(today, today) as any).c;
 
     const todayCount = (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks
       WHERE status = 'open' AND due_date IS NOT NULL AND due_date <= ?
-        ${notDeferred}
-    `).get(today) as any).c;
+        ${deferClause}
+    `).get(today, today) as any).c;
 
     const inbox = (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks
       WHERE due_date IS NULL AND status = 'open' AND title NOT LIKE '[%'
-        ${notDeferred}
-    `).get() as any).c;
+        ${deferClause}
+    `).get(today) as any).c;
 
     const total_open = (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks WHERE status = 'open'
@@ -507,8 +576,9 @@ export class TaskStore {
     const today = localToday();
     return (this.db.prepare(`
       SELECT COUNT(*) as c FROM tasks
-      WHERE due_date <= ? AND due_date IS NOT NULL AND status = 'open'
-    `).get(today) as any).c;
+      WHERE due_date < ? AND due_date IS NOT NULL AND status = 'open'
+        AND (defer_until IS NULL OR defer_until <= ?)
+    `).get(today, today) as any).c;
   }
 
   // ── Group Queries (bracket prefix) ─────────────────────────
@@ -547,7 +617,7 @@ export class TaskStore {
         AND (defer_until IS NULL OR defer_until <= ?)
     `).all(`${prefix}%`, today) as any[];
 
-    const tasks = rows.map(r => this.enrichTask(r));
+    const tasks = this.enrichTasks(rows);
 
     const overdue: Task[] = [];
     const upcoming: Task[] = [];
@@ -601,7 +671,7 @@ export class TaskStore {
       WHERE t.name = ?
       ORDER BY tk.status, tk.sort_order, tk.created_at
     `).all(tagName) as any[];
-    return rows.map(r => this.enrichTask(r));
+    return this.enrichTasks(rows);
   }
 
   // ── Attachments ─────────────────────────────────────────────

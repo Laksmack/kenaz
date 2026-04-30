@@ -48,6 +48,8 @@ declare global {
       setConfig: (updates: Partial<AppConfig>) => Promise<AppConfig>;
       setBadge: (count: number) => Promise<void>;
       notify: (title: string, body: string) => Promise<void>;
+      exportBackup: () => Promise<{ ok: boolean; canceled?: boolean; error?: string; filePath?: string }>;
+      revealDataFolder: () => Promise<{ ok: boolean; error?: string }>;
       linearTestConnection: () => Promise<{ ok: boolean; message?: string }>;
       linearListTeams: () => Promise<Array<{ id: string; key: string; name: string }>>;
       linearGetIssue: (identifier: string) => Promise<any | null>;
