@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { marked } from 'marked';
-import DOMPurify from 'dompurify';
+import { sanitizeLaguzHtml } from '../lib/sanitizeHtml';
 
 function stripFrontmatter(content: string): string {
   const lines = content.split('\n');
@@ -70,10 +70,6 @@ function addWikiLinksToHtml(html: string, folderNames: Set<string>): string {
   });
 }
 
-const PURIFY_MARKDOWN = {
-  ADD_ATTR: ['data-cb-idx', 'data-wiki-target'],
-} as const;
-
 export function NoteViewer({ content, notePath, onContentChange, folderNames, onFolderNavigate, onNoteNavigate, onPdfOpen }: {
   content: string;
   notePath?: string;
@@ -91,7 +87,9 @@ export function NoteViewer({ content, notePath, onContentChange, folderNames, on
     const positions = findTableCheckboxes(content);
     rendered = addTableCheckboxesToHtml(rendered);
     rendered = addWikiLinksToHtml(rendered, folderNames ?? new Set());
-    const safe = DOMPurify.sanitize(rendered, PURIFY_MARKDOWN);
+    const safe = sanitizeLaguzHtml(rendered, {
+      ADD_ATTR: ['data-cb-idx', 'data-wiki-target'],
+    });
     return { html: safe, checkboxPositions: positions };
   }, [content, folderNames]);
 

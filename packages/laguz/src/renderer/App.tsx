@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, createContext, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useRef, createContext, useContext, lazy, Suspense } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ScratchView } from './components/ScratchView';
 import { VaultView } from './components/VaultView';
@@ -7,7 +7,10 @@ import { FolderView } from './components/FolderView';
 import { FolderContextView } from './components/FolderContextView';
 import { CabinetView } from './components/CabinetView';
 import { TabBar } from './components/TabBar';
-import { NoteDetail } from './components/NoteDetail';
+const NoteDetail = lazy(async () => {
+  const m = await import('./components/NoteDetail');
+  return { default: m.NoteDetail };
+});
 import { SettingsModal } from './components/SettingsModal';
 import { UpdateBanner } from '@futhark/core/components/UpdateBanner';
 import type { ViewType, LaguzConfig, SelectedItem, EditorConfig } from './types';
@@ -514,15 +517,21 @@ export default function App() {
                 ) : splitTab ? (
                   <div className="flex-1 flex overflow-hidden">
                     <div className="overflow-hidden flex flex-col" style={{ width: `${splitRatio * 100}%` }}>
-                      <NoteDetail notePath={activeTab?.filePath ?? null} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} />
+                      <Suspense fallback={<DetailLoading />}>
+                        <NoteDetail notePath={activeTab?.filePath ?? null} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} />
+                      </Suspense>
                     </div>
                     <SplitHandle onResize={setSplitRatio} />
                     <div className="overflow-hidden flex flex-col flex-1">
-                      <NoteDetail notePath={splitTab.filePath} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} />
+                      <Suspense fallback={<DetailLoading />}>
+                        <NoteDetail notePath={splitTab.filePath} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} />
+                      </Suspense>
                     </div>
                   </div>
                 ) : (
-                  <NoteDetail notePath={activeTab?.filePath ?? null} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} />
+                  <Suspense fallback={<DetailLoading />}>
+                    <NoteDetail notePath={activeTab?.filePath ?? null} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} />
+                  </Suspense>
                 )}
               </div>
             </>
@@ -540,6 +549,14 @@ export default function App() {
       )}
     </div>
     </EditorConfigContext.Provider>
+  );
+}
+
+function DetailLoading() {
+  return (
+    <div className="flex-1 flex items-center justify-center text-text-muted text-sm">
+      Loading editor…
+    </div>
   );
 }
 

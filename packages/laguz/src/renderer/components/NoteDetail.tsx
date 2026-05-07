@@ -7,8 +7,8 @@ import { syntaxHighlighting, HighlightStyle, foldEffect, foldedRanges, codeFoldi
 import { languages } from '@codemirror/language-data';
 import { search, searchKeymap, highlightSelectionMatches, openSearchPanel, getSearchQuery, SearchQuery, setSearchQuery } from '@codemirror/search';
 import { tags } from '@lezer/highlight';
-import DOMPurify from 'dompurify';
 import { NoteViewer } from './NoteMarkdownPreview';
+import { sanitizeLaguzHtml } from '../lib/sanitizeHtml';
 import { useNote, useFile } from '../hooks/useNotes';
 import { useEditorConfig } from '../App';
 import { cn, formatDate } from '../lib/utils';
@@ -1197,7 +1197,7 @@ function DocxDetail({ filePath }: { filePath: string }) {
         {error ? (
           <div className="text-red-400 text-sm">{error}</div>
         ) : html ? (
-          <div className="prose-laguz" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }} />
+          <div className="prose-laguz" dangerouslySetInnerHTML={{ __html: sanitizeLaguzHtml(html) }} />
         ) : (
           <div className="text-text-muted text-sm">Loading document...</div>
         )}
