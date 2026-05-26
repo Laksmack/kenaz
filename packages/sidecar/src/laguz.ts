@@ -48,6 +48,11 @@ async function main() {
   watcher.setCabinetService(cabinetService);
   await watcher.start();
 
+  // Fresh sidecar index DBs have no cabinet rows — scan the _cabinet dir once
+  // on boot so Cabinet isn't empty. Idempotent; cheap on subsequent boots.
+  const scanned = cabinetService.scanAll();
+  console.log(`[sidecar/laguz] cabinet scan indexed ${scanned} file(s)`);
+
   cabinetService.reprocessPending();
 
   console.log('[sidecar/laguz] ready on http://localhost:' + port);

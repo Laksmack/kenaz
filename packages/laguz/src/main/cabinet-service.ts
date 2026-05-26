@@ -214,6 +214,32 @@ export class CabinetService {
     }
   }
 
+  /**
+   * Walk the _cabinet directory and index every supported file. Idempotent —
+   * indexCabinetDocument upserts by path, so re-scanning is cheap. Used by the
+   * sidecar at boot to populate a fresh index DB (the Electron build builds its
+   * index incrementally via the watcher over time).
+   */
+  scanAll(): number {
+    const root = path.join(config.vaultPath, CABINET_DIR);
+    if (!fs.existsSync(root)) return 0;
+
+    let count = 0;
+    const walk = (dir: string) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+        } else if (entry.isFile() && this.isSupportedExt(full)) {
+          this.indexDocument(full);
+          count++;
+        }
+      }
+    };
+    walk(root);
+    return count;
+  }
+
   copyCabinetFile(sourcePath: string, targetFolder: string): { path: string; filename: string } {
     const cabinetDir = path.join(config.vaultPath, CABINET_DIR, targetFolder);
     if (!fs.existsSync(cabinetDir)) fs.mkdirSync(cabinetDir, { recursive: true });

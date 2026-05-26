@@ -13,6 +13,9 @@ out/
 # Build artifacts
 build/
 
+# Tesseract OCR language data (downloaded at runtime)
+*.traineddata
+
 # Rust / Tauri
 target/
 **/src-tauri/target/
