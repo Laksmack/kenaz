@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Laguz (Tauri)",
+  "version": "0.1.0",
+  "identifier": "com.futhark.laguz.tauri",
+  "build": {
+    "beforeDevCommand": "cd ../laguz && npm run dev:renderer",
+    "devUrl": "http://localhost:5177",
+    "frontendDist": "../laguz/dist/renderer"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Laguz (Tauri)",
+        "width": 1000,
+        "height": 700,
+        "minWidth": 600,
+        "minHeight": 400,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": { "x": 16, "y": 16 },
+        "backgroundColor": "#0f1a1e"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [],
+    "externalBin": ["bin/futhark-laguz"]
+  },
+  "plugins": {
+    "shell": {
+      "open": true
+    }
+  }
+}

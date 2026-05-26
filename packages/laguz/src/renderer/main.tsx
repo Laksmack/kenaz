@@ -1,3 +1,4 @@
+import './laguz-tauri-shim'; // no-op under Electron; installs window.laguz shim under Tauri
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';

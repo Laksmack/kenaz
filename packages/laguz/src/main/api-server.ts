@@ -8,6 +8,7 @@ import * as pdfService from './pdf-service';
 import { detectPdfFields } from './pdf-fields';
 import { config } from './config';
 import { resolveVaultAbsolute } from './vault-path';
+import { LaguzConfigManager } from './laguz-config';
 
 let mammoth: any;
 try {
@@ -25,6 +26,21 @@ export function setCabinetService(service: CabinetService) {
 export function startApiServer(store: VaultStore, signatureStore: SignatureStore, port: number) {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
+
+  // CORS: localhost-only by intent, but we accept all origins here because
+  // the Tauri webview lives on a different scheme/port than :3144. Electron's
+  // contextIsolated IPC bypasses HTTP entirely, so the observable effect of
+  // this header is just widening dev/test access to the API.
+  app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(204);
+      return;
+    }
+    next();
+  });
 
   // ── Search ─────────────────────────────────────────────────
 
@@ -574,6 +590,58 @@ export function startApiServer(store: VaultStore, signatureStore: SignatureStore
       if (!source_path) return res.status(400).json({ error: 'source_path is required' });
       const result = _cabinetService.copyCabinetFile(source_path, folder || '');
       res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Vault files / raw reads (used by VaultView, NoteDetail, useNotes) ──
+  app.get('/api/vault/files', (req, res) => {
+    try {
+      const ext = req.query.ext as string | undefined;
+      res.json({ files: store.getVaultFiles(ext) });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/vault/read', (req, res) => {
+    try {
+      const filePath = req.query.path as string;
+      if (!filePath) return res.status(400).json({ error: 'path is required' });
+      res.json({ content: store.readFile(filePath) });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.get('/api/vault/read-base64', (req, res) => {
+    try {
+      const filePath = req.query.path as string;
+      if (!filePath) return res.status(400).json({ error: 'path is required' });
+      const abs = resolveVaultAbsolute(filePath, path.resolve(config.vaultPath));
+      res.json({ base64: fs.readFileSync(abs).toString('base64') });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Config (Laguz settings: sections, editor prefs, vault path) ──
+  // Backed by the same ~/.laguz/config.json file the Electron IPC handlers
+  // read. Each request constructs a fresh manager so we always see disk state.
+  app.get('/api/config', (_req, res) => {
+    try {
+      res.json(new LaguzConfigManager().get());
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/config', (req, res) => {
+    try {
+      const mgr = new LaguzConfigManager();
+      mgr.save(req.body);
+      res.json(mgr.get());
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

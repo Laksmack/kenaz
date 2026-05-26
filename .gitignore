@@ -13,6 +13,13 @@ out/
 # Build artifacts
 build/
 
+# Rust / Tauri
+target/
+**/src-tauri/target/
+**/src-tauri/gen/
+**/src-tauri/bin/*-aarch64-apple-darwin
+**/src-tauri/bin/*-x86_64-apple-darwin
+
 # macOS
 .DS_Store
 

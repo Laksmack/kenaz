@@ -361,9 +361,9 @@ export default function App() {
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Title bar */}
-        <div className="titlebar-drag h-12 flex items-center px-4 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
+        <div data-tauri-drag-region className="titlebar-drag h-12 flex items-center px-4 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
           <div className="titlebar-no-drag"><UpdateBanner api={window.laguz} /></div>
-          <div className="flex-1" />
+          <div data-tauri-drag-region className="flex-1 self-stretch" />
           <div className="titlebar-no-drag flex items-center gap-2">
             {currentView === 'vault' ? (
               <input
