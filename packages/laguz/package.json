@@ -1,6 +1,6 @@
 {
   "name": "@futhark/laguz",
-  "version": "1.9.3",
+  "version": "1.9.4",
   "description": "Laguz ᛚ — Notes and vault browser",
   "main": "dist/main/main/main.js",
   "exports": {
