@@ -1,10 +1,10 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { app } from 'electron';
 import crypto from 'crypto';
 import type { Task, TaskAttachment, TaskGroup, Tag, TaskStats, ChecklistItem, TaskComment } from '../shared/types';
 import { extractGroup } from '../shared/types';
+import { userDataDir } from './paths';
 
 /** Return local-timezone date as YYYY-MM-DD (avoids UTC drift from toISOString). */
 function localToday(): string {
@@ -17,7 +17,7 @@ export class TaskStore {
   private readonly dbPath: string;
 
   constructor() {
-    this.dbPath = path.join(app.getPath('userData'), 'raido.db');
+    this.dbPath = path.join(userDataDir(), 'raido.db');
     this.db = new Database(this.dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');
@@ -677,7 +677,7 @@ export class TaskStore {
   // ── Attachments ─────────────────────────────────────────────
 
   private getAttachmentsDir(taskId: string): string {
-    const dir = path.join(app.getPath('userData'), 'attachments', taskId);
+    const dir = path.join(userDataDir(), 'attachments', taskId);
     fs.mkdirSync(dir, { recursive: true });
     return dir;
   }
@@ -719,7 +719,7 @@ export class TaskStore {
     ).get(attachmentId, taskId) as TaskAttachment | undefined;
     if (!att) return null;
 
-    const dir = path.join(app.getPath('userData'), 'attachments', taskId);
+    const dir = path.join(userDataDir(), 'attachments', taskId);
     const filePath = path.join(dir, `${attachmentId}_${att.filename}`);
     return fs.existsSync(filePath) ? filePath : null;
   }

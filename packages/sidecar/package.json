@@ -7,10 +7,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev:laguz": "tsc -p tsconfig.json && node dist/laguz.js",
+    "dev:raido": "tsc -p tsconfig.json && node dist/raido.js",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@futhark/laguz": "*"
+    "@futhark/laguz": "*",
+    "@futhark/raido": "*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

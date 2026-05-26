@@ -9,6 +9,10 @@ log.transports.file.maxSize = 5 * 1024 * 1024;
 Object.assign(console, log.functions);
 
 import { initAutoUpdater, getUpdateMenuItems } from '@futhark/core/lib/auto-updater';
+
+import { configurePaths } from './paths';
+configurePaths({ userData: app.getPath('userData') });
+
 import { startApiServer } from './api-server';
 import { ConfigStore } from './config';
 import { TaskStore } from './task-store';

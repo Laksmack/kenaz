@@ -1,15 +1,15 @@
 import fs from 'fs';
 import path from 'path';
-import { app } from 'electron';
 import type { AppConfig } from '../shared/types';
 import { DEFAULT_CONFIG } from '../shared/types';
+import { userDataDir } from './paths';
 
 export class ConfigStore {
   private configPath: string;
   private config: AppConfig;
 
   constructor() {
-    this.configPath = path.join(app.getPath('userData'), 'config.json');
+    this.configPath = path.join(userDataDir(), 'config.json');
     this.config = this.load();
   }
 

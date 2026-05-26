@@ -1,8 +1,15 @@
 {
   "name": "@futhark/raido",
-  "version": "1.11.1",
+  "version": "1.11.2",
   "description": "Raidō ᚱ — Personal task manager",
   "main": "dist/main/main/main.js",
+  "exports": {
+    ".": "./dist/main/main/main.js",
+    "./services": {
+      "types": "./dist/main/main/services.d.ts",
+      "default": "./dist/main/main/services.js"
+    }
+  },
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",
