@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { Database } from './db';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -93,7 +93,7 @@ function assertInsideCabinet(absPath: string): void {
 }
 
 export class VaultStore {
-  private db: Database.Database;
+  private db: Database;
 
   constructor() {
     const dir = path.dirname(config.dbPath);

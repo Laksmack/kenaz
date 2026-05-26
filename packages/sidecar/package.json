@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "dev:laguz": "tsc -p tsconfig.json && node dist/laguz.js",
     "dev:raido": "tsc -p tsconfig.json && node dist/raido.js",
+    "compile:laguz": "bun build --compile --target=bun-darwin-arm64 --external pdfjs-dist --external mammoth --external tesseract.js --external better-sqlite3 ./src/laguz.ts --outfile ./dist/futhark-laguz",
     "clean": "rm -rf dist"
   },
   "dependencies": {

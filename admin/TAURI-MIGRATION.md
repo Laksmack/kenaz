@@ -241,13 +241,45 @@ business logic can be driven by either Electron or Tauri.
    - `connectivity:status` → Tauri or just navigator.onLine
    - `update:check` / `update:install` → `tauri-plugin-updater`
 
+### Phase 0.5: Sidecar bundling (May 2026 — DONE)
+
+**Goal:** Produce a single-executable sidecar binary that Tauri can spawn.
+
+**Outcome:** `packages/sidecar/dist/futhark-laguz` — 60 MB Mach-O arm64
+binary, fully self-contained. Boots Laguz services, indexes the vault
+(1,223 notes in ~4 s), serves the Express API on :3144 (or
+`LAGUZ_API_PORT` override). Verified end-to-end against the live vault
+from a sterile `/tmp/` directory — same 97 companies as Electron Laguz.
+
+**How to rebuild:**
+
+```sh
+cd packages/sidecar
+npm run compile:laguz
+# → dist/futhark-laguz
+```
+
+The compile uses `bun build --compile --target=bun-darwin-arm64` and
+marks four deps external (`pdfjs-dist`, `mammoth`, `tesseract.js`,
+`better-sqlite3`) — those either fail static analysis or are runtime-
+switched. better-sqlite3 in particular is intentionally external since
+the Bun side uses `bun:sqlite` via the adapter (see Risk Assessment).
+
+**Open issue for production packaging:** the binary expects external
+modules at runtime if any of (PDF parsing, OCR, DOCX) are needed. For
+the Tauri shell we'll either:
+- Bundle those alongside the binary inside the .app's Resources/, or
+- Make them lazy-loaded-from-CDN, or
+- Accept the graceful-degradation path (the code already wraps them in
+  try/catch and reports "feature disabled").
+
 ### Phase 1: Tauri Shell — Single App Proof of Concept
 
 **Goal:** Get one app (Laguz — simplest, no OAuth, no badge) running in Tauri.
 
 1. **Create `packages/tauri-shell/`** with `cargo init` + Tauri config
 2. Configure Tauri to:
-   - Spawn the Node sidecar (`packages/sidecar/`) on startup
+   - Spawn the bundled sidecar binary (`packages/sidecar/dist/futhark-laguz`) on startup
    - Wait for Express server on :3144 to be ready
    - Open a webview window loading the Laguz Vite build
 3. **Adapt Laguz renderer** to call Express API directly via fetch instead of
@@ -353,6 +385,26 @@ all Express servers.
 - **better-sqlite3 native module** — Currently compiled against Electron's
   Node. In the sidecar, it compiles against standard Node, which is simpler.
   No issue expected.
+
+  **Update (May 2026, phase 0.5):** Issue was real and harder than expected.
+  The shared monorepo `node_modules/better-sqlite3/build/Release/*.node` can
+  only carry one ABI; Electron 39 wants NODE_MODULE_VERSION 140, plain Node
+  22 wants 127, Bun 1.3 wants 137. Can't satisfy two of those at once with
+  one physical binary.
+
+  **Resolution:** Replaced the direct `better-sqlite3` import in
+  `packages/laguz/src/main/vault-store.ts` with a thin adapter at
+  `packages/laguz/src/main/db.ts` that runtime-switches:
+  - Under Electron / Node → loads `better-sqlite3` (NAPI module, current ABI)
+  - Under Bun → loads `bun:sqlite` (built into the Bun runtime, no native
+    module needed)
+
+  API surface vault-store uses is small (`new Database`, `exec`, `pragma`,
+  `prepare`, `transaction`, `close`, plus `Statement.run/get/all`), and
+  bun:sqlite is 90% drop-in. Only `pragma()` had to be polyfilled (bun:sqlite
+  doesn't have `.pragma()`; emulate via `run('PRAGMA ...')`).
+
+  This unblocked `bun build --compile` for the sidecar (see Phase 1).
 
 ## Effort Estimate
 
