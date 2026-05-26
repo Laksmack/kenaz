@@ -3,6 +3,13 @@
   "version": "1.9.3",
   "description": "Laguz ᛚ — Notes and vault browser",
   "main": "dist/main/main/main.js",
+  "exports": {
+    ".": "./dist/main/main/main.js",
+    "./services": {
+      "types": "./dist/main/main/services.d.ts",
+      "default": "./dist/main/main/services.js"
+    }
+  },
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",

@@ -1,0 +1,19 @@
+{
+  "name": "@futhark/sidecar",
+  "version": "0.1.0",
+  "description": "Headless Node entry points for Futhark services (used by the Tauri shell; Electron apps still own their own main process).",
+  "private": true,
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev:laguz": "tsc -p tsconfig.json && node dist/laguz.js",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@futhark/laguz": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

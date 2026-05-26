@@ -1,9 +1,11 @@
 import path from 'path';
 import os from 'os';
-import { app } from 'electron';
+import { userDataDir } from './paths';
 
 export const config = {
   vaultPath: path.join(os.homedir(), 'vault'),
-  dbPath: path.join(app.getPath('userData'), 'laguz.db'),
+  get dbPath(): string {
+    return path.join(userDataDir(), 'laguz.db');
+  },
   apiPort: 3144,
 };

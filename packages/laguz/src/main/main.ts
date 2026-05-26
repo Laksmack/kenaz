@@ -22,6 +22,9 @@ process.on('unhandledRejection', (reason) => {
   log.error('[Laguz] Unhandled rejection:', reason);
 });
 
+import { configurePaths } from './paths';
+configurePaths({ userData: app.getPath('userData') });
+
 import { config } from './config';
 import { startApiServer, setCabinetService } from './api-server';
 import { VaultStore } from './vault-store';
