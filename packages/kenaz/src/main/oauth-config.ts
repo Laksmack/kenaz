@@ -1,7 +1,7 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import { app } from 'electron';
 import fs from 'fs';
+import { userDataDir } from './paths';
 
 function loadEnv() {
   const candidates = [
@@ -11,11 +11,22 @@ function loadEnv() {
     path.join(process.cwd(), '.env'),
   ];
 
+  // Electron-only candidate: the bundled .env inside the .asar.
+  // require('electron') in plain Node returns a string (the binary path), so
+  // accessing `.app` throws — caught silently so the sidecar / tests work too.
   try {
-    candidates.push(path.join(app.getAppPath(), '.env'));
-    candidates.push(path.join(app.getPath('userData'), '.env'));
+    const electronApp = require('electron').app;
+    if (electronApp?.getAppPath) {
+      candidates.push(path.join(electronApp.getAppPath(), '.env'));
+    }
   } catch {
-    // app may not be ready yet
+    // not running under Electron, or app isn't ready
+  }
+
+  try {
+    candidates.push(path.join(userDataDir(), '.env'));
+  } catch {
+    // paths not configured (e.g. sidecar imported this before bootstrap)
   }
 
   for (const p of candidates) {

@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { app, BrowserWindow } from 'electron';
+import type { BrowserWindow } from 'electron';
 import { GmailService } from './gmail';
 import { HubSpotService } from './hubspot';
 import { CalendarService } from './calendar';
@@ -11,6 +11,7 @@ import { ViewStore, RuleStore } from './stores';
 import { ConnectivityMonitor } from './connectivity';
 import { SyncEngine } from './sync-engine';
 import type { AccountInfo } from '../shared/types';
+import { userDataDir } from './paths';
 
 export interface AccountServices {
   gmail: GmailService;
@@ -36,8 +37,8 @@ export class AccountManager {
   private mainWindow: BrowserWindow | null = null;
 
   constructor(globalConfig: GlobalConfigStore, connectivity: ConnectivityMonitor) {
-    this.accountsPath = path.join(app.getPath('userData'), 'accounts.json');
-    this.accountsDir = path.join(app.getPath('userData'), 'accounts');
+    this.accountsPath = path.join(userDataDir(), 'accounts.json');
+    this.accountsDir = path.join(userDataDir(), 'accounts');
     this.globalConfig = globalConfig;
     this.connectivity = connectivity;
     this.accounts = this.loadAccounts();

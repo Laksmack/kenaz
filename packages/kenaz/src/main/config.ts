@@ -1,15 +1,15 @@
 import fs from 'fs';
 import path from 'path';
-import { app } from 'electron';
 import type { AppConfig, GlobalConfig, AccountConfig } from '../shared/types';
 import { DEFAULT_CONFIG, DEFAULT_GLOBAL_CONFIG, DEFAULT_ACCOUNT_CONFIG } from '../shared/types';
+import { userDataDir } from './paths';
 
 export class GlobalConfigStore {
   private configPath: string;
   private config: GlobalConfig;
 
   constructor() {
-    this.configPath = path.join(app.getPath('userData'), 'global-config.json');
+    this.configPath = path.join(userDataDir(), 'global-config.json');
     this.config = this.load();
   }
 

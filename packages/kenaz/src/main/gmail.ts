@@ -5,10 +5,11 @@ import http from 'http';
 import url from 'url';
 import fs from 'fs';
 import path from 'path';
-import { app } from 'electron';
+import os from 'os';
 import { ConfigStore } from './config';
 import { OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI } from './oauth-config';
 import type { Email, EmailThread, EmailAddress, Attachment, SendEmailPayload } from '../shared/types';
+import { userDataDir } from './paths';
 
 // RFC 2047 encode a header value if it contains non-ASCII characters
 function mimeEncodeHeader(value: string): string {
@@ -29,7 +30,7 @@ const SCOPES = [
 
 // Optional: users can override bundled credentials with a local file
 function getCredentialsPath(): string {
-  return path.join(app.getPath('userData'), 'credentials.json');
+  return path.join(userDataDir(), 'credentials.json');
 }
 
 /**
@@ -81,7 +82,7 @@ export class GmailService {
 
   constructor(config: ConfigStore, dataDir?: string) {
     this.config = config;
-    this.dataDir = dataDir || app.getPath('userData');
+    this.dataDir = dataDir || userDataDir();
     this.tryLoadExistingToken();
   }
 
@@ -785,8 +786,9 @@ export class GmailService {
     // Decode base64url to buffer
     const buffer = Buffer.from(data, 'base64url');
 
-    // Save to Downloads folder
-    const downloadsPath = app.getPath('downloads');
+    // Save to Downloads folder. ~/Downloads is the canonical macOS location;
+    // matches what Electron's app.getPath('downloads') returns by default.
+    const downloadsPath = path.join(os.homedir(), 'Downloads');
     const filePath = path.join(downloadsPath, filename);
 
     // Avoid overwriting — append number if exists

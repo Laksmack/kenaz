@@ -1,11 +1,11 @@
 import fs from 'fs';
 import path from 'path';
-import { app } from 'electron';
 import { OAuth2Client } from 'google-auth-library';
 import { google } from 'googleapis';
 import { OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI } from './oauth-config';
 import type { AccountInfo, GlobalConfig, AccountConfig } from '../shared/types';
 import { DEFAULT_GLOBAL_CONFIG, DEFAULT_ACCOUNT_CONFIG } from '../shared/types';
+import { userDataDir } from './paths';
 
 /**
  * Migrate a single-account Kenaz installation to the multi-account layout.
@@ -24,7 +24,7 @@ import { DEFAULT_GLOBAL_CONFIG, DEFAULT_ACCOUNT_CONFIG } from '../shared/types';
  * Returns true if migration was performed, false if not needed.
  */
 export async function migrateToMultiAccount(): Promise<boolean> {
-  const userData = app.getPath('userData');
+  const userData = userDataDir();
   const accountsJsonPath = path.join(userData, 'accounts.json');
   const accountsDir = path.join(userData, 'accounts');
 

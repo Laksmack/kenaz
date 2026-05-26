@@ -1,8 +1,15 @@
 {
   "name": "@futhark/kenaz",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Kenaz ᚲ — Personal Gmail client with HubSpot CRM, Google Calendar, and Claude API",
   "main": "dist/main/main/main.js",
+  "exports": {
+    ".": "./dist/main/main/main.js",
+    "./services": {
+      "types": "./dist/main/main/services.d.ts",
+      "default": "./dist/main/main/services.js"
+    }
+  },
   "bin": {
     "kenaz-mcp": "dist/mcp/mcp-server.js"
   },

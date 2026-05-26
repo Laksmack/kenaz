@@ -1,15 +1,15 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
-import { app } from 'electron';
 import type { EmailThread, Email, EmailAddress, CacheStats, SendEmailPayload, OutboxItem, NudgeType } from '../shared/types';
+import { userDataDir } from './paths';
 
 export class CacheStore {
   private db: Database.Database;
   private dbPath: string;
 
   constructor(dataDir?: string) {
-    const dbPath = path.join(dataDir || app.getPath('userData'), 'kenaz-cache.db');
+    const dbPath = path.join(dataDir || userDataDir(), 'kenaz-cache.db');
     this.dbPath = dbPath;
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) {

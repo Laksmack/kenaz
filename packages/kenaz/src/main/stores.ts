@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { app } from 'electron';
 import type { View, Rule } from '../shared/types';
 import { DEFAULT_VIEWS } from '../shared/types';
+import { userDataDir } from './paths';
 
 // ── ViewStore ──────────────────────────────────────────────────
 
@@ -11,7 +11,7 @@ export class ViewStore {
   private views: View[];
 
   constructor(dataDir?: string) {
-    this.filePath = path.join(dataDir || app.getPath('userData'), 'views.json');
+    this.filePath = path.join(dataDir || userDataDir(), 'views.json');
     this.views = this.load();
   }
 
@@ -76,7 +76,7 @@ export class RuleStore {
   private rules: Rule[];
 
   constructor(dataDir?: string) {
-    this.filePath = path.join(dataDir || app.getPath('userData'), 'rules.json');
+    this.filePath = path.join(dataDir || userDataDir(), 'rules.json');
     this.rules = this.load();
   }
 
