@@ -481,6 +481,58 @@ export function startApiServer(store: TaskStore, port: number, configStore?: Con
 
   // ── Health ─────────────────────────────────────────────────
 
+  // ── Config (IPC-only before; needed over HTTP for the Tauri shim) ──
+  app.get('/api/config', (_req, res) => {
+    try {
+      if (!configStore) return res.status(503).json({ error: 'config unavailable' });
+      res.json(configStore.get());
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put('/api/config', (req, res) => {
+    try {
+      if (!configStore) return res.status(503).json({ error: 'config unavailable' });
+      res.json(configStore.update(req.body));
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Comments (IPC-only before) ──
+  app.get('/api/task/:id/comments', (req, res) => {
+    try {
+      res.json({ comments: store.getComments(req.params.id) });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post('/api/task/:id/comments', (req, res) => {
+    try {
+      res.json(store.addComment(req.params.id, req.body.bodyHtml));
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put('/api/comment/:id', (req, res) => {
+    try {
+      res.json(store.updateComment(req.params.id, req.body.bodyHtml));
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.delete('/api/comment/:id', (req, res) => {
+    try {
+      res.json({ success: store.deleteComment(req.params.id) });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok', app: 'raido' });
   });
