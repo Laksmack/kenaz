@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "cd ../laguz && npm run dev:renderer",
     "devUrl": "http://localhost:5177",
-    "frontendDist": "../laguz/dist/renderer"
+    "frontendDist": "../../laguz/dist/renderer"
   },
   "app": {
     "windows": [
@@ -29,7 +29,13 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": [],
+    "icon": [
+      "icons/laguz/32x32.png",
+      "icons/laguz/128x128.png",
+      "icons/laguz/128x128@2x.png",
+      "icons/laguz/icon.icns",
+      "icons/laguz/icon.ico"
+    ],
     "externalBin": ["bin/futhark-laguz"]
   },
   "plugins": {

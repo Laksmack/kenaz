@@ -8,24 +8,56 @@ use tauri_plugin_shell::ShellExt;
 /// API port.
 struct SidecarChild(Mutex<Option<CommandChild>>);
 
+/// Per-app wiring, derived from the bundle identifier so one crate builds
+/// every Futhark app. demo_badge is a placeholder dock badge proving each app
+/// controls its own badge independently; real counts will be set from each
+/// renderer via the Tauri JS badge API (they already compute these numbers).
+struct AppSpec {
+    sidecar: &'static str,
+    port_env: &'static str,
+    port: &'static str,
+    demo_badge: i64,
+}
+
+fn app_spec(identifier: &str) -> AppSpec {
+    // identifiers look like com.futhark.<app>.tauri
+    if identifier.contains("raido") {
+        AppSpec { sidecar: "futhark-raido", port_env: "RAIDO_API_PORT", port: "13142", demo_badge: 7 }
+    } else if identifier.contains("dagaz") {
+        AppSpec { sidecar: "futhark-dagaz", port_env: "DAGAZ_API_PORT", port: "13143", demo_badge: 3 }
+    } else if identifier.contains("kenaz") {
+        AppSpec { sidecar: "futhark-kenaz", port_env: "KENAZ_API_PORT", port: "13141", demo_badge: 49 }
+    } else {
+        AppSpec { sidecar: "futhark-laguz", port_env: "LAGUZ_API_PORT", port: "13144", demo_badge: 5 }
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
-            // PoC port: avoid colliding with the running Electron Laguz on
-            // :3144. The renderer shim hits 13144 to match.
+            let identifier = app.config().identifier.clone();
+            let spec = app_spec(&identifier);
+            println!("[shell] app={} sidecar={} port={}", identifier, spec.sidecar, spec.port);
+
             let sidecar = app
                 .shell()
-                .sidecar("futhark-laguz")
-                .expect("failed to construct futhark-laguz sidecar command")
-                .env("LAGUZ_API_PORT", "13144");
+                .sidecar(spec.sidecar)
+                .expect("failed to construct sidecar command")
+                .env(spec.port_env, spec.port);
 
             let (mut rx, child) = sidecar
                 .spawn()
-                .expect("failed to spawn futhark-laguz sidecar process");
+                .expect("failed to spawn sidecar process");
 
             app.manage(SidecarChild(Mutex::new(Some(child))));
+
+            // Placeholder dock badge — proves each app bundle owns its own
+            // dock tile + badge independently.
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.set_badge_count(Some(spec.demo_badge));
+            }
 
             tauri::async_runtime::spawn(async move {
                 while let Some(event) = rx.recv().await {

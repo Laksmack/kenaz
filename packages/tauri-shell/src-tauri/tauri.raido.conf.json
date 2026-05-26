@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Raidō (Tauri)",
+  "identifier": "com.futhark.raido.tauri",
+  "build": {
+    "beforeDevCommand": "cd ../raido && npm run dev:renderer",
+    "devUrl": "http://localhost:5174",
+    "frontendDist": "../../raido/dist/renderer"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Raidō (Tauri)",
+        "width": 1000,
+        "height": 700,
+        "minWidth": 600,
+        "minHeight": 400,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": { "x": 16, "y": 16 },
+        "backgroundColor": "#1a1410"
+      }
+    ]
+  },
+  "bundle": {
+    "icon": [
+      "icons/raido/32x32.png",
+      "icons/raido/128x128.png",
+      "icons/raido/128x128@2x.png",
+      "icons/raido/icon.icns",
+      "icons/raido/icon.ico"
+    ],
+    "externalBin": ["bin/futhark-raido"]
+  }
+}

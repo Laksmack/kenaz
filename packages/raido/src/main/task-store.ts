@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { Database } from './db';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
@@ -13,7 +13,7 @@ function localToday(): string {
 }
 
 export class TaskStore {
-  private db: Database.Database;
+  private db: Database;
   private readonly dbPath: string;
 
   constructor() {
