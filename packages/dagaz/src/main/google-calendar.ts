@@ -1,12 +1,12 @@
 import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { BrowserWindow } from 'electron';
-import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import http from 'http';
 import { URL } from 'url';
 import { OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI, CALENDAR_SCOPES } from './oauth-config';
+import { userDataDir } from './paths';
 import type {
   CalendarEvent, Calendar, Attendee, CreateEventInput, UpdateEventInput,
   FreeBusyResponse, ConferenceData, AttendeeInput,
@@ -29,7 +29,7 @@ export class GoogleCalendarService {
       OAUTH_CLIENT_SECRET,
       OAUTH_REDIRECT_URI,
     );
-    this.tokenPath = path.join(app.getPath('userData'), 'google-token.json');
+    this.tokenPath = path.join(userDataDir(), 'google-token.json');
     this.loadToken();
   }
 
@@ -38,7 +38,7 @@ export class GoogleCalendarService {
   private loadToken(): void {
     try {
       // Also check Kenaz's token path since it may already have calendar scopes
-      const kenazTokenPath = path.join(app.getPath('userData'), '..', 'Kenaz', 'google-token.json');
+      const kenazTokenPath = path.join(userDataDir(), '..', 'Kenaz', 'google-token.json');
       const candidates = [this.tokenPath, kenazTokenPath];
 
       for (const tokenPath of candidates) {

@@ -1,18 +1,18 @@
 import Database from 'better-sqlite3';
 import path from 'path';
-import { app } from 'electron';
 import crypto from 'crypto';
 import type {
   CalendarEvent, Calendar, Attendee, SyncQueueItem,
   CreateEventInput, UpdateEventInput, ConferenceData, EventAttachment,
 } from '../shared/types';
+import { userDataDir } from './paths';
 
 export class CacheStore {
   private db: Database.Database;
   private readonly dbPath: string;
 
   constructor() {
-    this.dbPath = path.join(app.getPath('userData'), 'dagaz.db');
+    this.dbPath = path.join(userDataDir(), 'dagaz.db');
     this.db = new Database(this.dbPath);
     this.db.pragma('journal_mode = WAL');
     this.db.pragma('foreign_keys = ON');

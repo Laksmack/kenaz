@@ -1,8 +1,15 @@
 {
   "name": "@futhark/dagaz",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "Dagaz ᛞ — Personal calendar",
   "main": "dist/main/main/main.js",
+  "exports": {
+    ".": "./dist/main/main/main.js",
+    "./services": {
+      "types": "./dist/main/main/services.d.ts",
+      "default": "./dist/main/main/services.js"
+    }
+  },
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:main\" \"npm run dev:renderer\"",

@@ -10,6 +10,10 @@ log.transports.file.maxSize = 5 * 1024 * 1024;
 Object.assign(console, log.functions);
 
 import { initAutoUpdater, getUpdateMenuItems } from '@futhark/core/lib/auto-updater';
+
+import { configurePaths } from './paths';
+configurePaths({ userData: app.getPath('userData') });
+
 import { GoogleCalendarService } from './google-calendar';
 import { CalendlyService } from './calendly';
 import { startApiServer } from './api-server';
