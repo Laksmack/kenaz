@@ -1,14 +1,15 @@
-// Public service-layer surface that is currently Electron-free.
-//
-// Only re-exports modules whose dependency graph no longer transitively
-// imports 'electron'. As of phase 0: config + cache-store + oauth constants.
-// google-calendar, sync-engine, connectivity, dock-icon still pull electron
-// (BrowserWindow OAuth window, powerMonitor, app.dock) and will be migrated
-// or split as part of phase 1+ when the Tauri OAuth flow lands.
+// Public service-layer surface. Electron-free at runtime: the few electron
+// touchpoints (net.isOnline, powerMonitor, shell.openExternal) are behind
+// guarded require('electron') calls that no-op under the sidecar (Node/Bun).
 
 export { configurePaths } from './paths';
 export { ConfigStore } from './config';
 export { CacheStore } from './cache-store';
+export { GoogleCalendarService } from './google-calendar';
+export { CalendlyService } from './calendly';
+export { ConnectivityMonitor } from './connectivity';
+export { SyncEngine } from './sync-engine';
+export { startApiServer } from './api-server';
 export {
   OAUTH_CLIENT_ID,
   OAUTH_CLIENT_SECRET,

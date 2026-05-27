@@ -418,7 +418,7 @@ export default function App() {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Title bar */}
-        <div className="titlebar-drag h-12 flex items-center px-4 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
+        <div data-tauri-drag-region className="titlebar-drag h-12 flex items-center px-4 bg-bg-secondary border-b border-border-subtle flex-shrink-0">
           <div className="titlebar-no-drag flex items-center gap-1">
             <UpdateBanner api={window.dagaz} />
             <button onClick={navigatePrev} className="p-1.5 rounded hover:bg-bg-hover text-text-secondary">
@@ -430,7 +430,7 @@ export default function App() {
             </button>
           </div>
           <div className="ml-3 text-sm font-medium text-text-primary">{headerLabel}</div>
-          <div className="flex-1" />
+          <div data-tauri-drag-region className="flex-1 self-stretch" />
 
           <div className="titlebar-no-drag flex items-center gap-1 mr-3" role="tablist" aria-label="Calendar views">
             {(needsActionEvents.length > 0 || dedupedPendingInvites.length > 0) && (

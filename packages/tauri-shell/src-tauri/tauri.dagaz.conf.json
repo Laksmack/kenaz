@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Dagaz (Tauri)",
+  "identifier": "com.futhark.dagaz.tauri",
+  "build": {
+    "beforeDevCommand": "cd ../dagaz && npm run dev:renderer",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../../dagaz/dist/renderer"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Dagaz (Tauri)",
+        "width": 1100,
+        "height": 720,
+        "minWidth": 600,
+        "minHeight": 400,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": { "x": 16, "y": 16 },
+        "backgroundColor": "#0d1520"
+      }
+    ]
+  },
+  "bundle": {
+    "icon": [
+      "icons/dagaz/32x32.png",
+      "icons/dagaz/128x128.png",
+      "icons/dagaz/128x128@2x.png",
+      "icons/dagaz/icon.icns",
+      "icons/dagaz/icon.ico"
+    ],
+    "externalBin": ["bin/futhark-dagaz"]
+  }
+}

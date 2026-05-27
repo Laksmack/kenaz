@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { Database } from './db';
 import path from 'path';
 import crypto from 'crypto';
 import type {
@@ -8,7 +8,7 @@ import type {
 import { userDataDir } from './paths';
 
 export class CacheStore {
-  private db: Database.Database;
+  private db: Database;
   private readonly dbPath: string;
 
   constructor() {

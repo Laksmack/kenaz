@@ -1,9 +1,30 @@
-import { BrowserWindow, powerMonitor } from 'electron';
+import type { BrowserWindow } from 'electron';
 import { GoogleCalendarService } from './google-calendar';
 import { CacheStore } from './cache-store';
 import { ConnectivityMonitor } from './connectivity';
 import { IPC } from '../shared/types';
 import type { SyncStatus, CalendarEvent, Attendee } from '../shared/types';
+
+// powerMonitor under Electron throttles polling on battery. Absent in the
+// sidecar (Node/Bun) — fall back to a stub that reports AC power (no throttle).
+// NB: require('electron') in Node/Bun returns the binary *path string* (no
+// throw), so .powerMonitor is silently undefined — validate the object rather
+// than relying on a thrown error.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let powerMonitor: any;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const e = require('electron');
+  powerMonitor =
+    e && typeof e === 'object' && e.powerMonitor && typeof e.powerMonitor.isOnBatteryPower === 'function'
+      ? e.powerMonitor
+      : null;
+} catch {
+  powerMonitor = null;
+}
+if (!powerMonitor) {
+  powerMonitor = { isOnBatteryPower: () => false, on: () => {} };
+}
 
 // Polling intervals in milliseconds
 const INCREMENTAL_INTERVAL_AC = 60_000;       // 60s on AC power

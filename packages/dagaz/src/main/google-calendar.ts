@@ -1,12 +1,23 @@
 import { google, calendar_v3 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import { BrowserWindow } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import http from 'http';
+import { exec } from 'child_process';
 import { URL } from 'url';
 import { OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI, CALENDAR_SCOPES } from './oauth-config';
 import { userDataDir } from './paths';
+
+// Open a URL in the system browser. Electron's shell.openExternal when
+// available; otherwise (sidecar) shell out to the macOS `open` command.
+function openUrl(url: string): void {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require('electron').shell.openExternal(url);
+  } catch {
+    exec(`open ${JSON.stringify(url)}`);
+  }
+}
 import type {
   CalendarEvent, Calendar, Attendee, CreateEventInput, UpdateEventInput,
   FreeBusyResponse, ConferenceData, AttendeeInput,
@@ -138,8 +149,7 @@ export class GoogleCalendarService {
       });
 
       server.listen(port, () => {
-        const { shell } = require('electron');
-        shell.openExternal(authUrl);
+        openUrl(authUrl);
       });
 
       setTimeout(() => {

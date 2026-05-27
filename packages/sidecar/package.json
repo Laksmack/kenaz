@@ -10,11 +10,13 @@
     "dev:raido": "tsc -p tsconfig.json && node dist/raido.js",
     "compile:laguz": "bun build --compile --target=bun-darwin-arm64 --external pdfjs-dist --external mammoth --external tesseract.js --external better-sqlite3 ./src/laguz.ts --outfile ./dist/futhark-laguz",
     "compile:raido": "bun build --compile --target=bun-darwin-arm64 --external better-sqlite3 ./src/raido.ts --outfile ./dist/futhark-raido",
+    "compile:dagaz": "bun build --compile --target=bun-darwin-arm64 --external better-sqlite3 ./src/dagaz.ts --outfile ./dist/futhark-dagaz",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@futhark/laguz": "*",
-    "@futhark/raido": "*"
+    "@futhark/raido": "*",
+    "@futhark/dagaz": "*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

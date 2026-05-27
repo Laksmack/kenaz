@@ -1,6 +1,18 @@
-import { net, BrowserWindow } from 'electron';
+import type { BrowserWindow } from 'electron';
 import { EventEmitter } from 'events';
 import { IPC } from '../shared/types';
+
+// isOnlineNative() under Electron; under the sidecar (Node/Bun) there's no
+// electron.net — assume online and let the Google API probes flip us offline
+// on real failures.
+function isOnlineNative(): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    return require('electron').net.isOnline();
+  } catch {
+    return true;
+  }
+}
 
 /**
  * Layered connectivity monitor:
@@ -24,7 +36,7 @@ export class ConnectivityMonitor extends EventEmitter {
   }
 
   start(): void {
-    this._isOnline = net.isOnline();
+    this._isOnline = isOnlineNative();
     this.startPolling();
   }
 
@@ -40,7 +52,7 @@ export class ConnectivityMonitor extends EventEmitter {
   }
 
   async checkNow(): Promise<boolean> {
-    const online = net.isOnline();
+    const online = isOnlineNative();
     this.updateState(online);
     return online;
   }
@@ -58,7 +70,7 @@ export class ConnectivityMonitor extends EventEmitter {
 
     const schedulePoll = () => {
       this.pollTimer = setTimeout(async () => {
-        const online = net.isOnline();
+        const online = isOnlineNative();
         this.updateState(online);
         schedulePoll();
       }, getInterval());

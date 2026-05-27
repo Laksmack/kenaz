@@ -7,6 +7,7 @@ import type { SyncEngine } from './sync-engine';
 import type { ConnectivityMonitor } from './connectivity';
 import type { CreateEventInput, UpdateEventInput } from '../shared/types';
 import { parseNaturalLanguage } from '../shared/parse-natural-language';
+import { ConfigStore } from './config';
 
 export function startApiServer(
   cache: CacheStore,
@@ -18,6 +19,60 @@ export function startApiServer(
 ) {
   const app = express();
   app.use(express.json());
+
+  // CORS for the Tauri webview (different origin than :3143). Electron IPC
+  // bypasses HTTP, so this only widens dev/test access.
+  app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    if (req.method === 'OPTIONS') {
+      res.sendStatus(204);
+      return;
+    }
+    next();
+  });
+
+  // ── Auth (IPC-only before; needed over HTTP for the Tauri shim) ──
+  app.get('/api/auth/status', (_req, res) => {
+    res.json({ authorized: google.isAuthorized() });
+  });
+
+  app.post('/api/auth/start', async (_req, res) => {
+    try {
+      const result = await google.authorize();
+      if (result.success) sync.start();
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ success: false, error: e.message });
+    }
+  });
+
+  // ── Config (fresh ConfigStore reads ~/.futhark/dagaz/config.json) ──
+  app.get('/api/config', (_req, res) => {
+    try {
+      res.json(new ConfigStore().get());
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.put('/api/config', (req, res) => {
+    try {
+      res.json(new ConfigStore().update(req.body));
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ── Needs-action events (from calendar cache) ──
+  app.get('/api/needs-action', (_req, res) => {
+    try {
+      res.json({ events: cache.getNeedsActionEvents() });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
 
   // ── Conflict Detection ────────────────────────────────────
 
