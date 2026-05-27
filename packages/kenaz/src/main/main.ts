@@ -740,8 +740,55 @@ function registerIpcHandlers() {
     return active().hubspot.logEmail(payload, '');
   });
 
-  ipcMain.handle(IPC.HUBSPOT_LOG_THREAD, async (_event, dealId: string, subject: string, body: string, senderEmail: string, recipientEmail: string) => {
-    return active().hubspot.logThreadToDeal(dealId, subject, body, senderEmail, recipientEmail);
+  ipcMain.handle(IPC.HUBSPOT_LOG_THREAD, async (_event, dealId: string, dealName: string, thread: any) => {
+    const svc = active();
+    const activeEmail = (accountManager.getActiveEmail() || '').toLowerCase();
+    const messages: any[] = [...(thread?.messages || [])].sort(
+      (a, b) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime(),
+    );
+    if (messages.length === 0) return { success: false, error: 'Thread has no messages' };
+
+    const alreadyLogged = new Set(svc.cache.getLoggedMessageIds(thread.id, dealId));
+    // First log on this thread→deal: just the latest message. Subsequent logs:
+    // every message not yet logged (the replies since).
+    const toLog = alreadyLogged.size === 0
+      ? [messages[messages.length - 1]]
+      : messages.filter((m) => !alreadyLogged.has(m.id));
+
+    if (toLog.length === 0) {
+      return { success: true, loggedCount: 0, alreadyLogged: true };
+    }
+
+    const loggedIds: string[] = [];
+    let lastError: string | undefined;
+    for (const m of toLog) {
+      const fromMe = (m.from?.email || '').toLowerCase() === activeEmail;
+      const res = await svc.hubspot.logMessageToDeal(dealId, {
+        subject: m.subject || thread.subject || '(no subject)',
+        htmlBody: m.body || '',
+        textBody: m.bodyText || m.snippet || '',
+        from: { email: m.from?.email || '', name: m.from?.name || '' },
+        to: (m.to || []).map((t: any) => ({ email: t.email, name: t.name })),
+        cc: (m.cc || []).map((c: any) => ({ email: c.email, name: c.name })),
+        timestamp: m.date || new Date().toISOString(),
+        fromMe,
+      });
+      if (res.success) loggedIds.push(m.id);
+      else lastError = res.error;
+    }
+
+    if (loggedIds.length > 0) {
+      svc.cache.recordThreadDealLog(thread.id, dealId, dealName || '', loggedIds);
+    }
+    return {
+      success: loggedIds.length > 0,
+      loggedCount: loggedIds.length,
+      error: loggedIds.length === 0 ? lastError : undefined,
+    };
+  });
+
+  ipcMain.handle(IPC.HUBSPOT_THREAD_LINKS, async (_event, threadId: string) => {
+    return active().cache.getThreadDealLinks(threadId);
   });
 
   ipcMain.handle(IPC.HUBSPOT_SEARCH_DEALS, async (_event, query: string) => {

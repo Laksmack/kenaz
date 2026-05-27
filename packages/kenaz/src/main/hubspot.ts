@@ -226,34 +226,43 @@ export class HubSpotService {
     }
   }
 
-  async logThreadToDeal(
+  /**
+   * Log a single email message to a deal as a real email engagement — it
+   * renders on the deal's Activity timeline like an actual email (real body,
+   * headers, timestamp, direction), not a synthesized summary.
+   */
+  async logMessageToDeal(
     dealId: string,
-    subject: string,
-    body: string,
-    senderEmail: string,
-    recipientEmail: string
+    msg: {
+      subject: string;
+      htmlBody: string;
+      textBody: string;
+      from: { email: string; name?: string };
+      to: Array<{ email: string; name?: string }>;
+      cc?: Array<{ email: string; name?: string }>;
+      timestamp: string;   // ISO; the message's real date
+      fromMe: boolean;     // true if the active account sent it → outgoing
+    }
   ): Promise<{ success: boolean; error?: string; emailId?: string }> {
     const token = this.getToken();
     if (!token) return { success: false, error: 'HubSpot token not configured' };
 
-    // Owner the engagement is attributed to. Prefer the configured owner,
-    // fall back to Martin's known owner id.
     const ownerId = (this.config.get() as any).hubspot_owner_id || '76004641';
 
     try {
-      // Create the email engagement. hs_email_headers carries the from/to as
-      // a JSON blob (HubSpot's expected shape); hubspot_owner_id attributes it.
       const res = await this.fetch('/crm/v3/objects/emails', {
         method: 'POST',
         body: JSON.stringify({
           properties: {
-            hs_timestamp: new Date().toISOString(),
-            hs_email_direction: 'INCOMING_EMAIL',
-            hs_email_subject: subject,
-            hs_email_text: body,
+            hs_timestamp: msg.timestamp,
+            hs_email_direction: msg.fromMe ? 'EMAIL' : 'INCOMING_EMAIL',
+            hs_email_subject: msg.subject,
+            hs_email_text: msg.textBody,
+            hs_email_html: msg.htmlBody,
             hs_email_headers: JSON.stringify({
-              from: { email: senderEmail },
-              to: [{ email: recipientEmail }],
+              from: { email: msg.from.email, firstName: msg.from.name || '' },
+              to: msg.to.map((t) => ({ email: t.email, firstName: t.name || '' })),
+              cc: (msg.cc || []).map((c) => ({ email: c.email, firstName: c.name || '' })),
             }),
             hubspot_owner_id: ownerId,
           },
@@ -266,24 +275,25 @@ export class HubSpotService {
         { method: 'PUT' }
       );
 
-      // Best-effort: also associate to the sender contact (type 198).
-      try {
-        const contactSearch = await this.fetch('/crm/v3/objects/contacts/search', {
-          method: 'POST',
-          body: JSON.stringify({
-            filterGroups: [{
-              filters: [{ propertyName: 'email', operator: 'EQ', value: senderEmail }],
-            }],
-          }),
-        });
-        if (contactSearch.total > 0) {
-          await this.fetch(
-            `/crm/v3/objects/emails/${res.id}/associations/contacts/${contactSearch.results[0].id}/198`,
-            { method: 'PUT' }
-          );
+      // Best-effort: also associate to the counterpart contact (type 198).
+      const contactEmail = msg.fromMe ? msg.to[0]?.email : msg.from.email;
+      if (contactEmail) {
+        try {
+          const contactSearch = await this.fetch('/crm/v3/objects/contacts/search', {
+            method: 'POST',
+            body: JSON.stringify({
+              filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: contactEmail }] }],
+            }),
+          });
+          if (contactSearch.total > 0) {
+            await this.fetch(
+              `/crm/v3/objects/emails/${res.id}/associations/contacts/${contactSearch.results[0].id}/198`,
+              { method: 'PUT' }
+            );
+          }
+        } catch {
+          // Non-critical — deal association is what matters
         }
-      } catch (e) {
-        // Non-critical — deal association is what matters
       }
 
       return { success: true, emailId: res.id };

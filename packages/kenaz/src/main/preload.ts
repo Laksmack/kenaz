@@ -26,6 +26,7 @@ const IPC = {
   HUBSPOT_LOG: 'hubspot:log',
   HUBSPOT_LOG_THREAD: 'hubspot:log-thread',
   HUBSPOT_SEARCH_DEALS: 'hubspot:search-deals',
+  HUBSPOT_THREAD_LINKS: 'hubspot:thread-links',
   HUBSPOT_ASSOCIATE_DEAL: 'hubspot:associate-deal',
   LINEAR_TEST: 'linear:test',
   LINEAR_TEAMS: 'linear:teams',
@@ -136,8 +137,10 @@ const api = {
     ipcRenderer.invoke(IPC.HUBSPOT_LOOKUP, email),
   hubspotLog: (payload: any) =>
     ipcRenderer.invoke(IPC.HUBSPOT_LOG, payload),
-  hubspotLogThread: (dealId: string, subject: string, body: string, senderEmail: string, recipientEmail: string) =>
-    ipcRenderer.invoke(IPC.HUBSPOT_LOG_THREAD, dealId, subject, body, senderEmail, recipientEmail),
+  hubspotLogThread: (dealId: string, dealName: string, thread: any) =>
+    ipcRenderer.invoke(IPC.HUBSPOT_LOG_THREAD, dealId, dealName, thread),
+  hubspotThreadLinks: (threadId: string) =>
+    ipcRenderer.invoke(IPC.HUBSPOT_THREAD_LINKS, threadId),
   hubspotSearchDeals: (query: string) =>
     ipcRenderer.invoke(IPC.HUBSPOT_SEARCH_DEALS, query),
   hubspotAssociateDeal: (contactId: string, dealId: string) =>

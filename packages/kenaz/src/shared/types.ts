@@ -190,6 +190,7 @@ export const IPC = {
   HUBSPOT_LOG: 'hubspot:log',
   HUBSPOT_LOG_THREAD: 'hubspot:log-thread',
   HUBSPOT_SEARCH_DEALS: 'hubspot:search-deals',
+  HUBSPOT_THREAD_LINKS: 'hubspot:thread-links',
   HUBSPOT_ASSOCIATE_DEAL: 'hubspot:associate-deal',
 
   // Linear

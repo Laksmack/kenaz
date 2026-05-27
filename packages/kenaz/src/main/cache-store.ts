@@ -135,6 +135,22 @@ export class CacheStore {
       );
     `);
 
+    // Sticky thread→deal links: once a thread is logged to a HubSpot deal, the
+    // link persists so the deal keeps surfacing on that thread regardless of who
+    // sent the latest message. logged_message_ids is a JSON array of message ids
+    // already logged to that deal (so re-logging only adds new replies).
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS thread_deal_links (
+        thread_id TEXT NOT NULL,
+        deal_id TEXT NOT NULL,
+        deal_name TEXT,
+        logged_message_ids TEXT NOT NULL DEFAULT '[]',
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (thread_id, deal_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_thread_deal_links_thread ON thread_deal_links(thread_id);
+    `);
+
     // Create FTS5 table if not exists (separate try since virtual tables can't use IF NOT EXISTS easily)
     try {
       this.db.exec(`
@@ -1025,5 +1041,41 @@ export class CacheStore {
       hasAttachments: row.has_attachments === 1,
       attachments: JSON.parse(row.attachments || '[]'),
     };
+  }
+
+  // ── Thread ↔ Deal links (sticky HubSpot deal association per thread) ──
+
+  getThreadDealLinks(threadId: string): Array<{ dealId: string; dealName: string; loggedMessageIds: string[] }> {
+    const rows = this.db
+      .prepare('SELECT deal_id, deal_name, logged_message_ids FROM thread_deal_links WHERE thread_id = ?')
+      .all(threadId) as Array<{ deal_id: string; deal_name: string; logged_message_ids: string }>;
+    return rows.map((r) => ({
+      dealId: r.deal_id,
+      dealName: r.deal_name || '',
+      loggedMessageIds: JSON.parse(r.logged_message_ids || '[]'),
+    }));
+  }
+
+  getLoggedMessageIds(threadId: string, dealId: string): string[] {
+    const row = this.db
+      .prepare('SELECT logged_message_ids FROM thread_deal_links WHERE thread_id = ? AND deal_id = ?')
+      .get(threadId, dealId) as { logged_message_ids: string } | undefined;
+    return row ? JSON.parse(row.logged_message_ids || '[]') : [];
+  }
+
+  // Upsert the link and merge newly-logged message ids into the set.
+  recordThreadDealLog(threadId: string, dealId: string, dealName: string, newMessageIds: string[]): void {
+    const existing = this.getLoggedMessageIds(threadId, dealId);
+    const merged = Array.from(new Set([...existing, ...newMessageIds]));
+    this.db
+      .prepare(`
+        INSERT INTO thread_deal_links (thread_id, deal_id, deal_name, logged_message_ids, updated_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(thread_id, deal_id) DO UPDATE SET
+          deal_name = excluded.deal_name,
+          logged_message_ids = excluded.logged_message_ids,
+          updated_at = excluded.updated_at
+      `)
+      .run(threadId, dealId, dealName, JSON.stringify(merged), new Date().toISOString());
   }
 }

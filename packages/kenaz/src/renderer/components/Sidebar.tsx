@@ -125,36 +125,53 @@ export function Sidebar({ thread, hubspotEnabled = false, hubspotPortalId = '', 
 
   // "Log to Deal" — per-deal state so each card shows its own progress.
   const [dealLog, setDealLog] = useState<Record<string, 'logging' | 'done' | 'error'>>({});
+  // Sticky thread→deal links so a deal keeps surfacing on this thread even
+  // after a colleague (non-contact) replies.
+  const [linkedDeals, setLinkedDeals] = useState<Array<{ dealId: string; dealName: string }>>([]);
 
-  const handleLogToDeal = useCallback(async (dealId: string) => {
+  useEffect(() => {
+    if (!thread || !hubspotEnabled) { setLinkedDeals([]); return; }
+    let cancelled = false;
+    window.kenaz.hubspotThreadLinks(thread.id)
+      .then((links) => { if (!cancelled) setLinkedDeals(links || []); })
+      .catch(() => { if (!cancelled) setLinkedDeals([]); });
+    return () => { cancelled = true; };
+  }, [thread?.id, hubspotEnabled]);
+
+  const handleLogToDeal = useCallback(async (dealId: string, dealName: string) => {
     if (!thread) return;
     setDealLog((p) => ({ ...p, [dealId]: 'logging' }));
     try {
-      const sender = thread.from?.email || '';
-      const latest = thread.messages?.[thread.messages.length - 1];
-      const recipient = latest?.to?.[0]?.email || '';
-      const summary = (thread.messages || [])
-        .map((m) => {
-          const who = m.from?.name || m.from?.email || 'unknown';
-          const when = m.date ? new Date(m.date).toLocaleString() : '';
-          const text = (m.bodyText || m.snippet || '').trim();
-          return `From: ${who}${when ? ` (${when})` : ''}\n${text}`;
-        })
-        .join('\n\n———\n\n');
-      const res = await window.kenaz.hubspotLogThread(
-        dealId,
-        thread.subject || '(no subject)',
-        summary,
-        sender,
-        recipient,
-      );
+      const res = await window.kenaz.hubspotLogThread(dealId, dealName, thread);
       setDealLog((p) => ({ ...p, [dealId]: res.success ? 'done' : 'error' }));
-      if (!res.success) console.error('[Kenaz] Log to deal failed:', res.error);
+      if (res.success) {
+        // Reflect the new link immediately so the card shows "linked".
+        setLinkedDeals((prev) =>
+          prev.some((l) => l.dealId === dealId) ? prev : [...prev, { dealId, dealName }],
+        );
+      } else {
+        console.error('[Kenaz] Log to deal failed:', res.error);
+      }
     } catch (e) {
       console.error('[Kenaz] Log to deal threw:', e);
       setDealLog((p) => ({ ...p, [dealId]: 'error' }));
     }
   }, [thread]);
+
+  // Deals to show = those found via the contact lookup, plus any sticky-linked
+  // deals not already in that list (so a logged thread keeps its deal).
+  const mergedDeals = useMemo(() => {
+    const byId = new Map<string, { id: string; name: string; stage?: string; amount?: number; closeDate?: string; linked: boolean }>();
+    for (const d of hubspot.deals) {
+      byId.set(d.id, { id: d.id, name: d.name, stage: d.stage, amount: d.amount, closeDate: d.closeDate, linked: false });
+    }
+    for (const l of linkedDeals) {
+      const existing = byId.get(l.dealId);
+      if (existing) existing.linked = true;
+      else byId.set(l.dealId, { id: l.dealId, name: l.dealName, linked: true });
+    }
+    return Array.from(byId.values());
+  }, [hubspot.deals, linkedDeals]);
 
   useEffect(() => {
     if (!thread || !linearEnabled || !linearIssueKey) {
@@ -276,11 +293,11 @@ export function Sidebar({ thread, hubspotEnabled = false, hubspotPortalId = '', 
         )}
 
         {/* Deals */}
-        {hubspot.deals.length > 0 && (
+        {mergedDeals.length > 0 && (
           <div className="sidebar-section">
             <h4 className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">Deals</h4>
             <div className="space-y-2">
-              {hubspot.deals.map((deal) => {
+              {mergedDeals.map((deal) => {
                 const DealWrapper = hubspotPortalId ? 'a' : 'div';
                 const wrapperProps = hubspotPortalId ? {
                   href: hubspotDealUrl(hubspotPortalId, deal.id),
@@ -288,6 +305,7 @@ export function Sidebar({ thread, hubspotEnabled = false, hubspotPortalId = '', 
                   rel: 'noopener noreferrer',
                 } : {};
                 const logState = dealLog[deal.id];
+                const isLinked = deal.linked || logState === 'done';
                 return (
                   <div
                     key={deal.id}
@@ -307,16 +325,20 @@ export function Sidebar({ thread, hubspotEnabled = false, hubspotPortalId = '', 
                           </svg>
                         )}
                       </div>
-                      <div className="flex items-center justify-between text-xs text-text-muted">
-                        <span className="px-1.5 py-0.5 rounded bg-accent-primary/10 text-accent-primary text-[10px]">
-                          {deal.stage}
-                        </span>
-                        {deal.amount > 0 && (
-                          <span className="font-mono text-accent-success">
-                            ${deal.amount.toLocaleString()}
-                          </span>
-                        )}
-                      </div>
+                      {(deal.stage || (deal.amount ?? 0) > 0) && (
+                        <div className="flex items-center justify-between text-xs text-text-muted">
+                          {deal.stage && (
+                            <span className="px-1.5 py-0.5 rounded bg-accent-primary/10 text-accent-primary text-[10px]">
+                              {deal.stage}
+                            </span>
+                          )}
+                          {(deal.amount ?? 0) > 0 && (
+                            <span className="font-mono text-accent-success">
+                              ${(deal.amount ?? 0).toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       {deal.closeDate && (
                         <div className="text-[10px] text-text-muted mt-1">
                           Close: {new Date(deal.closeDate).toLocaleDateString()}
@@ -325,27 +347,31 @@ export function Sidebar({ thread, hubspotEnabled = false, hubspotPortalId = '', 
                     </DealWrapper>
 
                     {/* Log this email thread to the deal's activity timeline */}
-                    <div className="mt-2 pt-2 border-t border-border-subtle flex items-center justify-between">
-                      {logState === 'done' ? (
+                    <div className="mt-2 pt-2 border-t border-border-subtle flex items-center justify-between gap-2">
+                      {isLinked && hubspotPortalId && (
                         <a
-                          href={hubspotPortalId ? hubspotDealUrl(hubspotPortalId, deal.id) : '#'}
+                          href={hubspotDealUrl(hubspotPortalId, deal.id)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-[10px] text-accent-success no-underline hover:underline"
-                          onClick={(e) => { if (!hubspotPortalId) e.preventDefault(); }}
                         >
-                          ✓ Logged — view on deal ↗
+                          ✓ on deal ↗
                         </a>
-                      ) : (
-                        <button
-                          onClick={() => handleLogToDeal(deal.id)}
-                          disabled={logState === 'logging'}
-                          className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-bg-hover text-text-secondary hover:text-[#ff7a59] hover:bg-[#ff7a59]/10 disabled:opacity-50 transition-colors"
-                          title="Log this email thread to the deal's activity timeline"
-                        >
-                          {logState === 'logging' ? 'Logging…' : logState === 'error' ? 'Retry log' : 'Log email'}
-                        </button>
                       )}
+                      <button
+                        onClick={() => handleLogToDeal(deal.id, deal.name)}
+                        disabled={logState === 'logging'}
+                        className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-bg-hover text-text-secondary hover:text-[#ff7a59] hover:bg-[#ff7a59]/10 disabled:opacity-50 transition-colors ml-auto"
+                        title={isLinked ? 'Log new replies in this thread to the deal' : 'Log this email to the deal’s activity timeline'}
+                      >
+                        {logState === 'logging'
+                          ? 'Logging…'
+                          : logState === 'error'
+                            ? 'Retry'
+                            : isLinked
+                              ? 'Log new'
+                              : 'Log email'}
+                      </button>
                       {logState === 'error' && (
                         <span className="text-[10px] text-accent-danger">failed</span>
                       )}
@@ -358,7 +384,7 @@ export function Sidebar({ thread, hubspotEnabled = false, hubspotPortalId = '', 
         )}
 
         {/* Open in HubSpot — when contact exists but no deals, nudge user to link in HubSpot */}
-        {hubspot.contact && hubspot.deals.length === 0 && hubspotPortalId && (
+        {hubspot.contact && mergedDeals.length === 0 && hubspotPortalId && (
           <div className="sidebar-section">
             <a
               href={hubspotContactUrl(hubspotPortalId, hubspot.contact.id)}
