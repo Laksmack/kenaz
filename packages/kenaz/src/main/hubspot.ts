@@ -232,12 +232,17 @@ export class HubSpotService {
     body: string,
     senderEmail: string,
     recipientEmail: string
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; emailId?: string }> {
     const token = this.getToken();
     if (!token) return { success: false, error: 'HubSpot token not configured' };
 
+    // Owner the engagement is attributed to. Prefer the configured owner,
+    // fall back to Martin's known owner id.
+    const ownerId = (this.config.get() as any).hubspot_owner_id || '76004641';
+
     try {
-      // Create email engagement in HubSpot
+      // Create the email engagement. hs_email_headers carries the from/to as
+      // a JSON blob (HubSpot's expected shape); hubspot_owner_id attributes it.
       const res = await this.fetch('/crm/v3/objects/emails', {
         method: 'POST',
         body: JSON.stringify({
@@ -246,19 +251,22 @@ export class HubSpotService {
             hs_email_direction: 'INCOMING_EMAIL',
             hs_email_subject: subject,
             hs_email_text: body,
-            hs_email_from_email: senderEmail,
-            hs_email_to_email: recipientEmail,
+            hs_email_headers: JSON.stringify({
+              from: { email: senderEmail },
+              to: [{ email: recipientEmail }],
+            }),
+            hubspot_owner_id: ownerId,
           },
         }),
       });
 
-      // Associate with deal
+      // Associate to the deal. Type 210 = HUBSPOT_DEFINED email→deal.
       await this.fetch(
-        `/crm/v3/objects/emails/${res.id}/associations/deals/${dealId}/186`,
+        `/crm/v3/objects/emails/${res.id}/associations/deals/${dealId}/210`,
         { method: 'PUT' }
       );
 
-      // Try to associate with contact (sender)
+      // Best-effort: also associate to the sender contact (type 198).
       try {
         const contactSearch = await this.fetch('/crm/v3/objects/contacts/search', {
           method: 'POST',
@@ -278,7 +286,7 @@ export class HubSpotService {
         // Non-critical — deal association is what matters
       }
 
-      return { success: true };
+      return { success: true, emailId: res.id };
     } catch (e: any) {
       return { success: false, error: e.message };
     }

@@ -29,7 +29,7 @@ declare global {
       listCalendars: () => Promise<Array<{ id: string; name: string; color: string }>>;
       hubspotLookup: (email: string) => Promise<any>;
       hubspotLog: (payload: any) => Promise<any>;
-      hubspotLogThread: (dealId: string, subject: string, body: string, senderEmail: string, recipientEmail: string) => Promise<{ success: boolean; error?: string }>;
+      hubspotLogThread: (dealId: string, subject: string, body: string, senderEmail: string, recipientEmail: string) => Promise<{ success: boolean; error?: string; emailId?: string }>;
       hubspotSearchDeals: (query: string) => Promise<any[]>;
       hubspotAssociateDeal: (contactId: string, dealId: string) => Promise<{ success: boolean; error?: string }>;
       linearTestConnection: () => Promise<{ ok: boolean; message?: string }>;

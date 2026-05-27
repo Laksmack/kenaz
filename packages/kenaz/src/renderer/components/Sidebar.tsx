@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import type { EmailThread } from '@shared/types';
 import { useHubSpot } from '../hooks/useHubSpot';
 import { CalendarWidget } from './CalendarWidget';
@@ -122,6 +122,39 @@ export function Sidebar({ thread, hubspotEnabled = false, hubspotPortalId = '', 
   const linearIssueKey = thread && linearEnabled
     ? firstLinearIssueKey(`${thread.subject || ''}\n${thread.snippet || ''}`)
     : null;
+
+  // "Log to Deal" — per-deal state so each card shows its own progress.
+  const [dealLog, setDealLog] = useState<Record<string, 'logging' | 'done' | 'error'>>({});
+
+  const handleLogToDeal = useCallback(async (dealId: string) => {
+    if (!thread) return;
+    setDealLog((p) => ({ ...p, [dealId]: 'logging' }));
+    try {
+      const sender = thread.from?.email || '';
+      const latest = thread.messages?.[thread.messages.length - 1];
+      const recipient = latest?.to?.[0]?.email || '';
+      const summary = (thread.messages || [])
+        .map((m) => {
+          const who = m.from?.name || m.from?.email || 'unknown';
+          const when = m.date ? new Date(m.date).toLocaleString() : '';
+          const text = (m.bodyText || m.snippet || '').trim();
+          return `From: ${who}${when ? ` (${when})` : ''}\n${text}`;
+        })
+        .join('\n\n———\n\n');
+      const res = await window.kenaz.hubspotLogThread(
+        dealId,
+        thread.subject || '(no subject)',
+        summary,
+        sender,
+        recipient,
+      );
+      setDealLog((p) => ({ ...p, [dealId]: res.success ? 'done' : 'error' }));
+      if (!res.success) console.error('[Kenaz] Log to deal failed:', res.error);
+    } catch (e) {
+      console.error('[Kenaz] Log to deal threw:', e);
+      setDealLog((p) => ({ ...p, [dealId]: 'error' }));
+    }
+  }, [thread]);
 
   useEffect(() => {
     if (!thread || !linearEnabled || !linearIssueKey) {
@@ -254,38 +287,70 @@ export function Sidebar({ thread, hubspotEnabled = false, hubspotPortalId = '', 
                   target: '_blank' as const,
                   rel: 'noopener noreferrer',
                 } : {};
+                const logState = dealLog[deal.id];
                 return (
-                  <DealWrapper
+                  <div
                     key={deal.id}
-                    {...wrapperProps}
-                    className={`block p-2 rounded bg-bg-primary group no-underline ${hubspotPortalId ? 'hover:bg-bg-hover cursor-pointer' : ''} transition-colors`}
+                    className="p-2 rounded bg-bg-primary group transition-colors"
                   >
-                    <div className="flex items-center justify-between mb-1">
-                      <div className={`text-xs font-medium truncate flex-1 ${hubspotPortalId ? 'text-text-primary group-hover:text-[#ff7a59]' : 'text-text-primary'} transition-colors`}>
-                        {deal.name}
+                    <DealWrapper
+                      {...wrapperProps}
+                      className={`block no-underline ${hubspotPortalId ? 'cursor-pointer' : ''}`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <div className={`text-xs font-medium truncate flex-1 ${hubspotPortalId ? 'text-text-primary group-hover:text-[#ff7a59]' : 'text-text-primary'} transition-colors`}>
+                          {deal.name}
+                        </div>
+                        {hubspotPortalId && (
+                          <svg className="w-3 h-3 flex-shrink-0 ml-2 text-text-muted group-hover:text-[#ff7a59] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                          </svg>
+                        )}
                       </div>
-                      {hubspotPortalId && (
-                        <svg className="w-3 h-3 flex-shrink-0 ml-2 text-text-muted group-hover:text-[#ff7a59] transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                      )}
-                    </div>
-                    <div className="flex items-center justify-between text-xs text-text-muted">
-                      <span className="px-1.5 py-0.5 rounded bg-accent-primary/10 text-accent-primary text-[10px]">
-                        {deal.stage}
-                      </span>
-                      {deal.amount > 0 && (
-                        <span className="font-mono text-accent-success">
-                          ${deal.amount.toLocaleString()}
+                      <div className="flex items-center justify-between text-xs text-text-muted">
+                        <span className="px-1.5 py-0.5 rounded bg-accent-primary/10 text-accent-primary text-[10px]">
+                          {deal.stage}
                         </span>
+                        {deal.amount > 0 && (
+                          <span className="font-mono text-accent-success">
+                            ${deal.amount.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                      {deal.closeDate && (
+                        <div className="text-[10px] text-text-muted mt-1">
+                          Close: {new Date(deal.closeDate).toLocaleDateString()}
+                        </div>
+                      )}
+                    </DealWrapper>
+
+                    {/* Log this email thread to the deal's activity timeline */}
+                    <div className="mt-2 pt-2 border-t border-border-subtle flex items-center justify-between">
+                      {logState === 'done' ? (
+                        <a
+                          href={hubspotPortalId ? hubspotDealUrl(hubspotPortalId, deal.id) : '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[10px] text-accent-success no-underline hover:underline"
+                          onClick={(e) => { if (!hubspotPortalId) e.preventDefault(); }}
+                        >
+                          ✓ Logged — view on deal ↗
+                        </a>
+                      ) : (
+                        <button
+                          onClick={() => handleLogToDeal(deal.id)}
+                          disabled={logState === 'logging'}
+                          className="text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-bg-hover text-text-secondary hover:text-[#ff7a59] hover:bg-[#ff7a59]/10 disabled:opacity-50 transition-colors"
+                          title="Log this email thread to the deal's activity timeline"
+                        >
+                          {logState === 'logging' ? 'Logging…' : logState === 'error' ? 'Retry log' : 'Log email'}
+                        </button>
+                      )}
+                      {logState === 'error' && (
+                        <span className="text-[10px] text-accent-danger">failed</span>
                       )}
                     </div>
-                    {deal.closeDate && (
-                      <div className="text-[10px] text-text-muted mt-1">
-                        Close: {new Date(deal.closeDate).toLocaleDateString()}
-                      </div>
-                    )}
-                  </DealWrapper>
+                  </div>
                 );
               })}
             </div>
