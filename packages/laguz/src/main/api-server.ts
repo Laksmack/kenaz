@@ -86,6 +86,21 @@ export function startApiServer(store: VaultStore, signatureStore: SignatureStore
     }
   });
 
+  // List every meeting in a date range — ignores processed flag and company.
+  // Fills the gap between /api/search (capped) and /api/meetings (per-company).
+  app.get('/api/meetings/list', (req, res) => {
+    try {
+      const since = req.query.since as string;
+      if (!since) return res.status(400).json({ error: 'since is required (YYYY-MM-DD)' });
+      const until = req.query.until as string | undefined;
+      const subtype = req.query.subtype as string | undefined;
+      const notes = store.listMeetings(since, until, subtype);
+      res.json({ notes });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ── Account ────────────────────────────────────────────────
 
   app.get('/api/account', (req, res) => {

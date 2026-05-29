@@ -1382,6 +1382,23 @@ server.tool(
 );
 
 server.tool(
+  'laguz_list_meetings',
+  'List every meeting note in a date range (ignores processed flag and company filter). Use this to enumerate "all meetings this week" or similar, where laguz_search caps results and laguz_get_meetings needs a company.',
+  {
+    since: z.string().describe('Start date, inclusive (YYYY-MM-DD)'),
+    until: z.string().optional().describe('End date, inclusive (YYYY-MM-DD). Omit for open-ended.'),
+    subtype: z.string().optional().describe('Optional subtype filter, e.g. "customer", "internal"'),
+  },
+  async ({ since, until, subtype }) => {
+    const params = new URLSearchParams({ since });
+    if (until) params.set('until', until);
+    if (subtype) params.set('subtype', subtype);
+    const data = await api('laguz', `/api/meetings/list?${params}`);
+    return { content: [{ type: 'text', text: JSON.stringify(data.notes, null, 2) }] };
+  }
+);
+
+server.tool(
   'laguz_get_account',
   'Get all non-meeting notes for a company (account docs, strategies, etc.)',
   {

@@ -673,6 +673,30 @@ export class VaultStore {
     return this.enrichSummaries(rows);
   }
 
+  /**
+   * List every meeting note in a date range, irrespective of company or
+   * processed flag. Fills the gap between `search` (capped) and `getMeetings`
+   * (requires company). `until` is optional (open-ended); `subtype` filters
+   * by frontmatter subtype/meeting_type (e.g. "customer", "internal").
+   */
+  listMeetings(since: string, until?: string, subtype?: string): NoteSummary[] {
+    let sql = "SELECT * FROM notes WHERE type = 'meeting' AND date >= ?";
+    const params: any[] = [since];
+
+    if (until) {
+      sql += ' AND date <= ?';
+      params.push(until);
+    }
+    if (subtype) {
+      sql += ' AND subtype = ?';
+      params.push(subtype);
+    }
+
+    sql += ' ORDER BY date DESC';
+    const rows = this.db.prepare(sql).all(...params) as NoteRow[];
+    return this.enrichSummaries(rows);
+  }
+
   getAccount(folderPath: string): NoteSummary[] {
     const rows = this.db.prepare(
       'SELECT * FROM notes WHERE path LIKE ? ORDER BY modified DESC'
