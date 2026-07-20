@@ -116,7 +116,6 @@ export default function App() {
 
   // ── View counts (background fetch) ──────────────────────
   const [viewCounts, setViewCounts] = useState<Record<string, number>>({});
-  const prevUnreadIds = useRef<Set<string>>(new Set());
 
   const prevCountsRef = useRef<Record<string, number>>({});
 
@@ -183,32 +182,11 @@ export default function App() {
     }
   }, [currentView, appConfig?.linearEnabled]);
 
-  // ── Notifications for new unread mail ──────────────────
-  useEffect(() => {
-    if (currentView !== 'inbox') return;
-    const unreadThreads = threads.filter((t) => t.isUnread);
-    const currentIds = new Set(unreadThreads.map((t) => t.id));
-
-    // Find genuinely new unread threads
-    const newThreads = unreadThreads.filter((t) => !prevUnreadIds.current.has(t.id));
-
-    // Only notify if we had a previous baseline (skip first load)
-    if (prevUnreadIds.current.size > 0 && newThreads.length > 0) {
-      const myEmail = userEmail.toLowerCase();
-      for (const t of newThreads.slice(0, 3)) { // cap at 3 notifications
-        // Skip notifications for threads where the latest message is from ourselves
-        const lastMsg = t.messages[t.messages.length - 1];
-        if (lastMsg && lastMsg.from.email.toLowerCase() === myEmail) continue;
-
-        window.kenaz.notify(
-          t.from.name || t.from.email,
-          t.subject || t.snippet || 'New email'
-        );
-      }
-    }
-
-    prevUnreadIds.current = currentIds;
-  }, [threads, currentView, userEmail]);
+  // New-mail desktop notifications are owned entirely by the main-process
+  // SyncEngine (see sync-engine.ts) — it has the authoritative cache diff,
+  // fires regardless of which view is focused, and de-dupes against the
+  // restore / snooze-wake notifications. Notifying here as well caused the
+  // same reply to alert twice, so the renderer no longer notifies.
 
   // Refresh when rules finish processing in the background
   useEffect(() => {

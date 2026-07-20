@@ -193,6 +193,10 @@ export class SyncEngine {
       // Collect affected thread IDs
       const affectedThreadIds = new Set<string>();
       const deletedMessageIds = new Set<string>();
+      // Threads we've already shown a desktop notification for this pass, so the
+      // generic new-mail notifier below never double-fires with the restore /
+      // snooze-wake paths (which show their own richer notification).
+      const notifiedThreadIds = new Set<string>();
 
       // ── Nudge detection ──────────────────────────────────
       // Gmail nudges work by re-adding the INBOX label to a thread without
@@ -260,6 +264,7 @@ export class SyncEngine {
         if (this.cache.isSnoozed(threadId)) {
           console.log(`[SyncEngine] New reply on snoozed thread ${threadId.slice(0, 8)} — waking`);
           await this.wakeThread(threadId, 'new_reply');
+          notifiedThreadIds.add(threadId); // wakeThread already notified
         }
       }
 
@@ -380,6 +385,7 @@ export class SyncEngine {
                         body: lastMsg.snippet || thread.snippet || '',
                         silent: false,
                       }).show();
+                      notifiedThreadIds.add(thread.id);
                     } catch (e) {
                       console.error('[SyncEngine] Failed to show notification:', e);
                     }
@@ -397,6 +403,36 @@ export class SyncEngine {
         for (const threadId of inboxRemovedThreadIds) {
           if (!inboxAddedThreadIds.has(threadId)) {
             this.cache.updateThreadLabels(threadId, [], ['INBOX']);
+          }
+        }
+
+        // ── New-mail notifications (single source of truth) ──
+        // The renderer no longer notifies; the SyncEngine owns all new-mail
+        // desktop notifications so they fire regardless of which view is
+        // focused and never double with the restore / snooze-wake paths (those
+        // pre-mark their threads in notifiedThreadIds). Only genuinely new
+        // messages that end up unread in the inbox and aren't from us qualify.
+        const myEmail = this.gmail.getUserEmail().toLowerCase();
+        let shown = 0;
+        for (const threadId of newMessageThreadIds) {
+          if (shown >= 3) break; // cap to avoid a notification storm
+          if (notifiedThreadIds.has(threadId)) continue;
+          if (pendingThreads.has(threadId)) continue;
+          if (this.cache.isSnoozed(threadId)) continue;
+          const t = this.cache.getThread(threadId);
+          if (!t || !t.labels.includes('INBOX') || !t.labels.includes('UNREAD')) continue;
+          const lastMsg = t.messages?.[t.messages.length - 1];
+          if (lastMsg && lastMsg.from.email.toLowerCase() === myEmail) continue;
+          try {
+            new Notification({
+              title: t.from?.name || t.from?.email || 'New email',
+              body: t.subject || t.snippet || lastMsg?.snippet || '',
+              silent: false,
+            }).show();
+            notifiedThreadIds.add(threadId);
+            shown++;
+          } catch (e) {
+            console.error('[SyncEngine] Failed to show new-mail notification:', e);
           }
         }
 
