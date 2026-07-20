@@ -54,6 +54,20 @@ export function SettingsModal({ onClose, onViewsChanged, onConfigChanged, initia
     return () => window.removeEventListener('keydown', handleKey, true);
   }, [onClose]);
 
+  // If the active tab isn't available for this config, fall back to General.
+  // Must run BEFORE the early return below so the hook count stays stable
+  // across the initial (config === null) render and later renders — otherwise
+  // React throws "rendered more hooks than during the previous render" (#310).
+  useEffect(() => {
+    if (!config) return;
+    const available: SettingsTab[] = [
+      'general', 'views', 'rules', 'api', 'signature', 'auto-bcc', 'cache', 'calendar', 'mcp',
+      ...(config.hubspotEnabled ? ['hubspot' as SettingsTab] : []),
+      ...(config.linearEnabled ? ['linear' as SettingsTab] : []),
+    ];
+    if (!available.includes(activeTab)) setActiveTab('general');
+  }, [activeTab, config]);
+
   if (!config) return null;
 
   const tabs: { id: SettingsTab; label: string; icon: string }[] = [
@@ -69,12 +83,6 @@ export function SettingsModal({ onClose, onViewsChanged, onConfigChanged, initia
     { id: 'calendar', label: 'Calendar', icon: '📅' },
     { id: 'mcp', label: 'MCP', icon: 'ᚲ' },
   ];
-
-  useEffect(() => {
-    if (!tabs.some((t) => t.id === activeTab)) {
-      setActiveTab('general');
-    }
-  }, [activeTab, tabs]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
