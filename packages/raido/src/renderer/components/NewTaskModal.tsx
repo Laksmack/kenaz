@@ -11,9 +11,9 @@ interface NewTaskModalProps {
     notes?: string;
     due_date?: string;
     defer_until?: string;
-    priority?: number;
+    priority?: 0 | 1 | 2 | 3;
     tags?: string[];
-    recurrence?: string;
+    recurrence?: 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly';
   }) => void;
 }
 
@@ -38,10 +38,10 @@ export function NewTaskModal({ defaults = {}, onClose, onCreate }: NewTaskModalP
   const [notes, setNotes] = useState('');
   const [dueDate, setDueDate] = useState(defaults.due_date || '');
   const [deferUntil, setDeferUntil] = useState('');
-  const [priority, setPriority] = useState(0);
+  const [priority, setPriority] = useState<0 | 1 | 2 | 3>(0);
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
-  const [recurrence, setRecurrence] = useState('');
+  const [recurrence, setRecurrence] = useState<'' | 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly'>('');
   const titleRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -162,7 +162,7 @@ export function NewTaskModal({ defaults = {}, onClose, onCreate }: NewTaskModalP
               <label className="block text-[10px] font-semibold uppercase tracking-wider text-text-muted mb-1">Repeat</label>
               <select
                 value={recurrence}
-                onChange={(e) => setRecurrence(e.target.value)}
+                onChange={(e) => setRecurrence(e.target.value as typeof recurrence)}
                 className="w-full bg-bg-primary border border-border-subtle rounded-lg px-3 py-2 text-xs text-text-primary outline-none focus:border-accent-primary/40"
               >
                 {RECURRENCE_OPTIONS.map((opt) => (

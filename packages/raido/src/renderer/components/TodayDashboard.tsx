@@ -260,9 +260,8 @@ export function TodayDashboard({
                 <div
                   className={cn(
                     'flex items-center gap-3 px-3 py-2 rounded-md transition-colors cursor-pointer hover:bg-bg-hover text-sm',
-                    isSoon && 'ring-1 ring-inset'
+                    isSoon && 'ring-1 ring-inset ring-amber-500 bg-amber-500/5'
                   )}
-                  style={isSoon ? { ringColor: '#f59e0b', background: 'rgba(245, 158, 11, 0.05)' } : undefined}
                   onClick={async () => {
                     try {
                       await window.raido.crossAppFetch('http://localhost:3143/api/navigate', {
