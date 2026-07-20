@@ -36,32 +36,36 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
+      const isInput =
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable;
 
       // Always handle Escape
       if (e.key === 'Escape') {
         if (isInput) {
-          (target as HTMLInputElement).blur();
+          (target as HTMLElement).blur();
         }
         onClosePanel();
         return;
       }
 
-      // Modifier shortcuts
+      // Settings shortcut (Cmd/Alt+,) is global — fine even while typing.
       if (e.key === ',' && (e.metaKey || e.altKey)) {
         e.preventDefault();
         onSettings();
         return;
       }
 
+      // Don't intercept typing in inputs / contentEditable fields
+      if (isInput) return;
+
       if (e.key === 'd' && e.metaKey && !e.shiftKey) {
         e.preventDefault();
         onDuplicate();
         return;
       }
-
-      // Don't intercept typing in inputs
-      if (isInput) return;
 
       // Don't intercept when modifiers are held (except shift)
       if (e.metaKey || e.ctrlKey || e.altKey) return;
