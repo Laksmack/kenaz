@@ -223,7 +223,7 @@ export default function App() {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable;
 
       // ⌘, for settings
       if ((e.metaKey || e.ctrlKey) && e.key === ',') {
@@ -259,29 +259,9 @@ export default function App() {
         return;
       }
 
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
-        if (currentView === 'scratch') {
-          e.preventDefault();
-          triggerScratchSearch('replace');
-        }
-        return;
-      }
-
-      if ((e.metaKey || e.ctrlKey) && e.altKey && e.key.toLowerCase() === 'f') {
-        if (currentView === 'scratch') {
-          e.preventDefault();
-          triggerScratchSearch('regex');
-        }
-        return;
-      }
-
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'f') {
-        if (currentView === 'scratch') {
-          e.preventDefault();
-          triggerScratchSearch('find');
-        }
-        return;
-      }
+      // Find/replace in scratch is handled natively by the editor's CodeMirror
+      // search panel (Cmd+F / Cmd+Shift+F / Cmd+Alt+F), so App no longer
+      // intercepts those keys. The title-bar button still triggers it via event.
 
       if (isInput) {
         if (e.key === 'Escape') {
@@ -436,7 +416,11 @@ export default function App() {
 
         {/* Content area */}
         <div className="flex-1 flex overflow-hidden">
-          {currentView === 'scratch' && <ScratchView />}
+          {/* ScratchView stays mounted (hidden when inactive) so its tab /
+              scroll / search state survives switching to another view. */}
+          <div className={currentView === 'scratch' ? 'flex flex-1 overflow-hidden' : 'hidden'}>
+            <ScratchView active={currentView === 'scratch'} />
+          </div>
           {currentView !== 'scratch' && (
             <>
               {/* List pane */}
@@ -518,19 +502,19 @@ export default function App() {
                   <div className="flex-1 flex overflow-hidden">
                     <div className="overflow-hidden flex flex-col" style={{ width: `${splitRatio * 100}%` }}>
                       <Suspense fallback={<DetailLoading />}>
-                        <NoteDetail notePath={activeTab?.filePath ?? null} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} />
+                        <NoteDetail notePath={activeTab?.filePath ?? null} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} onDirtyChange={(d) => activeTab && setTabDirty(activeTab.id, d)} />
                       </Suspense>
                     </div>
                     <SplitHandle onResize={setSplitRatio} />
                     <div className="overflow-hidden flex flex-col flex-1">
                       <Suspense fallback={<DetailLoading />}>
-                        <NoteDetail notePath={splitTab.filePath} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} />
+                        <NoteDetail notePath={splitTab.filePath} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} onDirtyChange={(d) => setTabDirty(splitTab.id, d)} />
                       </Suspense>
                     </div>
                   </div>
                 ) : (
                   <Suspense fallback={<DetailLoading />}>
-                    <NoteDetail notePath={activeTab?.filePath ?? null} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} />
+                    <NoteDetail notePath={activeTab?.filePath ?? null} onFolderNavigate={handleFolderNavigate} onNoteNavigate={handleNoteNavigate} onDirtyChange={(d) => activeTab && setTabDirty(activeTab.id, d)} />
                   </Suspense>
                 )}
               </div>

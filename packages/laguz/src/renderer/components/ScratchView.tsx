@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '../lib/utils';
+import { ScratchEditor, ScratchEditorHandle } from './ScratchEditor';
 
 const STORAGE_KEY = 'laguz-scratch-tabs';
 const MAX_TABS = 5;
@@ -11,17 +12,6 @@ interface ScratchTab {
 }
 
 type ScratchSearchMode = 'find' | 'replace' | 'regex';
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function unescapeReplacement(value: string): string {
-  return value
-    .replace(/\\n/g, '\n')
-    .replace(/\\t/g, '\t')
-    .replace(/\\r/g, '\r');
-}
 
 function loadTabs(): ScratchTab[] {
   try {
@@ -46,7 +36,7 @@ function saveTabs(tabs: ScratchTab[]) {
 
 const SCRATCH_SAVE_DEBOUNCE_MS = 500;
 
-export function ScratchView() {
+export function ScratchView({ active }: { active: boolean }) {
   const [tabs, setTabs] = useState<ScratchTab[]>(loadTabs);
   const tabsRef = useRef(tabs);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout>>();
@@ -54,16 +44,7 @@ export function ScratchView() {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [savePath, setSavePath] = useState('');
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [replaceOpen, setReplaceOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [replaceQuery, setReplaceQuery] = useState('');
-  const [regexMode, setRegexMode] = useState(false);
-  const [caseSensitive, setCaseSensitive] = useState(false);
-  const [selectionOnly, setSelectionOnly] = useState(false);
-  const [searchStatus, setSearchStatus] = useState<string | null>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const searchInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<ScratchEditorHandle>(null);
 
   useEffect(() => {
     tabsRef.current = tabs;
@@ -91,6 +72,10 @@ export function ScratchView() {
   }, [activeTab]);
 
   const deleteCurrentTab = useCallback(() => {
+    const cur = tabs.find(t => t.id === activeTab);
+    if (cur?.content.trim() && !confirm('Delete this scratch tab? Its contents will be lost.')) {
+      return;
+    }
     if (tabs.length <= 1) {
       setTabs([{ id: 1, content: '' }]);
       setActiveTab(1);
@@ -140,165 +125,39 @@ export function ScratchView() {
     }
   }, [savePath, currentTab, activeTab]);
 
-  const openSearchPanel = useCallback((mode: ScratchSearchMode = 'find') => {
-    setSearchOpen(true);
-    setReplaceOpen(mode !== 'find');
-    if (mode === 'regex') setRegexMode(true);
-    setSearchStatus(null);
-    setTimeout(() => searchInputRef.current?.focus(), 0);
+  const openSearch = useCallback((mode: ScratchSearchMode = 'find') => {
+    editorRef.current?.openSearch(mode);
   }, []);
 
-  const makeSearchRegex = useCallback((): RegExp | null => {
-    if (!searchQuery) return null;
-    try {
-      const source = regexMode ? searchQuery : escapeRegExp(searchQuery);
-      return new RegExp(source, caseSensitive ? 'g' : 'gi');
-    } catch {
-      return null;
-    }
-  }, [searchQuery, regexMode, caseSensitive]);
-
-  const findAndSelect = useCallback((direction: 1 | -1 = 1): boolean => {
-    const textarea = textareaRef.current;
-    const regex = makeSearchRegex();
-    if (!textarea || !regex) return false;
-
-    const text = currentTab.content;
-    const matches: Array<{ start: number; end: number }> = [];
-    let match: RegExpExecArray | null;
-    while ((match = regex.exec(text)) !== null) {
-      matches.push({ start: match.index, end: match.index + match[0].length });
-      if (match[0].length === 0) regex.lastIndex++;
-    }
-
-    if (matches.length === 0) {
-      setSearchStatus('No matches');
-      return false;
-    }
-
-    const anchor = direction > 0 ? textarea.selectionEnd : textarea.selectionStart;
-    let target = matches[0];
-
-    if (direction > 0) {
-      target = matches.find((m) => m.start > anchor) ?? matches[0];
-    } else {
-      target = [...matches].reverse().find((m) => m.end < anchor) ?? matches[matches.length - 1];
-    }
-
-    textarea.focus();
-    textarea.setSelectionRange(target.start, target.end);
-    setSearchStatus(null);
-    return true;
-  }, [currentTab.content, makeSearchRegex]);
-
-  const replaceCurrent = useCallback(() => {
-    const textarea = textareaRef.current;
-    if (!textarea || !searchQuery) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selected = currentTab.content.slice(start, end);
-    const source = regexMode ? searchQuery : escapeRegExp(searchQuery);
-    let oneMatch: RegExp;
-    try {
-      oneMatch = new RegExp(`^(?:${source})$`, caseSensitive ? '' : 'i');
-    } catch {
-      setSearchStatus('Invalid regex');
-      return;
-    }
-
-    if (!oneMatch.test(selected)) {
-      if (!findAndSelect(1)) setSearchStatus('No matches');
-      return;
-    }
-
-    const replacement = selected.replace(oneMatch, unescapeReplacement(replaceQuery));
-    const next = currentTab.content.slice(0, start) + replacement + currentTab.content.slice(end);
-    updateContent(next);
-    setTimeout(() => {
-      const el = textareaRef.current;
-      if (!el) return;
-      const pos = start + replacement.length;
-      el.focus();
-      el.setSelectionRange(pos, pos);
-      findAndSelect(1);
-    }, 0);
-  }, [currentTab.content, searchQuery, regexMode, caseSensitive, replaceQuery, findAndSelect, updateContent]);
-
-  const replaceAll = useCallback((onlySelection = false) => {
-    const textarea = textareaRef.current;
-    const regex = makeSearchRegex();
-    if (!textarea || !regex) {
-      if (searchQuery) setSearchStatus('Invalid regex');
-      return;
-    }
-
-    const replacement = unescapeReplacement(replaceQuery);
-    const text = currentTab.content;
-    let start = 0;
-    let end = text.length;
-    if (onlySelection) {
-      start = textarea.selectionStart;
-      end = textarea.selectionEnd;
-      if (start === end) {
-        setSearchStatus('Select a block first');
-        return;
-      }
-    }
-
-    const before = text.slice(0, start);
-    const target = text.slice(start, end);
-    const after = text.slice(end);
-    const count = (target.match(regex) || []).length;
-    if (count === 0) {
-      setSearchStatus('No matches');
-      return;
-    }
-
-    const replaced = target.replace(regex, replacement);
-    updateContent(before + replaced + after);
-    setSearchStatus(`Replaced ${count} match${count === 1 ? '' : 'es'}`);
-  }, [currentTab.content, makeSearchRegex, replaceQuery, updateContent, searchQuery]);
-
+  // Cmd+S save / Cmd+Backspace delete-tab. Find/replace is owned by the editor's
+  // native CodeMirror search panel, so it is not handled here (no double firing).
   useEffect(() => {
+    if (!active) return;
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault();
         handleSave();
       }
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'f') {
-        e.preventDefault();
-        openSearchPanel('replace');
-      }
-      if ((e.metaKey || e.ctrlKey) && e.altKey && e.key.toLowerCase() === 'f') {
-        e.preventDefault();
-        openSearchPanel('regex');
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'f' && !e.shiftKey && !e.altKey) {
-        e.preventDefault();
-        openSearchPanel('find');
-      }
       if ((e.metaKey || e.ctrlKey) && e.key === 'Backspace') {
         e.preventDefault();
         deleteCurrentTab();
       }
-      if (e.key === 'Escape' && searchOpen) {
-        e.preventDefault();
-        setSearchOpen(false);
-      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [handleSave, deleteCurrentTab, openSearchPanel, searchOpen]);
+  }, [active, handleSave, deleteCurrentTab]);
 
+  // Search requested from the title-bar button (single, non-keyboard path).
   useEffect(() => {
     const handler = (event: Event) => {
       const mode = (event as CustomEvent<{ mode?: ScratchSearchMode }>).detail?.mode || 'find';
-      openSearchPanel(mode);
+      openSearch(mode);
     };
     window.addEventListener('laguz:scratch-search', handler as EventListener);
     return () => window.removeEventListener('laguz:scratch-search', handler as EventListener);
-  }, [openSearchPanel]);
+  }, [openSearch]);
+
+  const wordCount = currentTab.content.trim() ? currentTab.content.trim().split(/\s+/).length : 0;
 
   return (
     <>
@@ -309,12 +168,16 @@ export function ScratchView() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                'px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+                'px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5',
                 activeTab === tab.id
                   ? 'bg-bg-tertiary text-text-primary'
                   : 'text-text-muted hover:text-text-secondary hover:bg-bg-hover'
               )}
+              title={tab.savedPath || (tab.content.trim() ? tab.content.trim().split('\n')[0].slice(0, 40) : 'Empty')}
             >
+              {tab.content.trim() && (
+                <span className="w-1.5 h-1.5 rounded-full bg-accent-primary/60 flex-shrink-0" />
+              )}
               {tab.id}
             </button>
           ))}
@@ -363,100 +226,21 @@ export function ScratchView() {
         </div>
 
         <div className="flex-1 overflow-hidden">
-          {searchOpen && (
-            <div className="px-3 py-2 border-b border-border-subtle bg-bg-secondary/80 flex flex-wrap items-center gap-2">
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    findAndSelect(e.shiftKey ? -1 : 1);
-                  }
-                  if (e.key === 'Escape') {
-                    e.preventDefault();
-                    setSearchOpen(false);
-                  }
-                }}
-                placeholder={regexMode ? 'Find (regex)...' : 'Find...'}
-                className="bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary/40 min-w-[180px]"
-              />
-              {replaceOpen && (
-                <input
-                  type="text"
-                  value={replaceQuery}
-                  onChange={(e) => setReplaceQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      replaceCurrent();
-                    }
-                    if (e.key === 'Escape') {
-                      e.preventDefault();
-                      setSearchOpen(false);
-                    }
-                  }}
-                  placeholder="Replace... (use \\n for newline)"
-                  className="bg-bg-primary border border-border-subtle rounded px-2 py-1 text-xs text-text-primary outline-none focus:border-accent-primary/40 min-w-[220px]"
-                />
-              )}
-              <button onClick={() => findAndSelect(-1)} className="px-2 py-1 rounded text-[10px] border border-border-subtle hover:bg-bg-hover">Prev</button>
-              <button onClick={() => findAndSelect(1)} className="px-2 py-1 rounded text-[10px] border border-border-subtle hover:bg-bg-hover">Next</button>
-              <button
-                onClick={() => {
-                  setReplaceOpen((prev) => !prev);
-                  setSelectionOnly(false);
-                }}
-                className="px-2 py-1 rounded text-[10px] border border-border-subtle hover:bg-bg-hover"
-              >
-                {replaceOpen ? 'Hide Replace' : 'Replace...'}
-              </button>
-              {replaceOpen && (
-                <>
-                  <button onClick={replaceCurrent} className="px-2 py-1 rounded text-[10px] border border-border-subtle hover:bg-bg-hover">Replace</button>
-                  <button onClick={() => replaceAll(selectionOnly)} className="px-2 py-1 rounded text-[10px] border border-border-subtle hover:bg-bg-hover">Replace All</button>
-                  <button onClick={() => replaceAll(true)} className="px-2 py-1 rounded text-[10px] border border-border-subtle hover:bg-bg-hover" title="Replace all matches in currently selected block">
-                    Replace in Selection
-                  </button>
-                </>
-              )}
-              <label className="text-[10px] text-text-muted flex items-center gap-1">
-                <input type="checkbox" checked={regexMode} onChange={(e) => setRegexMode(e.target.checked)} />
-                Regex
-              </label>
-              <label className="text-[10px] text-text-muted flex items-center gap-1">
-                <input type="checkbox" checked={caseSensitive} onChange={(e) => setCaseSensitive(e.target.checked)} />
-                Case
-              </label>
-              {replaceOpen && (
-                <label className="text-[10px] text-text-muted flex items-center gap-1">
-                  <input type="checkbox" checked={selectionOnly} onChange={(e) => setSelectionOnly(e.target.checked)} />
-                  Selection only
-                </label>
-              )}
-              <button onClick={() => setSearchOpen(false)} className="px-2 py-1 rounded text-[10px] border border-border-subtle hover:bg-bg-hover ml-auto">Close</button>
-              {searchStatus && <span className="text-[10px] text-text-muted">{searchStatus}</span>}
-            </div>
-          )}
-          <textarea
-            ref={textareaRef}
-            value={currentTab.content}
-            onChange={(e) => updateContent(e.target.value)}
-            placeholder="Type here... markdown, notes, prompt drafts, anything."
-            className="w-full h-full bg-transparent border-none outline-none text-sm text-text-primary resize-none p-4 leading-relaxed font-mono placeholder-text-muted"
-            spellCheck={false}
+          <ScratchEditor
+            ref={editorRef}
+            key={activeTab}
+            initialContent={currentTab.content}
+            onChange={updateContent}
           />
         </div>
 
         <div className="h-6 flex items-center px-3 gap-4 border-t border-border-subtle bg-bg-secondary text-[10px] text-text-muted flex-shrink-0 select-none">
           <span>{currentTab.savedPath || 'Unsaved scratch'}</span>
           <div className="flex-1" />
-          <button onClick={() => openSearchPanel('find')} className="px-2 py-0.5 rounded border border-border-subtle hover:text-text-primary hover:border-accent-primary/40">Find</button>
-          <button onClick={() => openSearchPanel('replace')} className="px-2 py-0.5 rounded border border-border-subtle hover:text-text-primary hover:border-accent-primary/40">Replace</button>
-          <button onClick={() => openSearchPanel('regex')} className="px-2 py-0.5 rounded border border-border-subtle hover:text-text-primary hover:border-accent-primary/40">Regex</button>
-          <span>{currentTab.content.trim() ? `${currentTab.content.trim().split(/\s+/).length} words` : ''}</span>
+          <button onClick={() => openSearch('find')} className="px-2 py-0.5 rounded border border-border-subtle hover:text-text-primary hover:border-accent-primary/40">Find</button>
+          <button onClick={() => openSearch('replace')} className="px-2 py-0.5 rounded border border-border-subtle hover:text-text-primary hover:border-accent-primary/40">Replace</button>
+          <button onClick={() => openSearch('regex')} className="px-2 py-0.5 rounded border border-border-subtle hover:text-text-primary hover:border-accent-primary/40">Regex</button>
+          <span>{wordCount ? `${wordCount} words` : ''}</span>
         </div>
       </div>
 
