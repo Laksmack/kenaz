@@ -21,10 +21,11 @@ export function RSVPMenu({ event, onRSVP, onClose }: Props) {
     return () => window.removeEventListener('keydown', handler);
   }, [event.id, onRSVP, onClose]);
 
-  // Determine if RSVP is applicable
+  // RSVP is applicable whenever you're a listed attendee — including when
+  // you're the organizer (Google lets the organizer set their own response,
+  // e.g. declining their own meeting). Only hide it if you're not an attendee.
   const selfAttendee = event.attendees?.find(a => a.is_self);
-  if (!selfAttendee || event.is_organizer) {
-    // Can't RSVP to own events
+  if (!selfAttendee) {
     return null;
   }
 

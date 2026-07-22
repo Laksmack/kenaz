@@ -366,8 +366,10 @@ export function EventDetail({ event, onClose, onDelete, onRSVP, onEdit, onUpdate
           </div>
         )}
 
-        {/* RSVP buttons */}
-        {!isOverlayEvent && !!selfAttendee && !ev.is_organizer && (
+        {/* RSVP buttons — shown whenever you're a listed attendee, including
+            when you're the organizer (Google lets the organizer set their own
+            attendance, e.g. to decline their own meeting). */}
+        {!isOverlayEvent && !!selfAttendee && (
           <div>
             <h3 className="text-[10px] uppercase tracking-wider text-text-muted mb-2">
               Your status: <span className={responseStatusColor(ev.self_response || 'needsAction')}>
