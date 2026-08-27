@@ -28,6 +28,39 @@ function normalizeAttendeeInput(a: AttendeeInput): { email: string; optional?: b
   return { email: a.email, optional: a.optional || undefined };
 }
 
+function googleErrorStatus(e: any): number | null {
+  const status = e?.code ?? e?.status ?? e?.response?.status;
+  return typeof status === 'number' ? status : null;
+}
+
+/**
+ * True when Google rejected the request for a reason retrying can't fix.
+ * Queueing these for later sync only hides the failure: the retry loop drops
+ * them after a few attempts while the local cache keeps a change that never
+ * reached Google. 401 is excluded — that clears on token refresh.
+ */
+export function isPermanentGoogleError(e: any): boolean {
+  const status = googleErrorStatus(e);
+  return status === 400 || status === 403 || status === 404 || status === 409 || status === 410;
+}
+
+/** User-facing message for a permanently-rejected write. */
+export function describeGoogleWriteError(
+  e: any,
+  event: { summary?: string | null; organizer_email?: string | null },
+): string {
+  const status = googleErrorStatus(e);
+  const name = event.summary || 'This event';
+  if (status === 403) {
+    const owner = event.organizer_email ? ` Ask ${event.organizer_email}` : ' Ask the organizer';
+    return `Google rejected the change to "${name}" — you don't have permission to edit it.${owner} to make the change, or to turn on "Guests can modify event".`;
+  }
+  if (status === 404 || status === 410) {
+    return `"${name}" no longer exists on Google Calendar — it may have been deleted or moved.`;
+  }
+  return `Google rejected the change to "${name}": ${e?.message || 'unknown error'}`;
+}
+
 export class GoogleCalendarService {
   private oauth2Client: OAuth2Client;
   private calendar: calendar_v3.Calendar | null = null;
@@ -370,6 +403,24 @@ export class GoogleCalendarService {
       if (parentId) {
         const parentRes = await this.calendar.events.get({ calendarId, eventId: parentId });
         const parent = parentRes.data;
+
+        // Splitting a series means inserting a replacement series and truncating
+        // the original. Only the organizer may truncate, so as a guest the insert
+        // succeeds and the truncate 403s — leaving a duplicate series that we
+        // organize while nobody else's copy changed. Patch the whole series
+        // instead, which is what Google's own UI offers a guest.
+        const isOrganizer = parent.organizer?.self === true || instance.organizer?.self === true;
+        if (!isOrganizer) {
+          const seriesBody = this.buildUpdateRequestBody(updates);
+          const seriesRes = await this.calendar.events.patch({
+            calendarId,
+            eventId: parentId,
+            requestBody: seriesBody,
+            sendUpdates: 'all',
+          });
+          return this.parseGoogleEvent(seriesRes.data, calendarId);
+        }
+
         const boundary = this.getSplitBoundary(instance);
 
         if (boundary && (parent.recurrence || []).length > 0) {
@@ -378,23 +429,56 @@ export class GoogleCalendarService {
           const futureRecurrence = this.buildFutureSeriesRecurrence(parent.recurrence || [], countBefore);
           const requestBody = this.buildFutureSeriesEvent(parent, instance, updates, futureRecurrence);
 
-          const inserted = await this.calendar.events.insert({
-            calendarId,
-            requestBody,
-            sendUpdates: requestBody.attendees?.length ? 'all' : 'none',
-          });
-
-          if (countBefore <= 0) {
-            await this.calendar.events.delete({ calendarId, eventId: parentId, sendUpdates: 'none' });
-          } else {
+          if (countBefore > 0) {
+            // Truncate first so a failed insert can't leave a duplicate series
+            // behind; restore the original recurrence if the insert does fail.
             await this.calendar.events.patch({
               calendarId,
               eventId: parentId,
               requestBody: { recurrence: previousRecurrence },
               sendUpdates: 'none',
             });
+            try {
+              const inserted = await this.calendar.events.insert({
+                calendarId,
+                requestBody,
+                sendUpdates: requestBody.attendees?.length ? 'all' : 'none',
+              });
+              return this.parseGoogleEvent(inserted.data, calendarId);
+            } catch (e) {
+              await this.calendar.events.patch({
+                calendarId,
+                eventId: parentId,
+                requestBody: { recurrence: parent.recurrence || [] },
+                sendUpdates: 'none',
+              }).catch((restoreErr: any) => {
+                console.error('[Dagaz] Failed to restore series recurrence after split failure:', restoreErr.message);
+              });
+              throw e;
+            }
           }
 
+          // Split point is the first occurrence, so the original series is
+          // replaced outright. Insert first, and undo it if the delete fails.
+          const inserted = await this.calendar.events.insert({
+            calendarId,
+            requestBody,
+            sendUpdates: requestBody.attendees?.length ? 'all' : 'none',
+          });
+          try {
+            await this.calendar.events.delete({ calendarId, eventId: parentId, sendUpdates: 'none' });
+          } catch (e) {
+            if (inserted.data.id) {
+              await this.calendar.events.delete({
+                calendarId,
+                eventId: inserted.data.id,
+                sendUpdates: 'none',
+              }).catch((cleanupErr: any) => {
+                console.error('[Dagaz] Failed to remove duplicate series after split failure:', cleanupErr.message);
+              });
+            }
+            throw e;
+          }
           return this.parseGoogleEvent(inserted.data, calendarId);
         }
       }

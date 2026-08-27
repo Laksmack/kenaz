@@ -2,6 +2,7 @@ import express from 'express';
 import { z } from 'zod';
 import type { CacheStore } from './cache-store';
 import type { GoogleCalendarService } from './google-calendar';
+import { isPermanentGoogleError, describeGoogleWriteError } from './google-calendar';
 import type { CalendlyService } from './calendly';
 import type { SyncEngine } from './sync-engine';
 import type { ConnectivityMonitor } from './connectivity';
@@ -152,6 +153,9 @@ export function startApiServer(
     color_id: z.string().optional(),
     calendar_id: z.string().optional(),
     force: z.boolean().optional(),
+    // Request option, not a field. Without it zod strips the key and every
+    // update silently degrades to "this event only".
+    scope: z.enum(['single', 'all']).optional(),
   });
 
   const rsvpSchema = z.object({
@@ -350,8 +354,9 @@ export function startApiServer(
         }
       }
 
-      // Strip force and calendar_id (handled separately for moves) from the update payload
-      const { force: _f, calendar_id: newCalendarId, ...updateFields } = updates;
+      // Strip force, calendar_id (handled separately for moves) and scope (a
+      // request option, not a field) from the update payload
+      const { force: _f, calendar_id: newCalendarId, scope, ...updateFields } = updates;
 
       // Move event to different calendar if requested
       if (newCalendarId && newCalendarId !== event.calendar_id && connectivity.isOnline && google.isAuthorized() && event.google_id) {
@@ -361,10 +366,22 @@ export function startApiServer(
 
       if (connectivity.isOnline && google.isAuthorized() && event.google_id) {
         const targetCalendar = newCalendarId || event.calendar_id;
-        const result = await google.updateEvent(targetCalendar, event.google_id, updateFields);
-        cache.upsertEvent(result);
-        if (result.attendees) {
-          cache.upsertAttendees(event.id, result.attendees.map(a => ({ ...a, event_id: event.id })));
+        try {
+          const result = await google.updateEvent(targetCalendar, event.google_id, updateFields, scope || 'single');
+          cache.upsertEvent(result);
+          if (result.attendees) {
+            cache.upsertAttendees(event.id, result.attendees.map(a => ({ ...a, event_id: event.id })));
+          }
+        } catch (e: any) {
+          // See the IPC handler: a refusal must not be cached locally as if it
+          // had synced. Only genuinely transient failures get queued.
+          if (isPermanentGoogleError(e)) {
+            console.error('[Dagaz API] Update rejected by Google:', e.message);
+            return res.status(403).json({ error: describeGoogleWriteError(e, event) });
+          }
+          console.error('[Dagaz API] Update failed, queueing:', e.message);
+          cache.markEventPending(event.id, 'update', JSON.stringify(updateFields));
+          cache.enqueueSync(event.google_id, event.calendar_id, 'update', updateFields);
         }
       } else if (!event.google_id && event.pending_action === 'create') {
         let mergedPayload: Record<string, any> = { ...updateFields };

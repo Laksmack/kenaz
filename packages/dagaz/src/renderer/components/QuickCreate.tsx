@@ -370,12 +370,20 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
       : undefined;
 
     if (isEditing && editingEvent && onUpdate) {
+      // The attendee chips hide you (see the is_self filter above), but the
+      // payload replaces the guest list wholesale — omitting yourself would
+      // remove you from your own meeting.
+      const editedAttendees: AttendeeInput[] = attendees.map(a => a.optional ? { email: a.email, optional: true } : a.email);
+      const self = editingEvent.attendees?.find(a => a.is_self);
+      if (self?.email && !attendees.some(a => a.email === self.email)) {
+        editedAttendees.push(self.optional ? { email: self.email, optional: true } : self.email);
+      }
       const updates: UpdateEventInput = {
         summary: title.trim(),
         start: allDay ? date : startD.toISOString(),
         end: allDay ? addDays(endDate, 1) : endD.toISOString(),
         all_day: allDay,
-        attendees: attendees.length > 0 ? attendees.map(a => a.optional ? { email: a.email, optional: true } : a.email) : [],
+        attendees: editedAttendees,
         location: location || '',
         description: description || '',
         reminders: reminderOverrides,

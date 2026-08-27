@@ -14,7 +14,7 @@ import { initAutoUpdater, getUpdateMenuItems } from '@futhark/core/lib/auto-upda
 import { configurePaths } from './paths';
 configurePaths({ userData: app.getPath('userData') });
 
-import { GoogleCalendarService } from './google-calendar';
+import { GoogleCalendarService, isPermanentGoogleError, describeGoogleWriteError } from './google-calendar';
 import { CalendlyService } from './calendly';
 import { startApiServer } from './api-server';
 import { ConfigStore } from './config';
@@ -395,6 +395,14 @@ function registerIpcHandlers() {
         notifyEventsChanged();
         return cache.getEvent(scope === 'all' ? localId : id);
       } catch (e: any) {
+        // Google refused outright (no permission, event gone). Queueing would
+        // write the change into the local cache only — the change shows up for
+        // us, silently never reaches anyone else, and the retry is dropped a
+        // few attempts later. Surface it instead.
+        if (isPermanentGoogleError(e)) {
+          console.error('[Dagaz] Update rejected by Google:', e.message);
+          throw new Error(describeGoogleWriteError(e, existing));
+        }
         console.error('[Dagaz] Update failed, queueing:', e.message);
       }
     }

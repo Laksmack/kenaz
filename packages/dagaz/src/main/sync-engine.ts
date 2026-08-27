@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron';
-import { GoogleCalendarService } from './google-calendar';
+import { GoogleCalendarService, isPermanentGoogleError } from './google-calendar';
 import { CacheStore } from './cache-store';
 import { ConnectivityMonitor } from './connectivity';
 import { IPC } from '../shared/types';
@@ -402,6 +402,14 @@ export class SyncEngine {
         this.cache.markQueueItemDone(item.id);
         succeeded++;
       } catch (e: any) {
+        if (isPermanentGoogleError(e)) {
+          // No amount of retrying fixes a refusal; drop it now rather than
+          // burning five attempts and disappearing without a trace.
+          console.error(`[Dagaz Sync] Queue item ${item.id} (${item.action}) rejected by Google, dropping:`, e.message);
+          this.cache.markQueueItemDone(item.id);
+          failed++;
+          continue;
+        }
         console.error(`[Dagaz Sync] Queue item ${item.id} failed:`, e.message);
         this.cache.markQueueItemFailed(item.id, e.message);
         failed++;

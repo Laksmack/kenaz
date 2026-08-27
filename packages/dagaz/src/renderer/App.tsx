@@ -186,7 +186,18 @@ export default function App() {
     const normalizedUpdates: UpdateEventInput = timedUpdate
       ? { ...updates, time_zone: updates.time_zone || dagazTimeZone }
       : updates;
-    const updatedEvent = await window.dagaz.updateEvent(event.id, normalizedUpdates, scope);
+    let updatedEvent: CalendarEvent | null;
+    try {
+      updatedEvent = await window.dagaz.updateEvent(event.id, normalizedUpdates, scope);
+    } catch (e: any) {
+      // Google refusals reach us as a rejected IPC call. Show why instead of
+      // letting it surface as an unhandled rejection with nothing on screen.
+      const message = String(e?.message || e).replace(/^Error invoking remote method '[^']*':\s*(Error:\s*)?/, '');
+      console.error('[App] Update failed:', message);
+      showToast(message);
+      refresh({ full: false });
+      return;
+    }
     const hasOtherAttendees = (event.attendees?.length ?? 0) > 1;
     const name = normalizedUpdates.summary || event.summary || 'Event';
     const recurrenceSuffix = event.recurring_event_id && scope === 'all' ? ' from this event forward' : '';
@@ -710,11 +721,16 @@ function RecurringUpdateDialog({ confirm, onApply, onCancel }: {
       <div className="relative bg-bg-secondary border border-border-subtle rounded-xl shadow-2xl w-[360px] animate-slide-up" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="update-confirm-title">
         <div className="px-5 pt-4 pb-2">
           <h3 id="update-confirm-title" className="text-sm font-semibold text-text-primary">Update recurring event</h3>
-          <p className="text-xs text-text-secondary mt-1.5 leading-relaxed">"{confirm.event.summary}" is part of a series.</p>
+          <p className="text-xs text-text-secondary mt-1.5 leading-relaxed">
+            "{confirm.event.summary}" is part of a series.
+            {!confirm.event.is_organizer && ' You\u2019re not the organizer, so a change to the series applies to every occurrence \u2014 splitting it isn\u2019t possible.'}
+          </p>
         </div>
         <div className="px-5 pb-4 pt-3 flex flex-col gap-2">
           <button onClick={() => onApply('single')} className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors">This event only</button>
-          <button onClick={() => onApply('all')} className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors">All (this and following)</button>
+          <button onClick={() => onApply('all')} className="w-full text-left px-3 py-2 rounded-lg text-xs text-text-primary bg-bg-tertiary border border-border-subtle hover:border-accent-primary/40 transition-colors">
+            {confirm.event.is_organizer ? 'All (this and following)' : 'All events in the series'}
+          </button>
           <button onClick={onCancel} className="w-full text-center px-3 py-1.5 text-xs text-text-muted hover:text-text-primary transition-colors mt-1">Cancel</button>
         </div>
       </div>
