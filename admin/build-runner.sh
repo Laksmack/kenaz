@@ -53,6 +53,38 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # Add workspace node_modules/.bin to PATH so tsc, vite, electron-builder etc. are found
 export PATH="$REPO_ROOT/node_modules/.bin:$PATH"
 LOCK_FILE="/tmp/futhark-build-runner.lock"
+
+# Network git can block forever on a half-open TCP connection. On 2026-08-26 a
+# `git fetch` slept inside ssh for two days, held the lock, and launchd
+# suppressed every run after it — so commits stopped shipping with no error
+# anywhere. Keepalives make a dead peer fail in ~60s; BatchMode makes ssh error
+# out rather than wait on a passphrase prompt nobody can answer under launchd.
+export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
+GIT_NET_TIMEOUT=${GIT_NET_TIMEOUT:-300}
+# Lock age past which a still-running build-runner is treated as wedged rather
+# than busy. Must exceed the longest legitimate run (build + notarization).
+MAX_LOCK_AGE_MIN=${MAX_LOCK_AGE_MIN:-120}
+
+# Run a command with a hard wall-clock cap. macOS ships no coreutils `timeout`.
+# Kills the child's descendants first: git's ssh would otherwise be reparented
+# to init and keep the connection alive after git itself is gone.
+run_with_timeout() {
+  local secs="$1"; shift
+  "$@" &
+  local cmd_pid=$! waited=0
+  while kill -0 "$cmd_pid" 2>/dev/null; do
+    if [ "$waited" -ge "$secs" ]; then
+      echo "$(date '+%Y-%m-%d %H:%M:%S') — '$*' exceeded ${secs}s, killing"
+      pkill -9 -P "$cmd_pid" 2>/dev/null
+      kill -9 "$cmd_pid" 2>/dev/null
+      wait "$cmd_pid" 2>/dev/null
+      return 124
+    fi
+    sleep 1
+    waited=$((waited + 1))
+  done
+  wait "$cmd_pid"
+}
 RETRY_FILE="$HOME/.futhark/build-retry.txt"
 APPS=(kenaz raido dagaz laguz)
 UPLOAD_PIDS=()
@@ -77,9 +109,18 @@ log "deploy web dir: $DEPLOY_HTML"
 # Prevent overlapping runs
 if [ -f "$LOCK_FILE" ]; then
   LOCK_PID=$(cat "$LOCK_FILE")
+  LOCK_AGE_MIN=$(( ( $(date +%s) - $(stat -f %m "$LOCK_FILE" 2>/dev/null || echo 0) ) / 60 ))
   if kill -0 "$LOCK_PID" 2>/dev/null && ps -p "$LOCK_PID" -o command= 2>/dev/null | grep -q "build-runner"; then
-    echo "$(date '+%Y-%m-%d %H:%M:%S') — build already running (pid $LOCK_PID), skipping"
-    exit 0
+    if [ "$LOCK_AGE_MIN" -lt "$MAX_LOCK_AGE_MIN" ]; then
+      echo "$(date '+%Y-%m-%d %H:%M:%S') — build already running (pid $LOCK_PID, ${LOCK_AGE_MIN}m), skipping"
+      exit 0
+    fi
+    # Alive but far past any legitimate build: wedged, not working. Without this
+    # a single stall suppresses every subsequent run indefinitely.
+    echo "$(date '+%Y-%m-%d %H:%M:%S') — pid $LOCK_PID wedged for ${LOCK_AGE_MIN}m, killing and taking over"
+    pkill -9 -P "$LOCK_PID" 2>/dev/null
+    kill -9 "$LOCK_PID" 2>/dev/null
+    sleep 2
   fi
   rm -f "$LOCK_FILE"
 fi
@@ -100,7 +141,10 @@ fi
 CHANGED_FILES=""
 HAS_NEW_COMMITS=false
 if [ "$FORCE" = false ]; then
-  git fetch origin "$BRANCH" --quiet
+  if ! run_with_timeout "$GIT_NET_TIMEOUT" git fetch origin "$BRANCH" --quiet; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') — git fetch failed or timed out, will retry next run"
+    exit 1
+  fi
   LOCAL=$(git rev-parse HEAD)
   REMOTE=$(git rev-parse "origin/$BRANCH")
 
@@ -116,7 +160,7 @@ if [ "$FORCE" = false ]; then
     git checkout -- . 2>/dev/null
     git clean -fd 2>/dev/null
 
-    if ! git pull --quiet; then
+    if ! run_with_timeout "$GIT_NET_TIMEOUT" git pull --quiet; then
       echo "$(date '+%Y-%m-%d %H:%M:%S') — git pull failed, aborting"
       exit 1
     fi
