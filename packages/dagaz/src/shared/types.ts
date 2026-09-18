@@ -58,6 +58,8 @@ export interface ConferenceData {
     uri: string;
     label?: string;
   }>;
+  /** Scraped from the description/location rather than a conference Google owns. */
+  extracted?: boolean;
 }
 
 export interface ReminderOverride {
@@ -153,6 +155,8 @@ export interface UpdateEventInput {
   visibility?: string;
   color_id?: string;
   calendar_id?: string;
+  /** Add a Meet link when true, remove the existing conference when false. */
+  add_conferencing?: boolean;
 }
 
 export interface ParsedEventInput {

@@ -122,3 +122,133 @@ describe('isPermanentGoogleError', () => {
     expect(isPermanentGoogleError(new Error('getaddrinfo ENOTFOUND'))).toBe(false);
   });
 });
+
+describe('updating the guest list', () => {
+  beforeEach(() => {
+    for (const fn of Object.values(events)) fn.mockReset();
+  });
+
+  it('keeps the replies of guests who are already on the event', async () => {
+    events.get.mockResolvedValue({
+      data: {
+        id: 'evt1',
+        attendees: [
+          { email: 'alex@compscience.com', displayName: 'Alex', responseStatus: 'accepted', organizer: true },
+          { email: 'sam@compscience.com', responseStatus: 'declined' },
+          { email: CAL, responseStatus: 'accepted', self: true },
+        ],
+      },
+    });
+    events.patch.mockResolvedValue({ data: { id: 'evt1' } });
+
+    const svc = makeService();
+    await svc.updateEvent(CAL, 'evt1', {
+      attendees: ['alex@compscience.com', 'sam@compscience.com', CAL, 'new@example.com'],
+    });
+
+    const sent = events.patch.mock.calls[0][0].requestBody.attendees;
+    expect(sent).toEqual([
+      { email: 'alex@compscience.com', displayName: 'Alex', responseStatus: 'accepted', organizer: true, optional: undefined },
+      { email: 'sam@compscience.com', responseStatus: 'declined', optional: undefined },
+      { email: CAL, responseStatus: 'accepted', self: true, optional: undefined },
+      { email: 'new@example.com' },
+    ]);
+  });
+
+  it('matches known guests regardless of address casing', async () => {
+    events.get.mockResolvedValue({
+      data: { id: 'evt1', attendees: [{ email: 'Alex@CompScience.com', responseStatus: 'tentative' }] },
+    });
+    events.patch.mockResolvedValue({ data: { id: 'evt1' } });
+
+    const svc = makeService();
+    await svc.updateEvent(CAL, 'evt1', { attendees: ['alex@compscience.com'] });
+
+    expect(events.patch.mock.calls[0][0].requestBody.attendees[0])
+      .toMatchObject({ email: 'Alex@CompScience.com', responseStatus: 'tentative' });
+  });
+
+  it('still writes the change when the current event cannot be read', async () => {
+    events.get.mockRejectedValue(new Error('offline'));
+    events.patch.mockResolvedValue({ data: { id: 'evt1' } });
+
+    const svc = makeService();
+    await svc.updateEvent(CAL, 'evt1', { attendees: ['new@example.com'] });
+
+    expect(events.patch.mock.calls[0][0].requestBody.attendees).toEqual([{ email: 'new@example.com' }]);
+  });
+
+  it('does not re-read the event when the guest list is untouched', async () => {
+    events.patch.mockResolvedValue({ data: { id: 'evt1' } });
+
+    const svc = makeService();
+    await svc.updateEvent(CAL, 'evt1', { summary: 'Renamed' });
+
+    expect(events.get).not.toHaveBeenCalled();
+  });
+
+  it('carries replies and the Meet link into a split series', async () => {
+    const parent = parentSeries(true);
+    parent.data = {
+      ...parent.data,
+      attendees: [
+        { email: 'alex@compscience.com', responseStatus: 'accepted' },
+        { email: CAL, responseStatus: 'accepted', self: true, organizer: true },
+      ],
+      conferenceData: {
+        conferenceId: 'abc-defg-hij',
+        entryPoints: [{ entryPointType: 'video', uri: 'https://meet.google.com/abc-defg-hij' }],
+      },
+      attachments: [{ fileId: 'doc1', title: 'Agenda' }],
+      guestsCanInviteOthers: false,
+    } as any;
+
+    events.get
+      .mockResolvedValueOnce(guestInstance(true))
+      .mockResolvedValueOnce(parent);
+    events.instances.mockResolvedValue({ data: { items: [{}, {}, {}] } });
+    events.patch.mockResolvedValue({ data: { id: PARENT } });
+    events.insert.mockResolvedValue({ data: { id: 'newseries' } });
+
+    const svc = makeService();
+    await svc.updateEvent(
+      CAL,
+      INSTANCE,
+      { attendees: ['alex@compscience.com', CAL, 'new@example.com'] },
+      'all',
+    );
+
+    const inserted = events.insert.mock.calls[0][0];
+    expect(inserted.conferenceDataVersion).toBe(1);
+    expect(inserted.requestBody.conferenceData.conferenceId).toBe('abc-defg-hij');
+    expect(inserted.requestBody.attachments).toEqual([{ fileId: 'doc1', title: 'Agenda' }]);
+    expect(inserted.requestBody.guestsCanInviteOthers).toBe(false);
+    expect(inserted.requestBody.attendees).toEqual([
+      { email: 'alex@compscience.com', responseStatus: 'accepted', optional: undefined },
+      { email: CAL, responseStatus: 'accepted', self: true, organizer: true, optional: undefined },
+      { email: 'new@example.com' },
+    ]);
+  });
+
+  it('still lands the new series when Google refuses to copy the conference', async () => {
+    const parent = parentSeries(true);
+    parent.data = { ...parent.data, conferenceData: { conferenceId: 'abc' } } as any;
+
+    events.get
+      .mockResolvedValueOnce(guestInstance(true))
+      .mockResolvedValueOnce(parent);
+    events.instances.mockResolvedValue({ data: { items: [{}, {}, {}] } });
+    events.patch.mockResolvedValue({ data: { id: PARENT } });
+    events.insert
+      .mockRejectedValueOnce(Object.assign(new Error('Invalid conference type value.'), { code: 400 }))
+      .mockResolvedValueOnce({ data: { id: 'newseries' } });
+
+    const svc = makeService();
+    await svc.updateEvent(CAL, INSTANCE, { summary: 'Renamed' }, 'all');
+
+    expect(events.insert).toHaveBeenCalledTimes(2);
+    expect(events.insert.mock.calls[1][0].requestBody.conferenceData).toBeUndefined();
+    // The retry succeeded, so the truncated series must stay truncated.
+    expect(events.patch).toHaveBeenCalledTimes(1);
+  });
+});

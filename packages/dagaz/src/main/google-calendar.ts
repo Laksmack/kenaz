@@ -28,6 +28,48 @@ function normalizeAttendeeInput(a: AttendeeInput): { email: string; optional?: b
   return { email: a.email, optional: a.optional || undefined };
 }
 
+/**
+ * Google replaces the guest list wholesale on every write, and an attendee sent
+ * as a bare `{email}` comes back as `needsAction` — adding one person would wipe
+ * everyone else's reply. Carry the server's own record for guests we already
+ * know about so only genuinely new invitees start out unanswered.
+ */
+function mergeAttendees(
+  requested: AttendeeInput[],
+  existing: calendar_v3.Schema$EventAttendee[] | null | undefined,
+): calendar_v3.Schema$EventAttendee[] {
+  const byEmail = new Map<string, calendar_v3.Schema$EventAttendee>();
+  for (const a of existing || []) {
+    if (a.email) byEmail.set(a.email.toLowerCase(), a);
+  }
+  return requested.map(input => {
+    const normalized = normalizeAttendeeInput(input);
+    const prior = byEmail.get(normalized.email.toLowerCase());
+    if (!prior) return normalized;
+    return {
+      ...prior,
+      email: prior.email || normalized.email,
+      // An explicit optional flag is the one field the edit owns.
+      optional: typeof input === 'string' ? prior.optional || undefined : normalized.optional,
+    };
+  });
+}
+
+/** Event fields Google drops when a series is rebuilt rather than patched. */
+function carryOverEventDetails(
+  target: calendar_v3.Schema$Event,
+  source: calendar_v3.Schema$Event,
+): void {
+  if (source.conferenceData) target.conferenceData = source.conferenceData;
+  if (source.attachments?.length) target.attachments = source.attachments;
+  if (source.extendedProperties) target.extendedProperties = source.extendedProperties;
+  if (source.guestsCanInviteOthers != null) target.guestsCanInviteOthers = source.guestsCanInviteOthers;
+  if (source.guestsCanModify != null) target.guestsCanModify = source.guestsCanModify;
+  if (source.guestsCanSeeOtherGuests != null) target.guestsCanSeeOtherGuests = source.guestsCanSeeOtherGuests;
+  if (source.anyoneCanAddSelf != null) target.anyoneCanAddSelf = source.anyoneCanAddSelf;
+  if (source.source) target.source = source.source;
+}
+
 function googleErrorStatus(e: any): number | null {
   const status = e?.code ?? e?.status ?? e?.response?.status;
   return typeof status === 'number' ? status : null;
@@ -411,12 +453,13 @@ export class GoogleCalendarService {
         // instead, which is what Google's own UI offers a guest.
         const isOrganizer = parent.organizer?.self === true || instance.organizer?.self === true;
         if (!isOrganizer) {
-          const seriesBody = this.buildUpdateRequestBody(updates);
+          const seriesBody = this.buildUpdateRequestBody(updates, parent, parentId);
           const seriesRes = await this.calendar.events.patch({
             calendarId,
             eventId: parentId,
             requestBody: seriesBody,
             sendUpdates: 'all',
+            ...('conferenceData' in seriesBody ? { conferenceDataVersion: 1 } : {}),
           });
           return this.parseGoogleEvent(seriesRes.data, calendarId);
         }
@@ -439,11 +482,11 @@ export class GoogleCalendarService {
               sendUpdates: 'none',
             });
             try {
-              const inserted = await this.calendar.events.insert({
+              const inserted = await this.insertKeepingConference(
                 calendarId,
                 requestBody,
-                sendUpdates: requestBody.attendees?.length ? 'all' : 'none',
-              });
+                requestBody.attendees?.length ? 'all' : 'none',
+              );
               return this.parseGoogleEvent(inserted.data, calendarId);
             } catch (e) {
               await this.calendar.events.patch({
@@ -460,11 +503,11 @@ export class GoogleCalendarService {
 
           // Split point is the first occurrence, so the original series is
           // replaced outright. Insert first, and undo it if the delete fails.
-          const inserted = await this.calendar.events.insert({
+          const inserted = await this.insertKeepingConference(
             calendarId,
             requestBody,
-            sendUpdates: requestBody.attendees?.length ? 'all' : 'none',
-          });
+            requestBody.attendees?.length ? 'all' : 'none',
+          );
           try {
             await this.calendar.events.delete({ calendarId, eventId: parentId, sendUpdates: 'none' });
           } catch (e) {
@@ -484,18 +527,35 @@ export class GoogleCalendarService {
       }
     }
 
-    const requestBody = this.buildUpdateRequestBody(updates);
+    // Replacing the guest list needs the server's copy of it first, or every
+    // existing reply comes back as needsAction. The conferencing toggle needs it
+    // too, to tell "already has a Meet" from "add one".
+    let current: calendar_v3.Schema$Event | null = null;
+    if (updates.attendees || updates.add_conferencing !== undefined) {
+      try {
+        current = (await this.calendar.events.get({ calendarId, eventId })).data;
+      } catch (e: any) {
+        console.warn('[Dagaz] Could not read the current event before update:', e.message);
+      }
+    }
+
+    const requestBody = this.buildUpdateRequestBody(updates, current, eventId);
     const res = await this.calendar.events.patch({
       calendarId,
       eventId,
       requestBody,
       sendUpdates: 'all',
+      ...('conferenceData' in requestBody ? { conferenceDataVersion: 1 } : {}),
     });
 
     return this.parseGoogleEvent(res.data, calendarId);
   }
 
-  private buildUpdateRequestBody(updates: UpdateEventInput): calendar_v3.Schema$Event {
+  private buildUpdateRequestBody(
+    updates: UpdateEventInput,
+    existing?: calendar_v3.Schema$Event | null,
+    eventId = 'event',
+  ): calendar_v3.Schema$Event {
     const requestBody: calendar_v3.Schema$Event = {};
     if (updates.summary !== undefined) requestBody.summary = updates.summary;
     if (updates.description !== undefined) requestBody.description = updates.description;
@@ -512,7 +572,7 @@ export class GoogleCalendarService {
     }
 
     if (updates.attendees) {
-      requestBody.attendees = updates.attendees.map(normalizeAttendeeInput);
+      requestBody.attendees = mergeAttendees(updates.attendees, existing?.attendees);
     }
 
     if (updates.reminders && updates.reminders.length > 0) {
@@ -528,6 +588,23 @@ export class GoogleCalendarService {
 
     if (updates.transparency) requestBody.transparency = updates.transparency;
     if (updates.visibility) requestBody.visibility = updates.visibility;
+
+    if (updates.add_conferencing !== undefined) {
+      const hasConference = !!existing?.conferenceData || !!existing?.hangoutLink;
+      if (updates.add_conferencing && !hasConference) {
+        requestBody.conferenceData = {
+          createRequest: {
+            requestId: crypto.randomUUID ? crypto.randomUUID() : `dagaz-${eventId}`,
+            conferenceSolutionKey: { type: 'hangoutsMeet' },
+          },
+        };
+      } else if (!updates.add_conferencing && hasConference) {
+        // Explicit null is how Google is told to drop a conference; the typings
+        // only allow an object.
+        (requestBody as any).conferenceData = null;
+      }
+    }
+
     return requestBody;
   }
 
@@ -608,6 +685,31 @@ export class GoogleCalendarService {
     return count;
   }
 
+  /**
+   * Insert that keeps the original Meet link when Google allows copying it, and
+   * still lands the event when it doesn't.
+   */
+  private async insertKeepingConference(
+    calendarId: string,
+    requestBody: calendar_v3.Schema$Event,
+    sendUpdates: 'all' | 'none',
+  ) {
+    if (!this.calendar) throw new Error('Not authenticated');
+    try {
+      return await this.calendar.events.insert({
+        calendarId,
+        requestBody,
+        sendUpdates,
+        ...(requestBody.conferenceData ? { conferenceDataVersion: 1 } : {}),
+      });
+    } catch (e: any) {
+      if (!requestBody.conferenceData) throw e;
+      console.warn('[Dagaz] Could not carry the conference over to the new series:', e.message);
+      const { conferenceData, ...withoutConference } = requestBody;
+      return await this.calendar.events.insert({ calendarId, requestBody: withoutConference, sendUpdates });
+    }
+  }
+
   private buildFutureSeriesEvent(
     parent: calendar_v3.Schema$Event,
     instance: calendar_v3.Schema$Event,
@@ -637,11 +739,24 @@ export class GoogleCalendarService {
     }
 
     if (updates.attendees) {
-      event.attendees = updates.attendees.map(normalizeAttendeeInput);
+      event.attendees = mergeAttendees(updates.attendees, parent.attendees);
     } else if (parent.attendees && parent.attendees.length > 0) {
-      event.attendees = parent.attendees
-        .filter(a => !!a.email)
-        .map(a => ({ email: a.email!, displayName: a.displayName || undefined, optional: a.optional || undefined }));
+      event.attendees = parent.attendees.filter(a => !!a.email);
+    }
+
+    // A split rebuilds the series from scratch, so anything not copied here is
+    // lost: the Meet link, attachments, and the guest permissions.
+    carryOverEventDetails(event, parent);
+
+    if (updates.add_conferencing === false) {
+      delete event.conferenceData;
+    } else if (updates.add_conferencing && !event.conferenceData) {
+      event.conferenceData = {
+        createRequest: {
+          requestId: crypto.randomUUID ? crypto.randomUUID() : `dagaz-${parent.id}`,
+          conferenceSolutionKey: { type: 'hangoutsMeet' },
+        },
+      };
     }
 
     if (updates.reminders) {
@@ -927,6 +1042,7 @@ function extractConferenceFromText(
       return {
         conferenceSolution: { name },
         entryPoints: [{ entryPointType: 'video', uri }],
+        extracted: true,
       };
     }
   }

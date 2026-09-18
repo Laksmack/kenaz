@@ -152,6 +152,7 @@ export function startApiServer(
     visibility: z.string().optional(),
     color_id: z.string().optional(),
     calendar_id: z.string().optional(),
+    add_conferencing: z.boolean().optional(),
     force: z.boolean().optional(),
     // Request option, not a field. Without it zod strips the key and every
     // update silently degrades to "this event only".

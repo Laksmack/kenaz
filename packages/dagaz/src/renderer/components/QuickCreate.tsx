@@ -281,7 +281,9 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
       setLocation(ev.location || '');
       setDescription(ev.description || '');
       setRecurrence(ev.recurrence_rule ? recurrenceRuleToPreset(ev.recurrence_rule) : 'none');
-      setAddConferencing(!!ev.conference_data || !!ev.hangout_link);
+      // A link merely scraped out of the description isn't a conference Google
+      // owns — showing the toggle on would offer to remove something we can't.
+      setAddConferencing((!!ev.conference_data && !ev.conference_data.extracted) || !!ev.hangout_link);
       setAttendeeInput('');
       setAttendees(
         (ev.attendees || [])
@@ -390,6 +392,7 @@ export function QuickCreate({ open, onClose, onCreate, onUpdate, editingEvent, c
         transparency,
         color_id: colorId || undefined,
         calendar_id: calendarId !== editingEvent.calendar_id ? calendarId : undefined,
+        add_conferencing: addConferencing,
       };
       onUpdate(editingEvent.id, updates);
       onClose();

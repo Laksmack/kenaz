@@ -425,18 +425,24 @@ function registerIpcHandlers() {
     } else {
       cache.markEventPending(id, 'update', JSON.stringify(updates));
     }
-    // Persist attendees locally so they appear in the UI immediately
+    // Persist attendees locally so they appear in the UI immediately. Reuse
+    // what we already know about each guest — rebuilding the row from the email
+    // alone would show everyone as not-yet-replied until the next sync.
     if (updates.attendees) {
+      const known = new Map((existing.attendees || []).map(a => [a.email.toLowerCase(), a]));
       cache.upsertAttendees(id, updates.attendees.map(a => {
         const { email, optional } = typeof a === 'string' ? { email: a, optional: false } : { email: a.email, optional: a.optional || false };
+        const prior = known.get(email.toLowerCase());
         return {
           event_id: id,
           email,
-          display_name: null,
-          response_status: 'needsAction' as const,
-          is_organizer: false,
-          is_self: false,
-          optional,
+          display_name: prior?.display_name ?? null,
+          response_status: prior?.response_status ?? ('needsAction' as const),
+          is_organizer: prior?.is_organizer ?? false,
+          is_self: prior?.is_self ?? false,
+          optional: typeof a === 'string' ? (prior?.optional ?? false) : optional,
+          proposed_start: prior?.proposed_start ?? null,
+          proposed_end: prior?.proposed_end ?? null,
         };
       }));
     }
