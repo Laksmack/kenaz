@@ -394,6 +394,7 @@ export function ComposeBar({
     subject: initialData?.subject || '',
     bodyMarkdown: initialBodyMarkdown,
     bodyHtml: initialBodyHtml,
+    attachmentCount: initialData?.attachments?.length || 0,
   });
 
   // Auto-focus: TO field for new compose, body for replies (markdown only — TipTap handles its own autofocus)
@@ -422,7 +423,7 @@ export function ComposeBar({
       [...bcc].sort().join(',') !== snap.bcc ||
       subject !== snap.subject ||
       bodyChanged ||
-      attachments.length > 0
+      attachments.length !== snap.attachmentCount
     );
   })();
 

@@ -8,7 +8,7 @@ import path from 'path';
 import os from 'os';
 import { ConfigStore } from './config';
 import { OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, OAUTH_REDIRECT_URI } from './oauth-config';
-import type { Email, EmailThread, EmailAddress, Attachment, SendEmailPayload } from '../shared/types';
+import type { Email, EmailThread, EmailAddress, Attachment, EmailAttachment, SendEmailPayload } from '../shared/types';
 import { userDataDir } from './paths';
 
 // RFC 2047 encode a header value if it contains non-ASCII characters
@@ -1294,6 +1294,44 @@ export class GmailService {
     return drafts.filter(Boolean) as any[];
   }
 
+  /**
+   * Download a draft's real (non-inline) attachments as base64 so the composer
+   * can round-trip them. Without this, opening a draft and sending it silently
+   * drops every attachment, since the outgoing MIME is rebuilt from scratch.
+   */
+  private async fetchDraftAttachments(msg: gmail_v1.Schema$Message | undefined): Promise<EmailAttachment[]> {
+    if (!msg?.id || !msg.payload) return [];
+
+    const parts: gmail_v1.Schema$MessagePart[] = [];
+    const walk = (part: gmail_v1.Schema$MessagePart) => {
+      // Skip cid: inline images (signature logos etc.) — those live in the HTML body.
+      const isInline = (part.headers || []).some((h) => h.name?.toLowerCase() === 'content-id');
+      if (part.filename && part.filename.length > 0 && part.body?.attachmentId && !isInline) {
+        parts.push(part);
+      }
+      part.parts?.forEach(walk);
+    };
+    walk(msg.payload);
+    if (parts.length === 0) return [];
+
+    const attachments: EmailAttachment[] = [];
+    for (const part of parts) {
+      try {
+        const buf = await this.getAttachmentBuffer(msg.id, part.body!.attachmentId!);
+        attachments.push({
+          filename: part.filename!,
+          mimeType: part.mimeType || 'application/octet-stream',
+          base64: buf.toString('base64'),
+          size: buf.length,
+        });
+      } catch (e) {
+        console.error(`[DRAFT] Failed to fetch attachment ${part.filename}:`, e);
+      }
+    }
+    console.log(`[DRAFT] Loaded ${attachments.length}/${parts.length} attachment(s) for draft message ${msg.id}`);
+    return attachments;
+  }
+
   async getDraft(draftId: string): Promise<{
     id: string;
     to: string;
@@ -1303,6 +1341,7 @@ export class GmailService {
     body: string;
     threadId: string;
     messageId: string;
+    attachments: EmailAttachment[];
   }> {
     if (!this.gmail) throw new Error('Not authenticated');
 
@@ -1317,30 +1356,17 @@ export class GmailService {
     const getHeader = (name: string) =>
       headers.find((h: {name?: string | null; value?: string | null}) => h.name?.toLowerCase() === name.toLowerCase())?.value || '';
 
-    // Extract body — prefer HTML, fall back to plain text
-    let bodyText = '';
-    const payload = msg?.payload;
-    if (payload?.parts) {
-      // Prefer HTML part for rich editor
-      const htmlPart = payload.parts.find((p) => p.mimeType === 'text/html');
-      const textPart = payload.parts.find((p) => p.mimeType === 'text/plain');
-      if (htmlPart?.body?.data) {
-        bodyText = Buffer.from(htmlPart.body.data, 'base64').toString('utf-8');
-      } else if (textPart?.body?.data) {
-        const plain = Buffer.from(textPart.body.data, 'base64').toString('utf-8');
-        bodyText = plain.split('\n').map(line => `<p>${line || '<br>'}</p>`).join('');
-      }
-    } else if (payload?.body?.data) {
-      const raw = Buffer.from(payload.body.data, 'base64').toString('utf-8');
-      // Check content-type to decide if it's HTML
-      const contentType = headers.find((h) => h.name?.toLowerCase() === 'content-type')?.value || '';
-      if (contentType.includes('text/html')) {
-        bodyText = raw;
-      } else {
-        // Plain text — convert to HTML paragraphs
-        bodyText = raw.split('\n').map(line => `<p>${line || '<br>'}</p>`).join('');
-      }
+    // Extract body — prefer HTML, fall back to plain text. extractBody walks
+    // nested multiparts, so multipart/mixed drafts (i.e. ones with attachments)
+    // and Gmail-authored multipart/alternative drafts both resolve correctly.
+    const { html, text } = this.extractBody(msg?.payload);
+    let bodyText = html;
+    if (!bodyText && text) {
+      // Plain text — convert to HTML paragraphs for the rich editor
+      bodyText = text.split('\n').map((line) => `<p>${line || '<br>'}</p>`).join('');
     }
+
+    const attachments = await this.fetchDraftAttachments(msg);
 
     return {
       id: res.data.id || '',
@@ -1351,6 +1377,7 @@ export class GmailService {
       body: bodyText,
       threadId: msg?.threadId || '',
       messageId: msg?.id || '',
+      attachments,
     };
   }
 

@@ -142,7 +142,12 @@ export function startApiServer(gmail: GmailService, hubspot: HubSpotService, por
   app.get('/api/draft/:id', async (req, res) => {
     try {
       const draft = await g().getDraft(req.params.id);
-      res.json(draft);
+      // Strip attachment bytes — the composer needs them, HTTP/MCP callers don't,
+      // and base64 blobs would blow up the response size.
+      res.json({
+        ...draft,
+        attachments: draft.attachments.map(({ base64, ...meta }) => meta),
+      });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

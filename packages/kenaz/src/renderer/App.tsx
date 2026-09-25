@@ -402,6 +402,7 @@ export default function App() {
           bodyHtml: normalizedBody,
           replyToThreadId: draftDetail.threadId || undefined,
           draftId: draftDetail.id,
+          attachments: draftDetail.attachments?.length ? draftDetail.attachments : undefined,
         });
         setComposeOpen(true);
       }
@@ -863,6 +864,7 @@ export default function App() {
         body_html: draftDetail.body,
         reply_to_thread_id: draftDetail.threadId || undefined,
         signature: false,
+        attachments: draftDetail.attachments?.length ? draftDetail.attachments : undefined,
       };
 
       handleSent(payload, draftDetail.id);
